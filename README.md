@@ -8,4 +8,6 @@ Requires:
 
 * [sk-buffer](https://github.com/sikol/sk-buffer)
 
-* [Example](sample/async_type.cxx)
+Example:
+
+* [async_type](sample/async_type.cxx)
