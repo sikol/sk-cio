@@ -26,10 +26,10 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <sk/async/win32/error.hxx>
-#include <sk/async/win32/iocp_reactor.hxx>
+#include <sk/cio/win32/error.hxx>
+#include <sk/cio/win32/iocp_reactor.hxx>
 
-namespace sk::async::win32 {
+namespace sk::cio::win32 {
 
     iocp_reactor::iocp_reactor() {
         auto hdl =
@@ -134,7 +134,7 @@ namespace sk::async::win32 {
                               lpNumberOfBytesRead, &overlapped);
 
         if (ret == TRUE)
-            co_return async::error::no_error;
+            co_return cio::error::no_error;
 
         auto err = GetLastError();
 
@@ -145,7 +145,7 @@ namespace sk::async::win32 {
                 co_return win32::make_win32_error(overlapped.error);
 
             *lpNumberOfBytesRead = overlapped.bytes_transferred;
-            co_return async::error::no_error;
+            co_return cio::error::no_error;
         }
 
         co_return win32::make_win32_error(err);

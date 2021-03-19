@@ -26,34 +26,20 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_ASYNC_ERROR_HXX_INCLUDED
-#define SK_ASYNC_ERROR_HXX_INCLUDED
+#ifndef SK_CIO_TYPES_HXX_INCLUDED
+#define SK_CIO_TYPES_HXX_INCLUDED
 
-#include <string>
-#include <system_error>
+#include <cstddef>
 
-namespace sk::async {
+namespace sk::cio {
 
-    enum struct error : int {
-        no_error = 0,
-        end_of_file = 1,
-    };
+    // Type representing an I/O offset inside a direct access channel.
+    // This is a signed type so we can support seeking backwards.
+    using io_offset_t = std::int64_t;
 
-    namespace detail {
+    // Type representing the size of an I/O operation.
+    using io_size_t = std::size_t;
 
-        struct async_errc_category : std::error_category {
-            auto name() const noexcept -> char const * final;
-            auto message(int c) const -> std::string final;
-        };
 
-    } // namespace detail
-
-    auto async_errc_category() -> detail::async_errc_category const &;
-    std::error_code make_error_code(error e);
-
-} // namespace sk::async
-
-template <>
-struct std::is_error_code_enum<sk::async::error> : true_type {};
-
-#endif // SK_ASYNC_STREAM_ERRORS_HXX_INCLUDED
+} // namespace sk::cio
+#endif // SK_CIO_TYPES_HXX_INCLUDED

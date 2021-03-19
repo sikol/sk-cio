@@ -34,9 +34,9 @@
 #include <string>
 #include <iostream>
 
-#include <sk/async/task.hxx>
+#include <sk/cio/task.hxx>
 
-using sk::async::task;
+using sk::cio::task;
 
 auto get_int() -> task<int> {
     std::cerr << "get_int() : running\n";

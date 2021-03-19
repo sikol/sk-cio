@@ -26,8 +26,8 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_ASYNC_TASK_HXX_INCLUDED
-#define SK_ASYNC_TASK_HXX_INCLUDED
+#ifndef SK_CIO_TASK_HXX_INCLUDED
+#define SK_CIO_TASK_HXX_INCLUDED
 
 #include <chrono>
 #include <coroutine>
@@ -36,10 +36,10 @@
 #include <optional>
 #include <thread>
 
-#include <sk/async/win32/windows.hxx>
+#include <sk/cio/win32/windows.hxx>
 #include <tl/expected.hpp>
 
-namespace sk::async {
+namespace sk::cio {
 
     template <typename T> struct task {
         struct promise_type {
@@ -225,11 +225,11 @@ namespace sk::async {
         }
     };
 
-    template <typename T, typename Error = std::error_code>
-    using expected = task<tl::expected<T, Error>>;
+    template <typename T, typename Error>
+    using expected = tl::expected<T, Error>;
 
     using tl::make_unexpected;
 
 } // namespace sk::async
 
-#endif // SK_ASYNC_TASK_HXX_INCLUDED
+#endif // SK_CIO_TASK_HXX_INCLUDED

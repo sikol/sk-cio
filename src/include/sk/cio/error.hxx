@@ -26,56 +26,33 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_ASYNC_WIN32_HANDLE_HXX_INCLUDED
-#define SK_ASYNC_WIN32_HANDLE_HXX_INCLUDED
+#ifndef SK_CIO_ERROR_HXX_INCLUDED
+#define SK_CIO_ERROR_HXX_INCLUDED
 
-#include <sk/async/win32/windows.hxx>
+#include <string>
+#include <system_error>
 
-namespace sk::async::win32 {
+namespace sk::cio {
 
-    struct unique_handle {
-        explicit unique_handle(HANDLE handle_value_)
-            : handle_value(handle_value_) {}
-
-        unique_handle(unique_handle &&other) noexcept
-            : handle_value(other.handle_value) {
-            other.handle_value = nullptr;
-        }
-
-#if 0
-        unique_handle &operator=(unique_handle &&other) noexcept {
-            if (this == &other)
-                return *this;
-
-            close();
-
-            handle_value = other.handle_value;
-            other.handle_value = nullptr;
-            return *this;
-        }
-#endif
-
-        ~unique_handle() {
-            close();
-        }
-
-        unique_handle(unique_handle const &) = delete;
-        unique_handle &operator=(unique_handle const &) = delete;
-
-        auto assign(HANDLE handle_value_) -> void {
-            close();
-            handle_value = handle_value_;
-        }
-
-        auto close() -> void {
-            if (handle_value != nullptr && handle_value != INVALID_HANDLE_VALUE)
-                ::CloseHandle(handle_value);
-            handle_value = nullptr;
-        }
-
-        HANDLE handle_value{nullptr};
+    enum struct error : int {
+        no_error = 0,
+        end_of_file = 1,
     };
 
-} // namespace sk::async::win32
+    namespace detail {
 
-#endif // SK_ASYNC_WIN32_HANDLE_HXX_INCLUDED
+        struct cio_errc_category : std::error_category {
+            auto name() const noexcept -> char const * final;
+            auto message(int c) const -> std::string final;
+        };
+
+    } // namespace detail
+
+    auto cio_errc_category() -> detail::cio_errc_category const &;
+    std::error_code make_error_code(error e);
+
+} // namespace sk::cio
+
+template <> struct std::is_error_code_enum<sk::cio::error> : true_type {};
+
+#endif // SK_CIO_ERROR_HXX_INCLUDED

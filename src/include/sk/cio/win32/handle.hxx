@@ -26,16 +26,54 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_ASYNC_STREAM_ERRORS_HXX_INCLUDED
-#define SK_ASYNC_STREAM_ERRORS_HXX_INCLUDED
+#ifndef SK_CIO_WIN32_HANDLE_HXX_INCLUDED
+#define SK_CIO_WIN32_HANDLE_HXX_INCLUDED
 
-namespace sk::async {
+#include <sk/cio/win32/windows.hxx>
 
-	// End of file reached.
-	struct end_of_file : std::runtime_error {
-            end_of_file() : std::runtime_error("reached end of file") {}
-	};
+namespace sk::cio::win32 {
 
-}
+    struct unique_handle {
+        explicit unique_handle(HANDLE handle_value_)
+            : handle_value(handle_value_) {}
 
-#endif // SK_ASYNC_STREAM_ERRORS_HXX_INCLUDED
+        unique_handle(unique_handle &&other) noexcept
+            : handle_value(other.handle_value) {
+            other.handle_value = nullptr;
+        }
+
+        unique_handle &operator=(unique_handle &&other) noexcept {
+            if (this == &other)
+                return *this;
+
+            close();
+
+            handle_value = other.handle_value;
+            other.handle_value = nullptr;
+            return *this;
+        }
+
+        ~unique_handle() {
+            close();
+        }
+
+        unique_handle(unique_handle const &) = delete;
+        unique_handle &operator=(unique_handle const &) = delete;
+
+        auto assign(HANDLE handle_value_) -> void {
+            close();
+            handle_value = handle_value_;
+        }
+
+        auto close() -> void {
+            if (handle_value != nullptr && handle_value != INVALID_HANDLE_VALUE)
+                ::CloseHandle(handle_value);
+            handle_value = nullptr;
+        }
+
+        HANDLE handle_value{nullptr};
+    };
+
+} // namespace sk::async::win32
+
+#endif // SK_CIO_WIN32_HANDLE_HXX_INCLUDED

@@ -26,52 +26,54 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_ASYNC_STREAM_IFILESTREAM_HXX_INCLUDED
-#define SK_ASYNC_STREAM_IFILESTREAM_HXX_INCLUDED
+#ifndef SK_CIO_WIN32_CHANNEL_IFILECHANNEL_HXX_INCLUDED
+#define SK_CIO_WIN32_CHANNEL_IFILECHANNEL_HXX_INCLUDED
 
 #include <filesystem>
 #include <system_error>
 
-#include <sk/async/task.hxx>
-#include <sk/async/win32/error.hxx>
-#include <sk/async/win32/handle.hxx>
-#include <sk/async/win32/iocp_reactor.hxx>
-#include <sk/async/stream/errors.hxx>
 #include <sk/buffer/buffer.hxx>
+#include <sk/cio/error.hxx>
+#include <sk/cio/task.hxx>
+#include <sk/cio/types.hxx>
+#include <sk/cio/win32/error.hxx>
+#include <sk/cio/win32/handle.hxx>
+#include <sk/cio/win32/iocp_reactor.hxx>
 
-namespace sk::async {
+namespace sk::cio::win32 {
 
     /*
-     * ifilestream: an async stream that reads bytes from a file.
+     * ifilechannel: a direct access channel that reads from a file.
      */
-    template <typename CharT> struct ifilestream final {
+    template <typename CharT> struct ifilechannel final {
         using native_handle_type = win32::unique_handle;
 
         native_handle_type native_handle{INVALID_HANDLE_VALUE};
 
-        explicit ifilestream(ifilestream const &) = delete;
-        ifilestream(ifilestream &&) noexcept = default;
-        ifilestream &operator=(ifilestream const &) = delete;
-        ifilestream &operator=(ifilestream &&) noexcept = default;
-        ~ifilestream();
+        explicit ifilechannel(ifilechannel const &) = delete;
+        ifilechannel(ifilechannel &&) noexcept = default;
+        ifilechannel &operator=(ifilechannel const &) = delete;
+        ifilechannel &operator=(ifilechannel &&) noexcept = default;
+        ~ifilechannel();
 
         /*
-         * Create an ifilestream which is closed.
+         * Create an ifilechannel which is closed.
          */
-        ifilestream() = default;
+        ifilechannel() = default;
 
         /*
-         * Create an ifilestream from a native handle.
+         * Create an ifilechannel from a native handle.
          */
-        explicit ifilestream(native_handle_type &&handle);
+        explicit ifilechannel(native_handle_type &&handle);
 
         /*
          * Open a file.
          */
         auto async_open(std::filesystem::path const &) -> task<std::error_code>;
+        auto open(std::filesystem::path const &) -> std::error_code;
 
         /*
-         * Test if this filestream has been opened.
+         * Test if this channel has been opened.
          */
         auto is_open() const -> bool;
 
@@ -80,30 +82,38 @@ namespace sk::async {
          * operations is undefined.
          */
         auto async_close() -> task<std::error_code>;
+        auto close() -> std::error_code;
 
         /*
          * Read data from the current file position.
          */
         template <sk::writable_buffer_of<CharT> BufferT>
-        auto async_read(BufferT &buffer) -> expected<std::size_t, std::error_code>;
+        auto async_read(BufferT &buffer)
+            -> task<expected<io_size_t, std::error_code>>;
+
+        /*
+         * Read data from a random file position.
+         */
+        template <sk::writable_buffer_of<CharT> BufferT>
+        auto read(BufferT &buffer) -> expected<io_size_t, std::error_code>;
 
     private:
-        std::uint64_t file_position = 0;
+        io_offset_t file_position = 0;
     };
 
     template <typename CharT>
-    ifilestream<CharT>::ifilestream(native_handle_type &&native_handle_)
+    ifilechannel<CharT>::ifilechannel(native_handle_type &&native_handle_)
         : native_handle(std::move(native_handle_)) {}
 
-    template <typename CharT> ifilestream<CharT>::~ifilestream() = default;
+    template <typename CharT> ifilechannel<CharT>::~ifilechannel() = default;
 
-    template <typename CharT> bool ifilestream<CharT>::is_open() const {
+    template <typename CharT> bool ifilechannel<CharT>::is_open() const {
         return native_handle != INVALID_HANDLE_VALUE;
     }
 
     template <typename CharT>
-    task<std::error_code>
-    ifilestream<CharT>::async_open(std::filesystem::path const &path) {
+    auto ifilechannel<CharT>::async_open(std::filesystem::path const &path)
+        -> task<std::error_code> {
         std::wstring wpath(path.native());
 
 /*
@@ -130,19 +140,36 @@ namespace sk::async {
             co_return win32::win32_to_generic_error(win32::get_last_error());
 
         native_handle.assign(handle);
+        co_return cio::error::no_error;
+    }
+
+    template <typename CharT>
+    std::error_code
+    ifilechannel<CharT>::open(std::filesystem::path const &path) {
+        std::wstring wpath(path.native());
+
+        auto handle = ::CreateFileW(
+            wpath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, NULL);
+
+        // Return error if any.
+        if (handle == INVALID_HANDLE_VALUE)
+            co_return win32::win32_to_generic_error(win32::get_last_error());
+
+        native_handle.assign(handle);
         co_return error::no_error;
     }
 
     template <typename CharT>
-    task<std::error_code> ifilestream<CharT>::async_close() {
+    task<std::error_code> ifilechannel<CharT>::async_close() {
         native_handle.close();
-        co_return error::no_error;
+        co_return cio::error::no_error;
     }
 
     template <typename CharT>
     template <sk::writable_buffer_of<CharT> BufferT>
-    expected<std::size_t, std::error_code>
-    ifilestream<CharT>::async_read(BufferT &buffer) {
+    auto ifilechannel<CharT>::async_read(BufferT &buffer)
+        -> task<expected<io_size_t, std::error_code>> {
 
         DWORD bytes_read = 0;
 
@@ -175,6 +202,6 @@ namespace sk::async {
         co_return make_unexpected(win32::win32_to_generic_error(ret));
     }
 
-} // namespace sk::async
+} // namespace sk::cio::win32
 
-#endif // SK_ASYNC_STREAM_IFILESTREAM_HXX_INCLUDED
+#endif // SK_CIO_WIN32_CHANNEL_IFILECHANNEL_HXX_INCLUDED

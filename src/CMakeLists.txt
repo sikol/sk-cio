@@ -28,15 +28,35 @@ cmake_minimum_required(VERSION 3.12)
 
 enable_testing()
 
-add_library(sk-async)
+add_library(sk-cio)
 
-target_sources(sk-async PRIVATE 
-	win32/error.cxx
-	win32/iocp_reactor.cxx
- "include/sk/async/stream/errors.hxx" "include/sk/async/error.hxx" "error.cxx")
+target_sources(sk-cio PRIVATE 
+    error.cxx
 
-target_include_directories(sk-async PUBLIC include)
-target_link_libraries(sk-async PUBLIC tl::expected)
-target_compile_features(sk-async PUBLIC cxx_std_20)
+    include/sk/cio/channel/concepts.hxx
+    include/sk/cio/channel/ifilechannel.hxx
+    include/sk/cio/channel/pmr_channel.hxx
+
+    include/sk/cio/error.hxx
+    include/sk/cio/task.hxx
+    include/sk/cio/types.hxx
+)
+
+if(WIN32)
+    target_sources(sk-cio PRIVATE
+        win32/error.cxx
+        win32/iocp_reactor.cxx
+
+        include/sk/cio/win32/channel/ifilechannel.hxx
+        include/sk/cio/win32/error.hxx
+        include/sk/cio/win32/handle.hxx
+        include/sk/cio/win32/iocp_reactor.hxx
+        include/sk/cio/win32/windows.hxx
+    )
+endif()
+
+target_include_directories(sk-cio PUBLIC include)
+target_link_libraries(sk-cio PUBLIC tl::expected)
+target_compile_features(sk-cio PUBLIC cxx_std_20)
 
 install(DIRECTORY "include/sk" TYPE INCLUDE)

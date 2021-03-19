@@ -26,10 +26,9 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <iostream>
-#include <sk/async/win32/error.hxx>
+#include <sk/cio/win32/error.hxx>
 
-namespace sk::async::win32 {
+namespace sk::cio::win32 {
 
     namespace detail {
 
@@ -67,7 +66,7 @@ namespace sk::async::win32 {
     auto make_error_code(error e) -> std::error_code {
         switch (static_cast<DWORD>(e)) {
         case ERROR_HANDLE_EOF:
-            return async::error::end_of_file;
+            return cio::error::end_of_file;
         default:
             return {static_cast<int>(e), win32_errc_category()};
         }
@@ -92,7 +91,7 @@ namespace sk::async::win32 {
 
         switch (ec.value()) {
         case ERROR_HANDLE_EOF:
-            return async::error::end_of_file;
+            return cio::error::end_of_file;
 
         case ERROR_FILE_NOT_FOUND:
             return std::make_error_code(std::errc::no_such_file_or_directory);

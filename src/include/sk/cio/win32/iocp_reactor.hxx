@@ -26,18 +26,18 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_ASYNC_WIN32_IOCP_REACTOR_HXX_INCLUDED
-#define SK_ASYNC_WIN32_IOCP_REACTOR_HXX_INCLUDED
+#ifndef SK_CIO_WIN32_IOCP_REACTOR_HXX_INCLUDED
+#define SK_CIO_WIN32_IOCP_REACTOR_HXX_INCLUDED
 
 #include <coroutine>
 #include <thread>
 #include <system_error>
 
-#include <sk/async/task.hxx>
-#include <sk/async/win32/handle.hxx>
-#include <sk/async/win32/windows.hxx>
+#include <sk/cio/task.hxx>
+#include <sk/cio/win32/handle.hxx>
+#include <sk/cio/win32/windows.hxx>
 
-namespace sk::async::win32 {
+namespace sk::cio::win32 {
 
     struct iocp_awaitable : OVERLAPPED {
         bool await_ready() {
@@ -114,4 +114,4 @@ namespace sk::async::win32 {
 
 }; // namespace sk::async::win32
 
-#endif // SK_ASYNC_WIN32_IOCP_REACTOR_HXX_INCLUDED
+#endif // SK_CIO_WIN32_IOCP_REACTOR_HXX_INCLUDED

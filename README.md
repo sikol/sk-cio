@@ -1,4 +1,4 @@
-# sk-async
+# sk-cio
 
 (WIP) Coro-based exception-free async I/O library.
 

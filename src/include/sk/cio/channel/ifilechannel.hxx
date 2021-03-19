@@ -26,36 +26,23 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <sk/cio/error.hxx>
+#ifndef SK_CIO_CHANNEL_IFILECHANNEL_HXX_INCLUDED
+#define SK_CIO_CHANNEL_IFILECHANNEL_HXX_INCLUDED
+
+#ifdef _WIN32
+#    include <sk/cio/win32/channel/ifilechannel.hxx>
 
 namespace sk::cio {
 
-    namespace detail {
+    template <typename CharT>
+    using ifilechannel = win32::ifilechannel<CharT>;
 
-        auto cio_errc_category::name() const noexcept -> char const * {
-            return "async";
-        }
+}
 
-        auto cio_errc_category::message(int c) const -> std::string {
-            switch (static_cast<error>(c)) {
-            case error::no_error:
-                return "success";
-            case error::end_of_file:
-                return "end of file";
-            default:
-                return "unknown error";
-            }
-        }
+#else
 
-    } // namespace detail
+#    error ifilechannel is not supported on this platform
 
-    auto async_errc_category() -> detail::cio_errc_category const & {
-        static detail::cio_errc_category c;
-        return c;
-    }
+#endif
 
-    auto make_error_code(error e) -> std::error_code {
-        return {static_cast<int>(e), async_errc_category()};
-    }
-
-} // namespace sk::cio
+#endif // SK_CIO_CHANNEL_IFILECHANNEL_HXX_INCLUDED

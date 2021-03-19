@@ -28,19 +28,21 @@
 
 #include <cstdio>
 #include <ranges>
+#include <iostream>
 
 #include <fmt/core.h>
 
-#include <sk/async/stream/ifilestream.hxx>
-#include <sk/async/task.hxx>
+#include <sk/cio/channel/ifilechannel.hxx>
+#include <sk/cio/task.hxx>
+#include <sk/cio/error.hxx>
 #include <sk/buffer/fixed_buffer.hxx>
 
-using namespace sk::async;
+using namespace sk::cio;
 
 task<void> print_file(std::string const &name) {
-    ifilestream<char> stream;
+    ifilechannel<char> chnl;
 
-    auto err = co_await stream.async_open(name);
+    auto err = co_await chnl.async_open(name);
     if (err) {
         std::cerr << name << ": " << err.message() << "\n";
         co_return;
@@ -48,10 +50,10 @@ task<void> print_file(std::string const &name) {
 
     for (;;) {
         sk::fixed_buffer<char, 1024> buffer;
-        auto nbytes = co_await stream.async_read(buffer);
+        auto nbytes = co_await chnl.async_read(buffer);
 
         if (!nbytes) {
-            if (nbytes.error() != sk::async::error::end_of_file)
+            if (nbytes.error() != sk::cio::error::end_of_file)
                 std::cerr << name << ": " << nbytes.error().message() << "\n";
             break;
         }
@@ -62,7 +64,7 @@ task<void> print_file(std::string const &name) {
         buffer.discard(*nbytes);
     }
 
-    co_await stream.async_close();
+    co_await chnl.async_close();
 }
 
 int main(int argc, char **argv) {
@@ -73,13 +75,13 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    sk::async::win32::iocp_reactor::start_global_reactor();
+    sk::cio::win32::iocp_reactor::start_global_reactor();
 
     for (auto &&file : std::span(argv + 1, argv + argc)) {
         print_file(file).wait();
     }
 
-    sk::async::win32::iocp_reactor::stop_global_reactor();
+    sk::cio::win32::iocp_reactor::stop_global_reactor();
 
     return 0;
 }

@@ -26,19 +26,19 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_ASYNC_WIN32_ERROR_HXX_INCLUDED
-#define SK_ASYNC_WIN32_ERROR_HXX_INCLUDED
+#ifndef SK_CIO_WIN32_ERROR_HXX_INCLUDED
+#define SK_CIO_WIN32_ERROR_HXX_INCLUDED
 
 #include <system_error>
 
-#include <sk/async/win32/windows.hxx>
-#include <sk/async/error.hxx>
+#include <sk/cio/error.hxx>
+#include <sk/cio/win32/windows.hxx>
 
 /*
  * Error handling support for Win32.
  */
 
-namespace sk::async::win32 {
+namespace sk::cio::win32 {
 
     /*
      * Win32 error category - this corresponds to FORMAT_MESSAGE_FROM_SYSTEM.
@@ -48,14 +48,13 @@ namespace sk::async::win32 {
         success = ERROR_SUCCESS, // 0
     };
 
-} // namespace sk::async::detail::win32
+} // namespace sk::cio::win32
 
 namespace std {
-    template <>
-    struct is_error_code_enum<sk::async::win32::error> : true_type {};
+    template <> struct is_error_code_enum<sk::cio::win32::error> : true_type {};
 }; // namespace std
 
-namespace sk::async::win32 {
+namespace sk::cio::win32 {
 
     namespace detail {
 
@@ -82,6 +81,6 @@ namespace sk::async::win32 {
     // a single error code.
     auto win32_to_generic_error(std::error_code) -> std::error_code;
 
-} // namespace sk::async::detail::win32
+} // namespace sk::cio::win32
 
-#endif // SK_ASYNC_WIN32_ERROR_HXX_INCLUDED
+#endif // SK_CIO_WIN32_ERROR_HXX_INCLUDED

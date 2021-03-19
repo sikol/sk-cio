@@ -27,7 +27,7 @@
 cmake_minimum_required(VERSION 3.12)
 
 add_executable(test_task test_task.cxx)
-target_link_libraries(test_task PRIVATE sk-async Catch2::Catch2)
+target_link_libraries(test_task PRIVATE sk-cio Catch2::Catch2)
 
 add_test(NAME test_task 
 		COMMAND $<TARGET_FILE:test_task>)

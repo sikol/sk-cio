@@ -26,11 +26,11 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_WIN32_WINDOWS_HXX_INCLUDED
-#define SK_WIN32_WINDOWS_HXX_INCLUDED
+#ifndef SK_CIO_WIN32_WINDOWS_HXX_INCLUDED
+#define SK_CIO_WIN32_WINDOWS_HXX_INCLUDED
 
 /*
- * Include <windows.h> and some other useful headers with reasonable options.
+ * Include <windows.h> with reasonable options.
  */
 
 #ifdef _WIN32
@@ -46,7 +46,6 @@
 #    endif
 
 #    include <windows.h>
-#    include <http.h>
 
 #    ifdef SK_WIN32_UNDEFINE_WIN32_LEAN_AND_MEAN
 #        undef WIN32_LEAN_AND_MEAN
@@ -60,4 +59,4 @@
 
 #endif // _WIN32
 
-#endif // SK_WIN32_WINDOWS_HXX_INCLUDED
+#endif // SK_CIO_WIN32_WINDOWS_HXX_INCLUDED
