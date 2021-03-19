@@ -37,14 +37,14 @@
 
 using namespace sk::async;
 
-task<void> print_file(std::string const &name) {
+task<int> print_file(std::string const &name) {
     ifilestream<char> stream;
 
     // std::cerr << "*** print_file: async_open\n";
     auto ret = co_await stream.async_open(name);
     if (!ret) {
         std::cerr << name << ": " << ret.what() << "\n";
-        co_return;
+        co_return 0;
     }
     // std::cerr << "*** print_file: async_open done\n";
 
@@ -71,7 +71,7 @@ task<void> print_file(std::string const &name) {
     }
 
     co_await stream.async_close();
-    co_return;
+    co_return 0;
 }
 
 int main(int argc, char **argv) {

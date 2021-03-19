@@ -25,16 +25,17 @@
       ]
     },
     {
-      "name": "x64-windows-clang-debug",
-      "configurationType": "Debug",
-      "inheritEnvironments": [ "clang_cl_x64" ],
+      "name": "x64-windows-msvc-asan",
       "generator": "Ninja",
+      "configurationType": "Debug",
       "buildRoot": "${projectDir}\\out\\build\\${name}",
       "installRoot": "${projectDir}\\out\\install\\${name}",
       "cmakeCommandArgs": "",
       "buildCommandArgs": "",
       "ctestCommandArgs": "",
       "cmakeToolchain": "vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "inheritEnvironments": [ "msvc_x64_x64" ],
+      "addressSanitizerEnabled": true,
       "variables": [
         {
           "name": "SK_CONFIG_BUILD_TESTS",
@@ -45,18 +46,8 @@
           "name": "VCPKG_FEATURE_FLAGS",
           "value": "registries",
           "type": "STRING"
-        },
-        {
-          "name": "CMAKE_C_FLAGS",
-          "value": "-m64 -fdiagnostics-absolute-paths /RTC1 /Od /Zi /MDd /Wall",
-          "type": "STRING"
-        },
-        {
-          "name": "CMAKE_CXX_FLAGS",
-          "value": "-m64 -fdiagnostics-absolute-paths /RTC1 /Od /Zi /MDd /EHsc /Wall -Wno-reserved-id-macro -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-disabled-macro-expansion ",
-          "type": "STRING"
         }
       ]
-    },
+    }
   ]
 }

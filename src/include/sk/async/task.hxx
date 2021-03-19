@@ -36,6 +36,7 @@
 #include <optional>
 #include <thread>
 
+#include <sk/async/win32/windows.hxx>
 #include <sk/error.hxx>
 #include <tl/expected.hpp>
 
@@ -99,35 +100,37 @@ namespace sk::async {
         task &operator=(task const &) = delete;
 
         ~task() {
-            std::cerr << "~task(): destroy " << coro_handle.address() << '\n';
+            // std::cerr << "~task(): destroy " << coro_handle.address() <<
+            // '\n';
             coro_handle.destroy();
         }
 
-        struct awaiter {
-            bool await_ready() {
-                return false;
-            }
+        bool await_ready() {
+            return false;
+        }
 
-            T await_resume() {
-                return std::move(
-                    coro_handle.promise().result.get_future().get());
-            }
+        T await_resume() {
+            return std::move(coro_handle.promise().result.get_future().get());
+        }
 
-            auto await_suspend(std::coroutine_handle<> h) {
-                coro_handle.promise().previous = h;
-                return coro_handle;
-            }
-            std::coroutine_handle<promise_type> coro_handle;
-        };
+        auto await_suspend(std::coroutine_handle<> h) {
+            coro_handle.promise().previous = h;
+            return coro_handle;
+        }
 
-        awaiter operator co_await() {
-            return awaiter{coro_handle};
+        void start() {
+            coro_handle.resume();
         }
 
         T wait() {
-            auto future = coro_handle.promise().result.get_future();
-            coro_handle.resume();
-            future.wait();
+            std::promise<T> finished;
+            auto future = finished.get_future();
+
+            auto waiter = [&]() -> task<void> {
+                finished.set_value(co_await *this);
+            }();
+
+            waiter.start();
             return future.get();
         }
     };
@@ -181,7 +184,7 @@ namespace sk::async {
 
         task(std::coroutine_handle<promise_type> coro_handle_)
             : coro_handle(coro_handle_) {
-            //std::cerr << "task<void>(), create " << coro_handle.address()
+            // std::cerr << "task<void>(), create " << coro_handle.address()
             //         << '\n';
         }
 
@@ -191,34 +194,37 @@ namespace sk::async {
         task &operator=(task const &) = delete;
 
         ~task() {
-            //std::cerr << "~task<void>(), destroy " << coro_handle.address()
+            // std::cerr << "~task<void>(), destroy " << coro_handle.address()
             //          << '\n';
             coro_handle.destroy();
         }
 
-        struct awaiter {
-            bool await_ready() {
-                return false;
-            }
+        bool await_ready() {
+            return false;
+        }
 
-            void await_resume() {}
+        void await_resume() {}
 
-            auto await_suspend(std::coroutine_handle<> h) {
-                coro_handle.promise().previous = h;
-                return coro_handle;
-            }
+        auto await_suspend(std::coroutine_handle<> h) {
+            coro_handle.promise().previous = h;
+            return coro_handle;
+        }
 
-            std::coroutine_handle<promise_type> coro_handle;
-        };
-
-        awaiter operator co_await() {
-            return awaiter{coro_handle};
+        void start() {
+            coro_handle.resume();
         }
 
         void wait() {
-            auto future = coro_handle.promise().value.get_future();
-            coro_handle.resume();
-            future.wait();
+            std::promise<void> finished;
+            auto future = finished.get_future();
+
+            auto waiter = [&]() -> task<void> {
+                co_await *this;
+                finished.set_value();
+            }();
+            waiter.start();
+
+            return future.get();
         }
     };
 
