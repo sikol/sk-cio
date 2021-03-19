@@ -33,6 +33,7 @@ jobs:
         cmake -G Ninja                                                      ^
             -DCMAKE_BUILD_TYPE=%BUILD_TYPE%                                 ^
             -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake   ^
+            -DVCPKG_FEATURE_FLAGS=registries                                ^
             ..
 
     - name: Build

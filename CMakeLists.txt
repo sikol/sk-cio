@@ -26,8 +26,6 @@
 
 cmake_minimum_required(VERSION 3.12)
 
-set(VCPKG_FEATURE_FLAGS, "registries")
-
 project(sk-async VERSION 1.0.0)
 
 enable_testing()

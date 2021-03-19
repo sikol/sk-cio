@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg/master/scripts/vcpkg.schema.json",
-  "name": "sk-lazy",
+  "name": "sk-async",
   "version-string": "1.0.0",
   "dependencies": [
     "sk-buffer",
