@@ -4,15 +4,23 @@ on: [push]
 
 env:
   BUILD_TYPE: Release
+  VCVARS_PATH: "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvars64.bat"
 
 jobs:
-  x64_windows:
+  x64_windows_msvc:
     runs-on: windows-latest
 
     steps:
     - uses: actions/checkout@v2
       with:
         submodules: recursive
+
+    - name: Cache vcpkg
+      id: cache-vcpkg
+      uses: actions/cache@v2
+      with:
+        path: ~/AppData/Local/vcpkg
+        key: x64-windows-msvc-vcpkg
 
     - name: Create Build Environment
       run: cmake -E make_directory ${{github.workspace}}/build
@@ -21,14 +29,17 @@ jobs:
       shell: cmd
       working-directory: ${{github.workspace}}/build
       run: |
-        call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-        cmake -G Ninja -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake -DSK_LAZY_BUILD_TESTS:BOOL=ON ..
+        call "%VCVARS_PATH%"
+        cmake -G Ninja                                                      ^
+            -DCMAKE_BUILD_TYPE=%BUILD_TYPE%                                 ^
+            -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake   ^
+            ..
 
     - name: Build
       working-directory: ${{github.workspace}}/build
       shell: cmd
       run: |
-        call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+        call "%VCVARS_PATH%"
         cmake --build .
 
     - name: Test
