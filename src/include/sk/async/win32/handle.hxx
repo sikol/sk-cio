@@ -42,7 +42,7 @@ namespace sk::async::win32 {
             other.handle_value = nullptr;
         }
 
-        #if 0
+#if 0
         unique_handle &operator=(unique_handle &&other) noexcept {
             if (this == &other)
                 return *this;
@@ -53,7 +53,7 @@ namespace sk::async::win32 {
             other.handle_value = nullptr;
             return *this;
         }
-        #endif
+#endif
 
         ~unique_handle() {
             close();
@@ -68,10 +68,8 @@ namespace sk::async::win32 {
         }
 
         auto close() -> void {
-            std::cerr << "handle, closing " << handle_value << std::endl;
             if (handle_value != nullptr && handle_value != INVALID_HANDLE_VALUE)
-                ;
-            //::CloseHandle(handle_value);
+                ::CloseHandle(handle_value);
             handle_value = nullptr;
         }
 

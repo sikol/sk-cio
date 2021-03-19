@@ -3,7 +3,6 @@
   "name": "sk-lazy",
   "version-string": "1.0.0",
   "dependencies": [
-    "sk-error",
     "sk-buffer",
     "tl-expected",
     "catch2",

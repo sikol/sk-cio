@@ -38,7 +38,6 @@
 #include <sk/async/win32/iocp_reactor.hxx>
 #include <sk/async/stream/errors.hxx>
 #include <sk/buffer/buffer.hxx>
-#include <sk/error.hxx>
 
 namespace sk::async {
 
@@ -69,7 +68,7 @@ namespace sk::async {
         /*
          * Open a file.
          */
-        auto async_open(std::filesystem::path const &) -> task<sk::error>;
+        auto async_open(std::filesystem::path const &) -> task<std::error_code>;
 
         /*
          * Test if this filestream has been opened.
@@ -103,7 +102,7 @@ namespace sk::async {
     }
 
     template <typename CharT>
-    task<sk::error>
+    task<std::error_code>
     ifilestream<CharT>::async_open(std::filesystem::path const &path) {
         std::wstring wpath(path.native());
 
@@ -128,10 +127,10 @@ namespace sk::async {
 
         // Return error if any.
         if (handle == INVALID_HANDLE_VALUE)
-            co_return sk::error(std::system_error(win32::get_last_error()));
+            co_return win32::win32_to_generic_error(win32::get_last_error());
 
         native_handle.assign(handle);
-        co_return sk::error();
+        co_return error::no_error;
     }
 
     template <typename CharT>
@@ -173,7 +172,7 @@ namespace sk::async {
             co_return bytes_read;
         }
 
-        co_return make_unexpected(ret);
+        co_return make_unexpected(win32::win32_to_generic_error(ret));
     }
 
 } // namespace sk::async

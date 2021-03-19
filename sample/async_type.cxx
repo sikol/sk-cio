@@ -37,41 +37,32 @@
 
 using namespace sk::async;
 
-task<int> print_file(std::string const &name) {
+task<void> print_file(std::string const &name) {
     ifilestream<char> stream;
 
-    // std::cerr << "*** print_file: async_open\n";
-    auto ret = co_await stream.async_open(name);
-    if (!ret) {
-        std::cerr << name << ": " << ret.what() << "\n";
-        co_return 0;
+    auto err = co_await stream.async_open(name);
+    if (err) {
+        std::cerr << name << ": " << err.message() << "\n";
+        co_return;
     }
-    // std::cerr << "*** print_file: async_open done\n";
 
     for (;;) {
         sk::fixed_buffer<char, 1024> buffer;
-        std::cerr << "*** print_file: async_read\n";
-        auto ret = co_await stream.async_read(buffer);
-        std::cerr << "*** print_file: async_read done\n";
+        auto nbytes = co_await stream.async_read(buffer);
 
-        if (!ret) {
-            std::cerr << "*** error\n";
-            if (ret.error() != sk::async::error::end_of_file)
-                std::cerr << name << ": " << ret.error().message() << "\n";
+        if (!nbytes) {
+            if (nbytes.error() != sk::async::error::end_of_file)
+                std::cerr << name << ": " << nbytes.error().message() << "\n";
             break;
         }
 
-        auto ranges = buffer.readable_ranges();
-        std::size_t nbytes = 0;
-        for (auto &&range : ranges) {
-            nbytes += std::ranges::size(range);
+        for (auto &&range : buffer.readable_ranges())
             std::cout.write(std::ranges::data(range), std::ranges::size(range));
-        }
-        buffer.discard(nbytes);
+
+        buffer.discard(*nbytes);
     }
 
     co_await stream.async_close();
-    co_return 0;
 }
 
 int main(int argc, char **argv) {

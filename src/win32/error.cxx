@@ -26,6 +26,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include <iostream>
 #include <sk/async/win32/error.hxx>
 
 namespace sk::async::win32 {
@@ -46,6 +47,9 @@ namespace sk::async::win32 {
 
             if (len == 0)
                 return "[FormatMessageA() failed]";
+
+            while (msgbuf[len - 1] == '\r' || msgbuf[len - 1] == '\n')
+                len--;
 
             std::string ret(msgbuf, len);
             LocalFree(msgbuf);
@@ -81,4 +85,34 @@ namespace sk::async::win32 {
         return make_win32_error(GetLastError());
     }
 
+    auto win32_to_generic_error(std::error_code ec) -> std::error_code {
+        // If it's not a Win32 error to begin with, return it as-is.
+        if (&ec.category() != &win32_errc_category())
+            return ec;
+
+        switch (ec.value()) {
+        case ERROR_HANDLE_EOF:
+            return async::error::end_of_file;
+
+        case ERROR_FILE_NOT_FOUND:
+            return std::make_error_code(std::errc::no_such_file_or_directory);
+
+        case ERROR_PATH_NOT_FOUND:
+            return std::make_error_code(std::errc::no_such_file_or_directory);
+
+        case ERROR_TOO_MANY_OPEN_FILES:
+            return std::make_error_code(
+                std::errc::too_many_files_open_in_system);
+
+        case ERROR_ACCESS_DENIED:
+            return std::make_error_code(std::errc::permission_denied);
+
+        case ERROR_NOT_ENOUGH_MEMORY:
+        case ERROR_OUTOFMEMORY:
+            return std::make_error_code(std::errc::not_enough_memory);
+
+        default:
+            return ec;
+        }
+    }
 } // namespace sk::async::win32

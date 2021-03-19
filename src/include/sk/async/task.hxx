@@ -37,7 +37,6 @@
 #include <thread>
 
 #include <sk/async/win32/windows.hxx>
-#include <sk/error.hxx>
 #include <tl/expected.hpp>
 
 namespace sk::async {
@@ -80,10 +79,10 @@ namespace sk::async {
             }
 
             void return_value(T value) {
-                result.set_value(std::move(value));
+                result = std::move(value);
             }
 
-            std::promise<T> result;
+            T result{};
             std::coroutine_handle<> previous;
         };
 
@@ -91,7 +90,7 @@ namespace sk::async {
 
         task(std::coroutine_handle<promise_type> coro_handle_)
             : coro_handle(coro_handle_) {
-            std::cerr << "task: creating " << coro_handle.address() << '\n';
+            //std::cerr << "task: creating " << coro_handle.address() << '\n';
         }
 
         task(task &&t) = delete;
@@ -110,7 +109,7 @@ namespace sk::async {
         }
 
         T await_resume() {
-            return std::move(coro_handle.promise().result.get_future().get());
+            return std::move(coro_handle.promise().result);
         }
 
         auto await_suspend(std::coroutine_handle<> h) {
@@ -173,10 +172,8 @@ namespace sk::async {
             }
 
             void return_void() {
-                value.set_value();
             }
 
-            std::promise<void> value;
             std::coroutine_handle<> previous;
         };
 
@@ -228,10 +225,11 @@ namespace sk::async {
         }
     };
 
-    template <typename T, typename Error = sk::error>
+    template <typename T, typename Error = std::error_code>
     using expected = task<tl::expected<T, Error>>;
 
     using tl::make_unexpected;
+
 } // namespace sk::async
 
 #endif // SK_ASYNC_TASK_HXX_INCLUDED

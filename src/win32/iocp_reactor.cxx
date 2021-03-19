@@ -26,7 +26,6 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <sk/async/detail/trace.hxx>
 #include <sk/async/win32/error.hxx>
 #include <sk/async/win32/iocp_reactor.hxx>
 
@@ -54,10 +53,9 @@ namespace sk::async::win32 {
                 &completion_key, reinterpret_cast<OVERLAPPED **>(&overlapped),
                 INFINITE);
 
-            std::cerr << "iocp_reactor, got event\n";
-            if (!ret && (overlapped == nullptr)) {
+            if (overlapped == nullptr)
+                // Happens when our completion port is closed.
                 return;
-            }
 
             overlapped->success = ret;
             if (!overlapped->success)
@@ -74,7 +72,7 @@ namespace sk::async::win32 {
     }
 
     auto iocp_reactor::stop() -> void {
-        ::CloseHandle(completion_port.handle_value);
+        completion_port.close();
         reactor_thread.join();
     }
 
@@ -143,9 +141,8 @@ namespace sk::async::win32 {
         if (err == ERROR_IO_PENDING) {
             co_await overlapped;
 
-            if (!overlapped.success) {
+            if (!overlapped.success)
                 co_return win32::make_win32_error(overlapped.error);
-            }
 
             *lpNumberOfBytesRead = overlapped.bytes_transferred;
             co_return async::error::no_error;

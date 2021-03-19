@@ -67,14 +67,20 @@ namespace sk::async::win32 {
     } // namespace detail
 
     auto win32_errc_category() -> detail::win32_errc_category const &;
-    std::error_code make_error_code(error e);
+    auto make_error_code(error e) -> std::error_code;
 
     // Construct a Win32 error from an error code.
-    std::error_code make_win32_error(DWORD e);
-    std::error_code make_win32_error(LSTATUS e);
+    auto make_win32_error(DWORD e) -> std::error_code;
+    auto make_win32_error(LSTATUS e) -> std::error_code;
 
     // Return a Win32 error representing GetLastError()
-    std::error_code get_last_error();
+    auto get_last_error() -> std::error_code;
+
+    // Convert a Win32 error into a std::generic_category error if
+    // there's an appropriate conversion.  This is used by the portable
+    // I/O parts of the library so that the user only has to test for
+    // a single error code.
+    auto win32_to_generic_error(std::error_code) -> std::error_code;
 
 } // namespace sk::async::detail::win32
 
