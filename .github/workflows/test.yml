@@ -1,0 +1,37 @@
+name: CMake
+
+on: [push]
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  x64_windows:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: recursive
+
+    - name: Create Build Environment
+      run: cmake -E make_directory ${{github.workspace}}/build
+
+    - name: Configure CMake
+      shell: cmd
+      working-directory: ${{github.workspace}}/build
+      run: |
+        call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+        cmake -G Ninja -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake -DSK_LAZY_BUILD_TESTS:BOOL=ON ..
+
+    - name: Build
+      working-directory: ${{github.workspace}}/build
+      shell: cmd
+      run: |
+        call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+        cmake --build .
+
+    - name: Test
+      working-directory: ${{github.workspace}}/build
+      shell: cmd
+      run: ctest -V

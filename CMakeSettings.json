@@ -1,0 +1,62 @@
+﻿{
+  "configurations": [
+    {
+      "name": "x64-windows-msvc-debug",
+      "configurationType": "Debug",
+      "inheritEnvironments": [ "msvc_x64_x64" ],
+      "generator": "Ninja",
+      "buildRoot": "${projectDir}\\out\\build\\${name}",
+      "installRoot": "${projectDir}\\out\\install\\${name}",
+      "cmakeCommandArgs": "",
+      "buildCommandArgs": "",
+      "ctestCommandArgs": "",
+      "cmakeToolchain": "vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "variables": [
+        {
+          "name": "SK_CONFIG_BUILD_TESTS",
+          "value": "ON",
+          "type": "BOOL"
+        },
+        {
+          "name": "VCPKG_FEATURE_FLAGS",
+          "value": "registries",
+          "type": "STRING"
+        }
+      ]
+    },
+    {
+      "name": "x64-windows-clang-debug",
+      "configurationType": "Debug",
+      "inheritEnvironments": [ "clang_cl_x64" ],
+      "generator": "Ninja",
+      "buildRoot": "${projectDir}\\out\\build\\${name}",
+      "installRoot": "${projectDir}\\out\\install\\${name}",
+      "cmakeCommandArgs": "",
+      "buildCommandArgs": "",
+      "ctestCommandArgs": "",
+      "cmakeToolchain": "vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "variables": [
+        {
+          "name": "SK_CONFIG_BUILD_TESTS",
+          "value": "ON",
+          "type": "BOOL"
+        },
+        {
+          "name": "VCPKG_FEATURE_FLAGS",
+          "value": "registries",
+          "type": "STRING"
+        },
+        {
+          "name": "CMAKE_C_FLAGS",
+          "value": "-m64 -fdiagnostics-absolute-paths /RTC1 /Od /Zi /MDd /Wall",
+          "type": "STRING"
+        },
+        {
+          "name": "CMAKE_CXX_FLAGS",
+          "value": "-m64 -fdiagnostics-absolute-paths /RTC1 /Od /Zi /MDd /EHsc /Wall -Wno-reserved-id-macro -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-disabled-macro-expansion ",
+          "type": "STRING"
+        }
+      ]
+    },
+  ]
+}

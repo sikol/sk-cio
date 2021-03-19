@@ -1,0 +1,13 @@
+{
+  "default-registry": {
+    "kind": "builtin",
+    "baseline": "2797033a86e7aa216231b5a8e275f93132b36011"
+  },
+  "registries": [
+    {
+      "kind": "git",
+      "repository": "https://github.com/sikol/sk-vcpkg.git",
+      "packages": [ "sk-error", "sk-buffer", "sk-lazy", "sk-value", "sk-config" ]
+    }
+  ]
+}
