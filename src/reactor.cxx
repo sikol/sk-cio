@@ -35,7 +35,7 @@ namespace sk::cio {
 
     reactor_handle::reactor_handle() {
         std::lock_guard<std::mutex> lock(mutex);
-        if (++refs == 1)
+        if (++refs > 1)
             return;
 
         get_global_reactor().start();
