@@ -44,23 +44,26 @@ namespace sk::cio::win32 {
             ULONG_PTR completion_key;
             iocp_awaitable *overlapped = nullptr;
 
-            std::cerr << "reactor: waiting\n";
+            //std::cerr << "reactor: waiting\n";
             auto ret = ::GetQueuedCompletionStatus(
                 completion_port.handle_value, &bytes_transferred,
                 &completion_key, reinterpret_cast<OVERLAPPED **>(&overlapped),
                 INFINITE);
-            std::cerr << "reactor: got event\n";
+            //std::cerr << "reactor: got event\n";
 
             if (overlapped == nullptr)
                 // Happens when our completion port is closed.
                 return;
 
-            overlapped->success = ret;
-            if (!overlapped->success)
-                overlapped->error = GetLastError();
-            else
-                overlapped->error = 0;
-            overlapped->bytes_transferred = bytes_transferred;
+            {
+                std::lock_guard lock(overlapped->mutex);
+                overlapped->success = ret;
+                if (!overlapped->success)
+                    overlapped->error = GetLastError();
+                else
+                    overlapped->error = 0;
+                overlapped->bytes_transferred = bytes_transferred;
+            }
             overlapped->coro_handle.resume();
         }
     }
@@ -120,6 +123,11 @@ namespace sk::cio::win32 {
         overlapped.Offset = static_cast<DWORD>(Offset & 0xFFFFFFFFUL);
         overlapped.OffsetHigh = static_cast<DWORD>(Offset >> 32);
 
+        auto err =
+            co_await co_ReadFile_awaiter{hFile, lpBuffer, nNumberOfBytesToRead,
+                                         lpNumberOfBytesRead, &overlapped};
+        co_return err;
+        #if 0
         bool ret = ::ReadFile(hFile, lpBuffer, nNumberOfBytesToRead,
                               lpNumberOfBytesRead, &overlapped);
 
@@ -127,18 +135,19 @@ namespace sk::cio::win32 {
             co_return cio::error::no_error;
 
         auto err = GetLastError();
-
         if (err == ERROR_IO_PENDING) {
+            Sleep(1000);
             co_await overlapped;
 
             if (!overlapped.success)
                 co_return win32::make_win32_error(overlapped.error);
 
-            *lpNumberOfBytesRead = overlapped.bytes_transferred;
+            //*lpNumberOfBytesRead = overlapped.bytes_transferred;
             co_return cio::error::no_error;
         }
 
         co_return win32::make_win32_error(err);
+#endif
     }
 
 } // namespace sk::async::win32

@@ -30,6 +30,7 @@
 #define SK_CIO_TASK_HXX_INCLUDED
 
 #include <chrono>
+#include <concepts>
 #include <coroutine>
 #include <future>
 #include <iostream>
@@ -41,7 +42,8 @@
 
 namespace sk::cio {
 
-    template <typename T> struct task {
+    template <typename T>
+    struct task {
         struct promise_type {
             auto get_return_object() {
                 return task(
@@ -78,7 +80,15 @@ namespace sk::cio {
                 throw;
             }
 
-            void return_value(T value) {
+            void return_value(T const &value) noexcept(
+                std::is_nothrow_copy_constructible_v<T>) {
+
+                result = value;
+            }
+
+            void return_value(T &&value) noexcept(
+                std::is_nothrow_move_constructible_v<T>) {
+
                 result = std::move(value);
             }
 
@@ -90,14 +100,14 @@ namespace sk::cio {
 
         task(std::coroutine_handle<promise_type> coro_handle_)
             : coro_handle(coro_handle_) {
-            //std::cerr << "task: creating " << coro_handle.address() << '\n';
+            // std::cerr << "task: creating " << coro_handle.address() << '\n';
         }
 
         task(task const &) = delete;
         task &operator=(task const &) = delete;
         task &operator=(task &&other) = delete;
 
-        task(task&& other) noexcept : coro_handle(other.coro_handle) {
+        task(task &&other) noexcept : coro_handle(other.coro_handle) {
             other.coro_handle = {};
         }
 
@@ -129,7 +139,7 @@ namespace sk::cio {
             auto future = finished.get_future();
 
             auto waiter = [&]() -> task<void> {
-                finished.set_value(co_await *this);
+                finished.set_value(co_await * this);
             }();
 
             waiter.start();
@@ -137,7 +147,8 @@ namespace sk::cio {
         }
     };
 
-    template <> struct task<void> {
+    template <>
+    struct task<void> {
         struct promise_type {
             auto get_return_object() {
                 return task(
@@ -174,8 +185,7 @@ namespace sk::cio {
                 throw;
             }
 
-            void return_void() {
-            }
+            void return_void() {}
 
             std::coroutine_handle<> previous;
         };
@@ -188,10 +198,13 @@ namespace sk::cio {
             //         << '\n';
         }
 
-        task(task &&t) = delete;
         task(task const &) = delete;
-        task &operator=(task &&) = delete;
         task &operator=(task const &) = delete;
+        task &operator=(task &&other) = delete;
+
+        task(task &&other) noexcept : coro_handle(other.coro_handle) {
+            other.coro_handle = {};
+        }
 
         ~task() {
             // std::cerr << "~task<void>(), destroy " << coro_handle.address()
@@ -233,6 +246,6 @@ namespace sk::cio {
 
     using tl::make_unexpected;
 
-} // namespace sk::async
+} // namespace sk::cio
 
 #endif // SK_CIO_TASK_HXX_INCLUDED

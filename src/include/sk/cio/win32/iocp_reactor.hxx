@@ -30,33 +30,97 @@
 #define SK_CIO_WIN32_IOCP_REACTOR_HXX_INCLUDED
 
 #include <coroutine>
-#include <thread>
+#include <iostream>
 #include <system_error>
+#include <thread>
 
 #include <sk/cio/concepts.hxx>
 #include <sk/cio/task.hxx>
 #include <sk/cio/win32/handle.hxx>
+#include <sk/cio/win32/error.hxx>
 #include <sk/cio/win32/windows.hxx>
 
 namespace sk::cio::win32 {
-
-    struct iocp_awaitable : OVERLAPPED {
-        bool await_ready() {
+#if 0
+    struct get_coro_handle {
+        bool await_ready() const noexcept {
             return false;
         }
 
-        void await_suspend(std::coroutine_handle<> coro_handle_) {
-            coro_handle = coro_handle_;
+        bool await_suspend(std::coroutine_handle<> h_) noexcept {
+            h = h_;
+            return false;
         }
 
-        void await_resume() {
+        std::coroutine_handle<> await_resume() const noexcept {
+            return h;
         }
 
+        std::coroutine_handle<> h;
+    };
+#endif
+
+    struct iocp_awaitable : OVERLAPPED {
         BOOL success;
         DWORD error;
         DWORD bytes_transferred;
         std::coroutine_handle<> coro_handle;
+        std::mutex mutex;
     };
+
+    struct co_ReadFile_awaiter {
+        HANDLE hFile;
+        LPVOID lpBuffer;
+        DWORD nNumberOfBytesToRead;
+        LPDWORD lpNumberOfBytesRead;
+        iocp_awaitable *overlapped;
+
+        bool did_suspend = false;
+        //std::mutex mutex;
+
+        bool await_ready() {
+            return false;
+        }
+
+        bool await_suspend(std::coroutine_handle<> coro_handle_) {
+            std::lock_guard lock(overlapped->mutex);
+            overlapped->coro_handle = coro_handle_;
+
+            overlapped->success =
+                ::ReadFile(hFile, lpBuffer, nNumberOfBytesToRead,
+                           lpNumberOfBytesRead, overlapped);
+
+            if (!overlapped->success && (GetLastError() == ERROR_IO_PENDING))
+                return did_suspend = true;
+
+            return did_suspend = false;
+        }
+
+        std::error_code await_resume() {
+            //std::lock_guard lock(overlapped->mutex);
+            DWORD error;
+
+            if (did_suspend) {
+                error = overlapped->error;
+                *lpNumberOfBytesRead = overlapped->bytes_transferred;
+            } else {
+                error = GetLastError();
+            }
+
+            return win32::make_win32_error(error);
+        }
+    };
+
+/*
+ * Run a callable on another thread in a way that can be awaited.
+ */
+#if 0
+    template <typename... Args, std::invocable<Args...> Invocable>
+    task<typename std::invoke_result<Invocable, Args...>::type>
+    spawn(Invocable &&i, Args &&...args) {
+
+    }
+#endif
 
     task<HANDLE> AsyncCreateFileW(LPCWSTR lpFileName, DWORD dwDesiredAccess,
                                   DWORD dwShareMode,
@@ -73,8 +137,9 @@ namespace sk::cio::win32 {
                                   HANDLE hTemplateFile);
 
     task<std::error_code> AsyncReadFile(HANDLE hFile, LPVOID lpBuffer,
-                                  DWORD nNumberOfBytesToRead,
-                                  LPDWORD lpNumberOfBytesRead, DWORD64 Offset);
+                                        DWORD nNumberOfBytesToRead,
+                                        LPDWORD lpNumberOfBytesRead,
+                                        DWORD64 Offset);
 
     struct iocp_reactor {
 
@@ -106,6 +171,6 @@ namespace sk::cio::win32 {
 
     static_assert(reactor<iocp_reactor>);
 
-}; // namespace sk::async::win32
+}; // namespace sk::cio::win32
 
 #endif // SK_CIO_WIN32_IOCP_REACTOR_HXX_INCLUDED
