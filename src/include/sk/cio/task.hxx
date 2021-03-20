@@ -93,10 +93,13 @@ namespace sk::cio {
             //std::cerr << "task: creating " << coro_handle.address() << '\n';
         }
 
-        task(task &&t) = delete;
         task(task const &) = delete;
-        task &operator=(task &&) = delete;
         task &operator=(task const &) = delete;
+        task &operator=(task &&other) = delete;
+
+        task(task&& other) noexcept : coro_handle(other.coro_handle) {
+            other.coro_handle = {};
+        }
 
         ~task() {
             // std::cerr << "~task(): destroy " << coro_handle.address() <<
