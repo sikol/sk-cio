@@ -26,62 +26,33 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_WIN32_IOCP_REACTOR_HXX_INCLUDED
-#define SK_CIO_WIN32_IOCP_REACTOR_HXX_INCLUDED
+#ifndef SK_CIO_WIN32_ASYNC_API_HXX_INCLUDED
+#define SK_CIO_WIN32_ASYNC_API_HXX_INCLUDED
 
-#include <coroutine>
-#include <iostream>
-#include <system_error>
-#include <thread>
-
-#include <sk/cio/concepts.hxx>
-#include <sk/cio/task.hxx>
-#include <sk/cio/win32/error.hxx>
-#include <sk/cio/win32/handle.hxx>
 #include <sk/cio/win32/windows.hxx>
+#include <sk/cio/task.hxx>
 
 namespace sk::cio::win32 {
 
-    struct iocp_coro_state : OVERLAPPED {
-        BOOL success;
-        DWORD error;
-        DWORD bytes_transferred;
-        std::coroutine_handle<> coro_handle;
-        std::mutex mutex;
-    };
+    task<HANDLE> AsyncCreateFileW(LPCWSTR lpFileName, DWORD dwDesiredAccess,
+                                  DWORD dwShareMode,
+                                  LPSECURITY_ATTRIBUTES lpSecurityAttributes,
+                                  DWORD dwCreationDisposition,
+                                  DWORD dwFlagsAndAttributes,
+                                  HANDLE hTemplateFile);
 
+    task<HANDLE> AsyncCreateFileA(LPCSTR lpFileName, DWORD dwDesiredAccess,
+                                  DWORD dwShareMode,
+                                  LPSECURITY_ATTRIBUTES lpSecurityAttributes,
+                                  DWORD dwCreationDisposition,
+                                  DWORD dwFlagsAndAttributes,
+                                  HANDLE hTemplateFile);
 
+    task<std::error_code> AsyncReadFile(HANDLE hFile, LPVOID lpBuffer,
+                                        DWORD nNumberOfBytesToRead,
+                                        LPDWORD lpNumberOfBytesRead,
+                                        DWORD64 Offset);
 
-    struct iocp_reactor {
+} // namespace sk::cio::win32
 
-        iocp_reactor();
-
-        // Not copyable.
-        iocp_reactor(iocp_reactor const &) = delete;
-        iocp_reactor &operator=(iocp_reactor const &) = delete;
-
-        // Movable.
-        iocp_reactor(iocp_reactor &&) noexcept = default;
-        iocp_reactor &operator=(iocp_reactor &&) noexcept = default;
-
-        unique_handle completion_port{nullptr};
-
-        // Associate a new handle with our i/o port.
-        auto associate_handle(HANDLE) -> void;
-
-        // Start this reactor.
-        auto start() -> void;
-
-        // Stop this reactor.
-        auto stop() -> void;
-
-    private:
-        void reactor_thread_fn(void);
-        std::jthread reactor_thread;
-    };
-
-    static_assert(reactor<iocp_reactor>);
-
-}; // namespace sk::cio::win32
-
-#endif // SK_CIO_WIN32_IOCP_REACTOR_HXX_INCLUDED
+#endif // SK_CIO_WIN32_ASYNC_API_HXX_INCLUDED

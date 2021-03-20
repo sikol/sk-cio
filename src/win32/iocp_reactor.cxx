@@ -42,14 +42,14 @@ namespace sk::cio::win32 {
         for (;;) {
             DWORD bytes_transferred;
             ULONG_PTR completion_key;
-            iocp_awaitable *overlapped = nullptr;
+            iocp_coro_state *overlapped = nullptr;
 
-            //std::cerr << "reactor: waiting\n";
+            // std::cerr << "reactor: waiting\n";
             auto ret = ::GetQueuedCompletionStatus(
                 completion_port.handle_value, &bytes_transferred,
                 &completion_key, reinterpret_cast<OVERLAPPED **>(&overlapped),
                 INFINITE);
-            //std::cerr << "reactor: got event\n";
+            // std::cerr << "reactor: got event\n";
 
             if (overlapped == nullptr)
                 // Happens when our completion port is closed.
@@ -81,73 +81,4 @@ namespace sk::cio::win32 {
         ::CreateIoCompletionPort(h, completion_port.handle_value, 0, 0);
     }
 
-    task<HANDLE> AsyncCreateFileW(LPCWSTR lpFileName, DWORD dwDesiredAccess,
-                                  DWORD dwShareMode,
-                                  LPSECURITY_ATTRIBUTES lpSecurityAttributes,
-                                  DWORD dwCreationDisposition,
-                                  DWORD dwFlagsAndAttributes,
-                                  HANDLE hTemplateFile) {
-
-        auto handle = ::CreateFileW(lpFileName, dwDesiredAccess, dwShareMode,
-                                    lpSecurityAttributes, dwCreationDisposition,
-                                    dwFlagsAndAttributes, hTemplateFile);
-
-        if (handle != INVALID_HANDLE_VALUE)
-            reactor_handle::get_global_reactor().associate_handle(handle);
-
-        co_return handle;
-    }
-
-    task<HANDLE> AsyncCreateFileA(LPCSTR lpFileName, DWORD dwDesiredAccess,
-                                  DWORD dwShareMode,
-                                  LPSECURITY_ATTRIBUTES lpSecurityAttributes,
-                                  DWORD dwCreationDisposition,
-                                  DWORD dwFlagsAndAttributes,
-                                  HANDLE hTemplateFile) {
-        auto handle = ::CreateFileA(lpFileName, dwDesiredAccess, dwShareMode,
-                                    lpSecurityAttributes, dwCreationDisposition,
-                                    dwFlagsAndAttributes, hTemplateFile);
-
-        if (handle != INVALID_HANDLE_VALUE)
-            reactor_handle::get_global_reactor().associate_handle(handle);
-
-        co_return handle;
-    }
-
-    task<std::error_code> AsyncReadFile(HANDLE hFile, LPVOID lpBuffer,
-                             DWORD nNumberOfBytesToRead,
-                             LPDWORD lpNumberOfBytesRead, DWORD64 Offset) {
-
-        iocp_awaitable overlapped;
-        memset(&overlapped, 0, sizeof(OVERLAPPED));
-        overlapped.Offset = static_cast<DWORD>(Offset & 0xFFFFFFFFUL);
-        overlapped.OffsetHigh = static_cast<DWORD>(Offset >> 32);
-
-        auto err =
-            co_await co_ReadFile_awaiter{hFile, lpBuffer, nNumberOfBytesToRead,
-                                         lpNumberOfBytesRead, &overlapped};
-        co_return err;
-        #if 0
-        bool ret = ::ReadFile(hFile, lpBuffer, nNumberOfBytesToRead,
-                              lpNumberOfBytesRead, &overlapped);
-
-        if (ret == TRUE)
-            co_return cio::error::no_error;
-
-        auto err = GetLastError();
-        if (err == ERROR_IO_PENDING) {
-            Sleep(1000);
-            co_await overlapped;
-
-            if (!overlapped.success)
-                co_return win32::make_win32_error(overlapped.error);
-
-            //*lpNumberOfBytesRead = overlapped.bytes_transferred;
-            co_return cio::error::no_error;
-        }
-
-        co_return win32::make_win32_error(err);
-#endif
-    }
-
-} // namespace sk::async::win32
+} // namespace sk::cio::win32

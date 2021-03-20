@@ -40,6 +40,7 @@
 #include <sk/cio/reactor.hxx>
 #include <sk/cio/win32/error.hxx>
 #include <sk/cio/win32/handle.hxx>
+#include <sk/cio/win32/async_api.hxx>
 
 namespace sk::cio::win32 {
     /*************************************************************************

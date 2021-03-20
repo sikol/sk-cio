@@ -26,62 +26,56 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_WIN32_IOCP_REACTOR_HXX_INCLUDED
-#define SK_CIO_WIN32_IOCP_REACTOR_HXX_INCLUDED
+#ifndef SK_CIO_WIN32_SPAWN_HXX_INCLUDED
+#define SK_CIO_WIN32_SPAWN_HXX_INCLUDED
 
-#include <coroutine>
-#include <iostream>
-#include <system_error>
-#include <thread>
-
-#include <sk/cio/concepts.hxx>
-#include <sk/cio/task.hxx>
-#include <sk/cio/win32/error.hxx>
-#include <sk/cio/win32/handle.hxx>
-#include <sk/cio/win32/windows.hxx>
+#include <sk/cio/reactor.hxx>
 
 namespace sk::cio::win32 {
 
-    struct iocp_coro_state : OVERLAPPED {
-        BOOL success;
-        DWORD error;
-        DWORD bytes_transferred;
-        std::coroutine_handle<> coro_handle;
-        std::mutex mutex;
+    /*
+     * Run a callable on another thread in a way that can be awaited.
+     */
+
+    template <typename Callable>
+    struct co_spawn_awaiter {
+        using result_type = std::invoke_result_t<Callable>;
+        Callable c;
+        iocp_coro_state overlapped;
+        std::future<result_type> future;
+
+        co_spawn_awaiter(Callable &&c_) : c(std::move(c_)) {}
+
+        bool await_ready() {
+            return false;
+        }
+
+        bool await_suspend(std::coroutine_handle<> coro_handle_) {
+            std::lock_guard lock(overlapped.mutex);
+            overlapped.coro_handle = coro_handle_;
+
+            future = std::async(std::launch::async, [&]() -> result_type {
+                auto ret = c();
+                ::PostQueuedCompletionStatus(
+                    reactor_handle::get_global_reactor()
+                        .completion_port.handle_value,
+                    0, 0, &overlapped);
+                return ret;
+            });
+
+            return true;
+        }
+
+        result_type await_resume() {
+            return future.get();
+        }
     };
 
+    template <typename Callable>
+    auto spawn(Callable &&c) -> task<std::invoke_result_t<Callable>> {
+        co_return co_await co_spawn_awaiter(std::move(c));
+    }
 
+} // namespace sk::cio::win32
 
-    struct iocp_reactor {
-
-        iocp_reactor();
-
-        // Not copyable.
-        iocp_reactor(iocp_reactor const &) = delete;
-        iocp_reactor &operator=(iocp_reactor const &) = delete;
-
-        // Movable.
-        iocp_reactor(iocp_reactor &&) noexcept = default;
-        iocp_reactor &operator=(iocp_reactor &&) noexcept = default;
-
-        unique_handle completion_port{nullptr};
-
-        // Associate a new handle with our i/o port.
-        auto associate_handle(HANDLE) -> void;
-
-        // Start this reactor.
-        auto start() -> void;
-
-        // Stop this reactor.
-        auto stop() -> void;
-
-    private:
-        void reactor_thread_fn(void);
-        std::jthread reactor_thread;
-    };
-
-    static_assert(reactor<iocp_reactor>);
-
-}; // namespace sk::cio::win32
-
-#endif // SK_CIO_WIN32_IOCP_REACTOR_HXX_INCLUDED
+#endif // SK_CIO_WIN32_SPAWN_HXX_INCLUDED

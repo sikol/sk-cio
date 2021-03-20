@@ -26,62 +26,22 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_WIN32_IOCP_REACTOR_HXX_INCLUDED
-#define SK_CIO_WIN32_IOCP_REACTOR_HXX_INCLUDED
+#ifndef SK_CIO_SPAWN_HXX_INCLUDED
+#define SK_CIO_SPAWN_HXX_INCLUDED
 
-#include <coroutine>
-#include <iostream>
-#include <system_error>
-#include <thread>
+#ifdef _WIN32
+#    include <sk/cio/win32/spawn.hxx>
 
-#include <sk/cio/concepts.hxx>
-#include <sk/cio/task.hxx>
-#include <sk/cio/win32/error.hxx>
-#include <sk/cio/win32/handle.hxx>
-#include <sk/cio/win32/windows.hxx>
+namespace sk::cio {
 
-namespace sk::cio::win32 {
+    using win32::spawn;
 
-    struct iocp_coro_state : OVERLAPPED {
-        BOOL success;
-        DWORD error;
-        DWORD bytes_transferred;
-        std::coroutine_handle<> coro_handle;
-        std::mutex mutex;
-    };
+} // namespace sk::cio
 
+#else
 
+#    error spawn is not supported on this platform
 
-    struct iocp_reactor {
+#endif
 
-        iocp_reactor();
-
-        // Not copyable.
-        iocp_reactor(iocp_reactor const &) = delete;
-        iocp_reactor &operator=(iocp_reactor const &) = delete;
-
-        // Movable.
-        iocp_reactor(iocp_reactor &&) noexcept = default;
-        iocp_reactor &operator=(iocp_reactor &&) noexcept = default;
-
-        unique_handle completion_port{nullptr};
-
-        // Associate a new handle with our i/o port.
-        auto associate_handle(HANDLE) -> void;
-
-        // Start this reactor.
-        auto start() -> void;
-
-        // Stop this reactor.
-        auto stop() -> void;
-
-    private:
-        void reactor_thread_fn(void);
-        std::jthread reactor_thread;
-    };
-
-    static_assert(reactor<iocp_reactor>);
-
-}; // namespace sk::cio::win32
-
-#endif // SK_CIO_WIN32_IOCP_REACTOR_HXX_INCLUDED
+#endif // SK_CIO_SPAWN_HXX_INCLUDED

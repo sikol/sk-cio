@@ -43,7 +43,7 @@ target_sources(sk-cio PRIVATE
     include/sk/cio/error.hxx
     include/sk/cio/task.hxx
     include/sk/cio/types.hxx
- "include/sk/cio/reactor.hxx" "include/sk/cio/concepts.hxx" "reactor.cxx")
+ "include/sk/cio/reactor.hxx" "include/sk/cio/concepts.hxx" "reactor.cxx" "include/sk/cio/spawn.hxx")
 
 if(WIN32)
     target_sources(sk-cio PRIVATE
@@ -56,7 +56,7 @@ if(WIN32)
         include/sk/cio/win32/handle.hxx
         include/sk/cio/win32/iocp_reactor.hxx
         include/sk/cio/win32/windows.hxx
-    )
+     "include/sk/cio/win32/spawn.hxx" "include/sk/cio/win32/async_api.hxx" "win32/async_api.cxx")
 endif()
 
 target_include_directories(sk-cio PUBLIC include)
