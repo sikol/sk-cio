@@ -26,61 +26,32 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <cstdio>
-#include <ranges>
-#include <iostream>
-
-#include <fmt/core.h>
-
-#include <sk/cio/channel/seqfilechannel.hxx>
 #include <sk/cio/reactor.hxx>
-#include <sk/cio/task.hxx>
-#include <sk/cio/error.hxx>
-#include <sk/buffer/fixed_buffer.hxx>
 
-using namespace sk::cio;
+namespace sk::cio {
 
-task<void> print_file(std::string const &name) {
-    iseqfilechannel<char> chnl;
+    int reactor_handle::refs = 0;
+    std::mutex reactor_handle::mutex;
 
-    auto err = co_await chnl.async_open(name);
-    if (err) {
-        std::cerr << name << ": " << err.message() << "\n";
-        co_return;
+    reactor_handle::reactor_handle() {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (++refs == 1)
+            return;
+
+        get_global_reactor().start();
     }
 
-    for (;;) {
-        sk::fixed_buffer<char, 1024> buffer;
-        auto nbytes = co_await chnl.async_read_some(unlimited, buffer);
+    reactor_handle::~reactor_handle() {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (--refs)
+            return;
 
-        if (!nbytes) {
-            if (nbytes.error() != sk::cio::error::end_of_file)
-                std::cerr << name << ": " << nbytes.error().message() << "\n";
-            break;
-        }
-
-        for (auto &&range : buffer.readable_ranges())
-            std::cout.write(std::ranges::data(range), std::ranges::size(range));
-
-        buffer.discard(*nbytes);
+        get_global_reactor().stop();
     }
 
-    co_await chnl.async_close();
-}
-
-int main(int argc, char **argv) {
-    using namespace std::chrono_literals;
-
-    if (argc < 2) {
-        fmt::print(stderr, "usage: {} <file> [file...]", argv[0]);
-        return 1;
+    auto reactor_handle::get_global_reactor() -> system_reactor_type & {
+        static system_reactor_type global_reactor;
+        return global_reactor;
     }
 
-    sk::cio::reactor_handle reactor;
-
-    for (auto &&file : std::span(argv + 1, argv + argc)) {
-        print_file(file).wait();
-    }
-
-    return 0;
-}
+} // namespace sk::cio

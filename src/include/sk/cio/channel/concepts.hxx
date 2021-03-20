@@ -35,10 +35,10 @@
 #include <cstdlib>
 #include <ranges>
 
-#include <sk/cio/task.hxx>
-#include <sk/cio/types.hxx>
 #include <sk/buffer/pmr_buffer.hxx>
 #include <sk/buffer/range_buffer.hxx>
+#include <sk/cio/task.hxx>
+#include <sk/cio/types.hxx>
 
 namespace sk::cio {
 
@@ -100,15 +100,15 @@ namespace sk::cio {
     concept oseqchannel = 
         channel_base<Channel> &&
         requires(Channel &channel,
-                 io_size_t n,
+                 io_size_t nobjects,
                  sk::pmr_readable_buffer<typename Channel::value_type> &buf) {
 
             // Write data to the channel synchronously.
-            { channel.write_some(n, buf) } 
+            { channel.write_some(nobjects, buf) } 
                 -> std::same_as<expected<io_size_t, std::error_code>>;
 
             // Write data to the channel asynchronously.
-            { channel.async_write_some(n, buf) } 
+            { channel.async_write_some(nobjects, buf) } 
                 -> std::same_as<task<expected<io_size_t, std::error_code>>>;
         };
 
@@ -119,15 +119,15 @@ namespace sk::cio {
     concept iseqchannel =
         channel_base<Channel> &&
         requires(Channel &channel,
-                 io_size_t io_size,
+                 io_size_t nobjects,
                  sk::pmr_writable_buffer<typename Channel::value_type> &buf) {
 
             // Read from the channel synchronously.
-            { channel.read_some(io_size, buf) }
+            { channel.read_some(nobjects, buf) }
                 -> std::same_as<expected<io_size_t, std::error_code>>;
 
             // Read from the channel asynchronously.
-            { channel.async_read_some(io_size, buf) }
+            { channel.async_read_some(nobjects, buf) }
                 -> std::same_as<task<expected<io_size_t, std::error_code>>>;
         };
 
@@ -155,16 +155,16 @@ namespace sk::cio {
     concept odachannel = 
         channel_base<Channel> &&
         requires(Channel &channel,
-                 io_size_t io_size,
+                 io_size_t nobjects,
                  io_offset_t offset,
                  sk::pmr_readable_buffer<typename Channel::value_type> &buf) {
 
             // Write data to the channel synchronously.
-            { channel.write_some_at(io_size, offset, buf) } 
+            { channel.write_some_at(nobjects, offset, buf) } 
                 -> std::same_as<expected<io_size_t, std::error_code>>;
 
             // Write data to the channel asynchronously.
-            { channel.async_write_some_at(io_size, offset, buf) }
+            { channel.async_write_some_at(nobjects, offset, buf) }
                 -> std::same_as<task<expected<io_size_t, std::error_code>>>;
         };
 
@@ -175,15 +175,15 @@ namespace sk::cio {
     concept idachannel =
         channel_base<Channel> &&
         requires(Channel &channel,
-                 io_offset_t offset, io_size_t nobjects,
+                 io_size_t nobjects, io_offset_t offset,
                  sk::pmr_writable_buffer<typename Channel::value_type> &buf) {
 
             // Read from the channel synchronously.
-            { channel.read_some_at(offset, nobjects, buf) }
+            { channel.read_some_at(nobjects, offset, buf) }
                 -> std::same_as<expected<io_size_t, std::error_code>>;
 
             // Read from the channel asynchronously.
-            { channel.async_read_some_at(offset, nobjects, buf) }
+            { channel.async_read_some_at(nobjects, offset, buf) }
                 -> std::same_as<task<expected<io_size_t, std::error_code>>>;
         };
 
@@ -200,15 +200,15 @@ namespace sk::cio {
 
     // Return the value type of a channel.
     template<typename Channel>
-    using channel_value_t = typename std::remove_reference_t<Channel>::value_type;
+    using channel_value_t = typename std::remove_cvref_t<Channel>::value_type;
 
     // Return the const value type of a channel.
     template<typename Channel>
     using channel_const_value_t = 
-        typename std::remove_cvref<Channel>::value_type;
-    
+        typename std::add_const_t<channel_value_t<Channel>>;
+
     // clang-format on
 
-} // namespace sk::async
+} // namespace sk::cio
 
 #endif // SK_CIO_CHANNEL_CONCEPTS_HXX_INCLUDED

@@ -33,7 +33,7 @@ add_library(sk-cio)
 target_sources(sk-cio PRIVATE 
     error.cxx
 
-    include/sk/cio/channel/concepts.hxx
+    
     include/sk/cio/channel/dafilechannel.hxx
     include/sk/cio/channel/seqfilechannel.hxx
     include/sk/cio/channel/pmr_channel.hxx
@@ -43,7 +43,7 @@ target_sources(sk-cio PRIVATE
     include/sk/cio/error.hxx
     include/sk/cio/task.hxx
     include/sk/cio/types.hxx
-)
+ "include/sk/cio/reactor.hxx" "include/sk/cio/concepts.hxx" "reactor.cxx")
 
 if(WIN32)
     target_sources(sk-cio PRIVATE

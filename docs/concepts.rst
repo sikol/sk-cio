@@ -3,7 +3,7 @@
 Channel concepts
 ================
 
-A channel concept describes the type of I/O that is supposed by a
+A channel concept describes the type of I/O that is supported by a
 particular channel.  There are three primary channel concepts:
 
 * Sequential I/O channel (``seqchannel``)
@@ -44,10 +44,15 @@ channel* which supports both reading and writing.
 Character types
 ---------------
 
-All channel concepts and implementation types are templated on the type
-of object that the channel stores.  For byte-based binary I/O, this might
-be ``std::byte`` or ``unsigned char``.  For character I/O, it could be
-``char``, ``wchar_t``, or a Unicode character type such as ``char8_t``.
+A channel can only read and write a particular type of object which
+is represented by the channel ``value_type``.  For byte-based binary
+I/O, this might be ``std::byte`` or ``unsigned char``.  For character
+I/O, it could be ``char``, ``wchar_t``, or a Unicode character type
+such as ``char8_t``.
+
+Most channel implementations allow the value type to be chosen when
+creating the channel, but some channel types might only support specific
+types.
 
 Compile-time and runtime polymorphism
 -------------------------------------
@@ -72,8 +77,8 @@ single virtual function call overhead to each interface function, but in
 some cases the compiler may be able to convert this into a non-virtual
 call at compile time, leaving no overhead.
 
-The PMR channel types are still templated on object type, but the
-object type can be fixed at compile time if required.
+The PMR channel types are templated on the value type, but the type can
+be fixed at compile time if required.
 
 .. code-block:: c++
 
@@ -115,6 +120,29 @@ Return true if this channel is open, otherwise false.
        -> std::error_code;
 
 Flush any buffered data and close the channel.
+
+``channel_value_t<>``
+^^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: c++
+
+    template<typename Channel>
+    using channel_value_t = typename std::remove_cvref_t<Channel>::value_type;
+
+For a channel type ``C``, ``channel_value_t<C>`` returns the channel's 
+value type.
+
+``channel_const_value_t<>``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: c++
+
+    template<typename Channel>
+    using channel_const_value_t = 
+        typename std::add_const_t<channel_value_t<Channel>>;
+
+For a channel type ``C``, ``channel_const_value_t<C>`` returns the channel's
+const value type.
 
 Sequential channel concepts
 ---------------------------

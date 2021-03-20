@@ -26,61 +26,25 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <cstdio>
-#include <ranges>
-#include <iostream>
+#ifndef SK_CIO_CONCEPTS_HXX_INCLUDED
+#    define SK_CIO_CONCEPTS_HXX_INCLUDED
 
-#include <fmt/core.h>
+namespace sk::cio {
 
-#include <sk/cio/channel/seqfilechannel.hxx>
-#include <sk/cio/reactor.hxx>
-#include <sk/cio/task.hxx>
-#include <sk/cio/error.hxx>
-#include <sk/buffer/fixed_buffer.hxx>
+    /*************************************************************************
+	 *
+	 * Concept of an I/O reactor.
+	 * 
+	 */
 
-using namespace sk::cio;
+	// clang-format off
+	template<typename Reactor>
+	concept reactor = requires(Reactor & r) {
+		{ r.start() };
+		{ r.stop() };
+	};
+	// clang-format on
 
-task<void> print_file(std::string const &name) {
-    iseqfilechannel<char> chnl;
+} // namespace sk::cio
 
-    auto err = co_await chnl.async_open(name);
-    if (err) {
-        std::cerr << name << ": " << err.message() << "\n";
-        co_return;
-    }
-
-    for (;;) {
-        sk::fixed_buffer<char, 1024> buffer;
-        auto nbytes = co_await chnl.async_read_some(unlimited, buffer);
-
-        if (!nbytes) {
-            if (nbytes.error() != sk::cio::error::end_of_file)
-                std::cerr << name << ": " << nbytes.error().message() << "\n";
-            break;
-        }
-
-        for (auto &&range : buffer.readable_ranges())
-            std::cout.write(std::ranges::data(range), std::ranges::size(range));
-
-        buffer.discard(*nbytes);
-    }
-
-    co_await chnl.async_close();
-}
-
-int main(int argc, char **argv) {
-    using namespace std::chrono_literals;
-
-    if (argc < 2) {
-        fmt::print(stderr, "usage: {} <file> [file...]", argv[0]);
-        return 1;
-    }
-
-    sk::cio::reactor_handle reactor;
-
-    for (auto &&file : std::span(argv + 1, argv + argc)) {
-        print_file(file).wait();
-    }
-
-    return 0;
-}
+#endif // SK_CIO_CONCEPTS_HXX_INCLUDED

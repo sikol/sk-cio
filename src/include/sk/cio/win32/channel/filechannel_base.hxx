@@ -37,9 +37,9 @@
 #include <sk/cio/error.hxx>
 #include <sk/cio/task.hxx>
 #include <sk/cio/types.hxx>
+#include <sk/cio/reactor.hxx>
 #include <sk/cio/win32/error.hxx>
 #include <sk/cio/win32/handle.hxx>
-#include <sk/cio/win32/iocp_reactor.hxx>
 
 namespace sk::cio::win32 {
     /*************************************************************************
@@ -139,7 +139,7 @@ namespace sk::cio::win32 {
 
         // Because we didn't use AsyncCreateFileW(), we have to manually
         // associate the handle with the completion port.
-        iocp_reactor::get_global_reactor().associate_handle(handle);
+        reactor_handle::get_global_reactor().associate_handle(handle);
 
         native_handle.assign(handle);
         return cio::error::no_error;

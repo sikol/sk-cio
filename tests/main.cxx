@@ -29,15 +29,13 @@
 #define CATCH_CONFIG_RUNNER
 #include <catch.hpp>
 
-#include <sk/cio/win32/iocp_reactor.hxx>
+#include <sk/cio/reactor.hxx>
 
 int main(int argc, char **argv) {
     std::cerr << "main: starting the reactor\n";
-    sk::cio::win32::iocp_reactor::start_global_reactor();
+    sk::cio::reactor_handle reactor;
 
     int result = Catch::Session().run(argc, argv);
-
-    sk::cio::win32::iocp_reactor::stop_global_reactor();
 
     return result;
 }

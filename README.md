@@ -4,7 +4,7 @@
 
 Windows only for now.
 
-* [Documents](https://sk-cio.readthedocs.io/en/latest/index.html)
+* [Documentation](https://sk-cio.readthedocs.io/en/latest/index.html)
 
 Requires:
 

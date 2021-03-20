@@ -33,6 +33,7 @@
 #include <thread>
 #include <system_error>
 
+#include <sk/cio/concepts.hxx>
 #include <sk/cio/task.hxx>
 #include <sk/cio/win32/handle.hxx>
 #include <sk/cio/win32/windows.hxx>
@@ -98,19 +99,12 @@ namespace sk::cio::win32 {
         // Stop this reactor.
         auto stop() -> void;
 
-        // Fetch the global reactor handle.
-        static auto get_global_reactor() -> iocp_reactor &;
-
-        // Start the global reactor processing thread(s).
-        static auto start_global_reactor() -> void;
-
-        // Stop the global reactor processing thread(s).
-        static auto stop_global_reactor() -> void;
-
     private:
         void reactor_thread_fn(void);
         std::jthread reactor_thread;
     };
+
+    static_assert(reactor<iocp_reactor>);
 
 }; // namespace sk::async::win32
 

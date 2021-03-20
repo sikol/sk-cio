@@ -26,6 +26,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include <sk/cio/reactor.hxx>
 #include <sk/cio/win32/error.hxx>
 #include <sk/cio/win32/iocp_reactor.hxx>
 
@@ -35,11 +36,6 @@ namespace sk::cio::win32 {
         auto hdl =
             ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0);
         completion_port.assign(hdl);
-    }
-
-    auto iocp_reactor::get_global_reactor() -> iocp_reactor & {
-        static iocp_reactor global_reactor;
-        return global_reactor;
     }
 
     auto iocp_reactor::reactor_thread_fn() -> void {
@@ -78,14 +74,6 @@ namespace sk::cio::win32 {
         reactor_thread.join();
     }
 
-    auto iocp_reactor::start_global_reactor() -> void {
-        get_global_reactor().start();
-    }
-
-    auto iocp_reactor::stop_global_reactor() -> void {
-        get_global_reactor().stop();
-    }
-
     auto iocp_reactor::associate_handle(HANDLE h) -> void {
         ::CreateIoCompletionPort(h, completion_port.handle_value, 0, 0);
     }
@@ -102,7 +90,7 @@ namespace sk::cio::win32 {
                                     dwFlagsAndAttributes, hTemplateFile);
 
         if (handle != INVALID_HANDLE_VALUE)
-            iocp_reactor::get_global_reactor().associate_handle(handle);
+            reactor_handle::get_global_reactor().associate_handle(handle);
 
         co_return handle;
     }
@@ -118,7 +106,7 @@ namespace sk::cio::win32 {
                                     dwFlagsAndAttributes, hTemplateFile);
 
         if (handle != INVALID_HANDLE_VALUE)
-            iocp_reactor::get_global_reactor().associate_handle(handle);
+            reactor_handle::get_global_reactor().associate_handle(handle);
 
         co_return handle;
     }
