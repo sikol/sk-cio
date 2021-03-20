@@ -26,13 +26,14 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_WIN32_CHANNEL_IFILECHANNEL_HXX_INCLUDED
-#define SK_CIO_WIN32_CHANNEL_IFILECHANNEL_HXX_INCLUDED
+#ifndef SK_CIO_WIN32_CHANNEL_FILECHANNEL_BASE_HXX_INCLUDED
+#define SK_CIO_WIN32_CHANNEL_FILECHANNEL_BASE_HXX_INCLUDED
 
 #include <filesystem>
 #include <system_error>
 
 #include <sk/buffer/buffer.hxx>
+#include <sk/cio/channel/concepts.hxx>
 #include <sk/cio/error.hxx>
 #include <sk/cio/task.hxx>
 #include <sk/cio/types.hxx>
@@ -41,30 +42,23 @@
 #include <sk/cio/win32/iocp_reactor.hxx>
 
 namespace sk::cio::win32 {
-
-    /*
-     * ifilechannel: a direct access channel that reads from a file.
+    /*************************************************************************
+     * 
+     * dafilechannel_base: base class for direct access file channels.
+     * 
      */
-    template <typename CharT> struct ifilechannel final {
+
+    template <typename CharT>
+    struct filechannel_base {
+        using value_type = CharT;
         using native_handle_type = win32::unique_handle;
 
         native_handle_type native_handle{INVALID_HANDLE_VALUE};
 
-        explicit ifilechannel(ifilechannel const &) = delete;
-        ifilechannel(ifilechannel &&) noexcept = default;
-        ifilechannel &operator=(ifilechannel const &) = delete;
-        ifilechannel &operator=(ifilechannel &&) noexcept = default;
-        ~ifilechannel();
-
-        /*
-         * Create an ifilechannel which is closed.
-         */
-        ifilechannel() = default;
-
-        /*
-         * Create an ifilechannel from a native handle.
-         */
-        explicit ifilechannel(native_handle_type &&handle);
+        filechannel_base(filechannel_base const &) = delete;
+        filechannel_base(filechannel_base &&) noexcept = default;
+        filechannel_base &operator=(filechannel_base const &) = delete;
+        filechannel_base &operator=(filechannel_base &&) noexcept = default;
 
         /*
          * Open a file.
@@ -84,36 +78,20 @@ namespace sk::cio::win32 {
         auto async_close() -> task<std::error_code>;
         auto close() -> std::error_code;
 
-        /*
-         * Read data from the current file position.
-         */
-        template <sk::writable_buffer_of<CharT> BufferT>
-        auto async_read(BufferT &buffer)
-            -> task<expected<io_size_t, std::error_code>>;
-
-        /*
-         * Read data from a random file position.
-         */
-        template <sk::writable_buffer_of<CharT> BufferT>
-        auto read(BufferT &buffer) -> expected<io_size_t, std::error_code>;
-
-    private:
-        io_offset_t file_position = 0;
+    protected:
+        filechannel_base() = default;
+        ~filechannel_base() = default;
     };
 
+    static_assert(channel_base<filechannel_base<char>>);
+
+    /*************************************************************************
+     * filechannel_base::async_open()
+     */
     template <typename CharT>
-    ifilechannel<CharT>::ifilechannel(native_handle_type &&native_handle_)
-        : native_handle(std::move(native_handle_)) {}
-
-    template <typename CharT> ifilechannel<CharT>::~ifilechannel() = default;
-
-    template <typename CharT> bool ifilechannel<CharT>::is_open() const {
-        return native_handle != INVALID_HANDLE_VALUE;
-    }
-
-    template <typename CharT>
-    auto ifilechannel<CharT>::async_open(std::filesystem::path const &path)
+    auto filechannel_base<CharT>::async_open(std::filesystem::path const &path)
         -> task<std::error_code> {
+
         std::wstring wpath(path.native());
 
 /*
@@ -121,7 +99,7 @@ namespace sk::cio::win32 {
  * and there's no overlapped version, we have to run the open in a
  * separate thread.
  */
-#if 0
+#if 0 // XXX
         auto result = co_await async::async_execute(
             [&]() -> yarrow::expected<win32::shared_handle> {
                 return win32::create_file(
@@ -143,9 +121,12 @@ namespace sk::cio::win32 {
         co_return cio::error::no_error;
     }
 
+    /*************************************************************************
+     * filechannel_base::open()
+     */
     template <typename CharT>
-    std::error_code
-    ifilechannel<CharT>::open(std::filesystem::path const &path) {
+    auto filechannel_base<CharT>::open(std::filesystem::path const &path)
+        -> std::error_code {
         std::wstring wpath(path.native());
 
         auto handle = ::CreateFileW(
@@ -154,54 +135,44 @@ namespace sk::cio::win32 {
 
         // Return error if any.
         if (handle == INVALID_HANDLE_VALUE)
-            co_return win32::win32_to_generic_error(win32::get_last_error());
+            return win32::win32_to_generic_error(win32::get_last_error());
+
+        // Because we didn't use AsyncCreateFileW(), we have to manually
+        // associate the handle with the completion port.
+        iocp_reactor::get_global_reactor().associate_handle(handle);
 
         native_handle.assign(handle);
-        co_return error::no_error;
+        return cio::error::no_error;
     }
 
+    /*************************************************************************
+     * filechannel_base::is_open()
+     */
     template <typename CharT>
-    task<std::error_code> ifilechannel<CharT>::async_close() {
+    auto filechannel_base<CharT>::is_open() const -> bool {
+        return native_handle != INVALID_HANDLE_VALUE;
+    }
+
+    /*************************************************************************
+     * filechannel_base::close()
+     */
+    template <typename CharT>
+    auto filechannel_base<CharT>::close() -> std::error_code {
         native_handle.close();
-        co_return cio::error::no_error;
+        // XXX return error
+        cio::error::no_error;
     }
 
+    /*************************************************************************
+     * filechannel_base::async_close()
+     */
     template <typename CharT>
-    template <sk::writable_buffer_of<CharT> BufferT>
-    auto ifilechannel<CharT>::async_read(BufferT &buffer)
-        -> task<expected<io_size_t, std::error_code>> {
-
-        DWORD bytes_read = 0;
-
-        auto ranges = buffer.writable_ranges();
-        if (std::ranges::size(ranges) == 0)
-            co_return 0u;
-
-        auto first_range = *std::ranges::begin(ranges);
-        auto data = std::ranges::data(first_range);
-        auto size = std::ranges::size(first_range);
-
-        DWORD dwsize;
-
-        if (size >
-            static_cast<decltype(size)>(std::numeric_limits<DWORD>::max()))
-            dwsize = std::numeric_limits<DWORD>::max();
-        else
-            dwsize = static_cast<DWORD>(size);
-
-        auto ret =
-            co_await win32::AsyncReadFile(native_handle.handle_value, data,
-                                          dwsize, &bytes_read, file_position);
-
-        if (!ret) {
-            buffer.commit(bytes_read);
-            file_position += bytes_read;
-            co_return bytes_read;
-        }
-
-        co_return make_unexpected(win32::win32_to_generic_error(ret));
+    auto filechannel_base<CharT>::async_close() -> task<std::error_code> {
+        native_handle.close();
+        // XXX return error; make async.
+        co_return cio::error::no_error;
     }
 
 } // namespace sk::cio::win32
 
-#endif // SK_CIO_WIN32_CHANNEL_IFILECHANNEL_HXX_INCLUDED
+#endif // SK_CIO_WIN32_CHANNEL_DAFILECHANNEL_BASE_HXX_INCLUDED

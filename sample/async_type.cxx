@@ -32,7 +32,8 @@
 
 #include <fmt/core.h>
 
-#include <sk/cio/channel/ifilechannel.hxx>
+#include <sk/cio/channel/seqfilechannel.hxx>
+#include <sk/cio/win32/iocp_reactor.hxx>
 #include <sk/cio/task.hxx>
 #include <sk/cio/error.hxx>
 #include <sk/buffer/fixed_buffer.hxx>
@@ -40,7 +41,7 @@
 using namespace sk::cio;
 
 task<void> print_file(std::string const &name) {
-    ifilechannel<char> chnl;
+    iseqfilechannel<char> chnl;
 
     auto err = co_await chnl.async_open(name);
     if (err) {
@@ -50,7 +51,7 @@ task<void> print_file(std::string const &name) {
 
     for (;;) {
         sk::fixed_buffer<char, 1024> buffer;
-        auto nbytes = co_await chnl.async_read(buffer);
+        auto nbytes = co_await chnl.async_read_some(unlimited, buffer);
 
         if (!nbytes) {
             if (nbytes.error() != sk::cio::error::end_of_file)

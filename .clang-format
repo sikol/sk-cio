@@ -5,4 +5,5 @@ AccessModifierOffset: -4
 NamespaceIndentation: All
 AllowShortFunctionsOnASingleLine: Empty
 IndentPPDirectives: AfterHash
+AlwaysBreakTemplateDeclarations: Yes
 ---

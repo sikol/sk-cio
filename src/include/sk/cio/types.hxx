@@ -29,7 +29,9 @@
 #ifndef SK_CIO_TYPES_HXX_INCLUDED
 #define SK_CIO_TYPES_HXX_INCLUDED
 
+#include <cstdint>
 #include <cstddef>
+#include <limits>
 
 namespace sk::cio {
 
@@ -40,6 +42,9 @@ namespace sk::cio {
     // Type representing the size of an I/O operation.
     using io_size_t = std::size_t;
 
+    // Value indicating an I/O operation should read or write as much
+    // as possible.
+    constexpr io_size_t unlimited = std::numeric_limits<io_size_t>::max();
 
 } // namespace sk::cio
 #endif // SK_CIO_TYPES_HXX_INCLUDED

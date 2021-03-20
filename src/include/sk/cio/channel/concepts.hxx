@@ -36,6 +36,7 @@
 #include <ranges>
 
 #include <sk/cio/task.hxx>
+#include <sk/cio/types.hxx>
 #include <sk/buffer/pmr_buffer.hxx>
 #include <sk/buffer/range_buffer.hxx>
 
@@ -99,13 +100,16 @@ namespace sk::cio {
     concept oseqchannel = 
         channel_base<Channel> &&
         requires(Channel &channel,
+                 io_size_t n,
                  sk::pmr_readable_buffer<typename Channel::value_type> &buf) {
 
             // Write data to the channel synchronously.
-            { channel.write(buf) } -> std::same_as<std::error_code>;
+            { channel.write_some(n, buf) } 
+                -> std::same_as<expected<io_size_t, std::error_code>>;
 
             // Write data to the channel asynchronously.
-            { channel.async_write(buf) } -> std::same_as<task<std::error_code>;
+            { channel.async_write_some(n, buf) } 
+                -> std::same_as<task<expected<io_size_t, std::error_code>>>;
         };
 
     /*************************************************************************
@@ -124,15 +128,16 @@ namespace sk::cio {
     concept iseqchannel =
         channel_base<Channel> &&
         requires(Channel &channel,
+                 io_size_t io_size,
                  sk::pmr_writable_buffer<typename Channel::value_type> &buf) {
 
             // Read from the channel synchronously.
-            { channel.read(buf) }
-                -> std::same_as<expected<offset_t, std::error_code>>;
+            { channel.read_some(io_size, buf) }
+                -> std::same_as<expected<io_size_t, std::error_code>>;
 
             // Read from the channel asynchronously.
-            { channel.async_read(buf) }
-                -> std::same_as<task<expected<offset_t, std::error_code>>>;
+            { channel.async_read_some(io_size, buf) }
+                -> std::same_as<task<expected<io_size_t, std::error_code>>>;
         };
 
     /*************************************************************************
@@ -174,14 +179,17 @@ namespace sk::cio {
     concept odachannel = 
         channel_base<Channel> &&
         requires(Channel &channel,
+                 io_size_t io_size,
                  io_offset_t offset,
                  sk::pmr_readable_buffer<typename Channel::value_type> &buf) {
 
             // Write data to the channel synchronously.
-            { channel.write_at(offset, buf) } -> std::same_as<std::error_code>;
+            { channel.write_some_at(io_size, offset, buf) } 
+                -> std::same_as<expected<io_size_t, std::error_code>>;
 
             // Write data to the channel asynchronously.
-            { channel.async_write(offset, buf) } -> std::same_as<task<std::error_code>;
+            { channel.async_write_some_at(io_size, offset, buf) }
+                -> std::same_as<task<expected<io_size_t, std::error_code>>>;
         };
 
     /*************************************************************************
@@ -204,11 +212,11 @@ namespace sk::cio {
                  sk::pmr_writable_buffer<typename Channel::value_type> &buf) {
 
             // Read from the channel synchronously.
-            { channel.read_at(offset, nobjects, buf) }
+            { channel.read_some_at(offset, nobjects, buf) }
                 -> std::same_as<expected<io_size_t, std::error_code>>;
 
             // Read from the channel asynchronously.
-            { channel.async_read_at(offset, nobjects, buf) }
+            { channel.async_read_some_at(offset, nobjects, buf) }
                 -> std::same_as<task<expected<io_size_t, std::error_code>>>;
         };
 
@@ -242,52 +250,12 @@ namespace sk::cio {
     template<typename Channel>
     using channel_value_t = typename std::remove_reference_t<Channel>::value_type;
 
-    /*************************************************************************
-     *
-     * Global channel functions.  
-     *
-     */
-
-    // Write the contents of a range to a sequential channel.
-    template <oseqchannel Channel, 
-              std::ranges::contiguous_range Range>
-    requires(std::is_same_v<channel_value_t<Channel>,
-                            std::ranges::range_value_t<Range>>)
-    auto async_write(Channel &channel, Range &&range) {
-        auto buf = sk::make_readable_range_buffer(range);
-        return channel.async_write(buf);
-    }
-
-    template <oseqchannel Channel, 
-              std::ranges::contiguous_range Range>
-    requires(std::is_same_v<channel_value_t<Channel>,
-                            std::ranges::range_value_t<Range>>)
-    auto write(Channel &channel, Range &&range) {
-        auto buf = sk::make_readable_range_buffer(range);
-        return channel.write(buf);
-    }
-
-    // Write the contents of a range to a direct access channel.
-    template <odachannel Channel, 
-              std::ranges::contiguous_range Range>
-    requires(std::is_same_v<channel_value_t<Channel>,
-                            std::ranges::range_value_t<Range>>)
-    auto async_write_at(Channel &channel, io_offset_t offset, Range &&range) {
-        auto buf = sk::make_readable_range_buffer(range);
-        return channel.async_write_at(offset, buf);
-    }
-
-    template <odachannel Channel, 
-              std::ranges::contiguous_range Range>
-    requires(std::is_same_v<channel_value_t<Channel>,
-                            std::ranges::range_value_t<Range>>)
-    auto write_at(Channel &channel, io_offset_t offset, Range &&range) {
-        auto buf = sk::make_readable_range_buffer(range);
-        return channel.write_at(offset, buf);
-    }
-
+    // Return the const value type of a channel.
+    template<typename Channel>
+    using channel_const_value_t = 
+        typename std::remove_cvref<Channel>::value_type;
+    
     // clang-format on
-
 
 } // namespace sk::async
 

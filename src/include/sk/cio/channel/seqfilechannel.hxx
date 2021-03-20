@@ -26,41 +26,31 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <sk/cio/error.hxx>
+#ifndef SK_CIO_CHANNEL_SEQFILECHANNEL_HXX_INCLUDED
+#define SK_CIO_CHANNEL_SEQFILECHANNEL_HXX_INCLUDED
+
+#ifdef _WIN32
+#    include <sk/cio/win32/channel/iseqfilechannel.hxx>
 
 namespace sk::cio {
 
-    namespace detail {
+    template <typename CharT>
+    using iseqfilechannel = win32::iseqfilechannel<CharT>;
 
-        auto cio_errc_category::name() const noexcept -> char const * {
-            return "async";
-        }
+    #if 0
+    template <typename CharT>
+    using oseqfilechannel = win32::oseqfilechannel<CharT>;
 
-        auto cio_errc_category::message(int c) const -> std::string {
-            switch (static_cast<error>(c)) {
-            case error::no_error:
-                return "success";
-
-            case error::end_of_file:
-                return "end of file";
-
-            case error::no_space_in_buffer:
-                return "no space in buffer";
-
-            default:
-                return "unknown error";
-            }
-        }
-
-    } // namespace detail
-
-    auto async_errc_category() -> detail::cio_errc_category const & {
-        static detail::cio_errc_category c;
-        return c;
-    }
-
-    auto make_error_code(error e) -> std::error_code {
-        return {static_cast<int>(e), async_errc_category()};
-    }
+    template <typename CharT>
+    using seqfilechannel = win32::seqfilechannel<CharT>;
+    #endif
 
 } // namespace sk::cio
+
+#else
+
+#    error seqfilechannel is not supported on this platform
+
+#endif
+
+#endif // SK_CIO_CHANNEL_SEQFILECHANNEL_HXX_INCLUDED

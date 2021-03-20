@@ -34,8 +34,11 @@ target_sources(sk-cio PRIVATE
     error.cxx
 
     include/sk/cio/channel/concepts.hxx
-    include/sk/cio/channel/ifilechannel.hxx
+    include/sk/cio/channel/dafilechannel.hxx
+    include/sk/cio/channel/seqfilechannel.hxx
     include/sk/cio/channel/pmr_channel.hxx
+    include/sk/cio/channel/write.hxx
+    include/sk/cio/channel/read.hxx
 
     include/sk/cio/error.hxx
     include/sk/cio/task.hxx
@@ -47,7 +50,8 @@ if(WIN32)
         win32/error.cxx
         win32/iocp_reactor.cxx
 
-        include/sk/cio/win32/channel/ifilechannel.hxx
+        "include/sk/cio/win32/channel/filechannel_base.hxx"
+        include/sk/cio/win32/channel/idafilechannel.hxx
         include/sk/cio/win32/error.hxx
         include/sk/cio/win32/handle.hxx
         include/sk/cio/win32/iocp_reactor.hxx

@@ -26,38 +26,18 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-
+#define CATCH_CONFIG_RUNNER
 #include <catch.hpp>
 
-#include <cstring>
-#include <stdexcept>
-#include <string>
-#include <iostream>
+#include <sk/cio/win32/iocp_reactor.hxx>
 
-#include <sk/cio/task.hxx>
+int main(int argc, char **argv) {
+    std::cerr << "main: starting the reactor\n";
+    sk::cio::win32::iocp_reactor::start_global_reactor();
 
-using sk::cio::task;
+    int result = Catch::Session().run(argc, argv);
 
-auto get_int() -> task<int> {
-    std::cerr << "get_int() : running\n";
-    co_return 42;
-}
+    sk::cio::win32::iocp_reactor::stop_global_reactor();
 
-TEST_CASE("task<int> works") {
-    std::cerr << "\n\ntask<int> starting\n";
-    int i = get_int().wait();
-    REQUIRE(i == 42);
-}
-
-auto set_int(int &i) -> task<void> {
-    std::cerr << "set_int() : running\n";
-    i = 42;
-    co_return;
-}
-
-TEST_CASE("task<void> works") {
-    int i = 0;
-    std::cerr << "\n\ntask<void> starting\n";
-    set_int(i).wait();
-    REQUIRE(i == 42);
+    return result;
 }

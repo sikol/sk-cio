@@ -26,23 +26,31 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_CHANNEL_IFILECHANNEL_HXX_INCLUDED
-#define SK_CIO_CHANNEL_IFILECHANNEL_HXX_INCLUDED
+#ifndef SK_CIO_CHANNEL_DAFILECHANNEL_HXX_INCLUDED
+#define SK_CIO_CHANNEL_DAFILECHANNEL_HXX_INCLUDED
 
 #ifdef _WIN32
-#    include <sk/cio/win32/channel/ifilechannel.hxx>
+#    include <sk/cio/win32/channel/idafilechannel.hxx>
 
 namespace sk::cio {
 
     template <typename CharT>
-    using ifilechannel = win32::ifilechannel<CharT>;
+    using idafilechannel = win32::idafilechannel<CharT>;
 
-}
+    #if 0
+    template <typename CharT>
+    using odafilechannel = win32::odafilechannel<CharT>;
+
+    template <typename CharT>
+    using dafilechannel = win32::dafilechannel<CharT>;
+    #endif
+
+} // namespace sk::cio
 
 #else
 
-#    error ifilechannel is not supported on this platform
+#    error dafilechannel is not supported on this platform
 
 #endif
 
-#endif // SK_CIO_CHANNEL_IFILECHANNEL_HXX_INCLUDED
+#endif // SK_CIO_CHANNEL_DAFILECHANNEL_HXX_INCLUDED

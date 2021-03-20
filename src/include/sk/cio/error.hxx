@@ -37,6 +37,7 @@ namespace sk::cio {
     enum struct error : int {
         no_error = 0,
         end_of_file = 1,
+        no_space_in_buffer = 2,
     };
 
     namespace detail {
