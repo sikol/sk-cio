@@ -95,26 +95,10 @@ namespace sk::cio::win32 {
 
         std::wstring wpath(path.native());
 
-/*
- * Because CreateFileW() may block (e.g. when accessing a remote server)
- * and there's no overlapped version, we have to run the open in a
- * separate thread.
- */
-#if 0 // XXX
-        auto result = co_await async::async_execute(
-            [&]() -> yarrow::expected<win32::shared_handle> {
-                return win32::create_file(
-                    wpath, GENERIC_READ, FILE_SHARE_READ, nullptr,
-                    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED,
-                    win32::null_handle);
-            });
-#endif
-
         auto handle = co_await win32::AsyncCreateFileW(
             wpath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
             OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, NULL);
 
-        // Return error if any.
         if (handle == INVALID_HANDLE_VALUE)
             co_return win32::win32_to_generic_error(win32::get_last_error());
 

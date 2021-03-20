@@ -67,7 +67,7 @@ namespace sk::cio::win32 {
         }
 
         result_type await_resume() {
-            return future.get();
+            return std::move(future.get());
         }
     };
 

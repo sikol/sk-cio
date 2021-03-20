@@ -40,7 +40,7 @@ namespace sk::cio::win32 {
                                   DWORD dwFlagsAndAttributes,
                                   HANDLE hTemplateFile) {
 
-        co_return co_await spawn([&]()->HANDLE {
+        co_return co_await spawn([&]() -> HANDLE {
             auto handle = ::CreateFileW(
                 lpFileName, dwDesiredAccess, dwShareMode, lpSecurityAttributes,
                 dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);
@@ -58,7 +58,7 @@ namespace sk::cio::win32 {
                                   DWORD dwCreationDisposition,
                                   DWORD dwFlagsAndAttributes,
                                   HANDLE hTemplateFile) {
-        co_return co_await spawn([&]()->HANDLE {
+        co_return co_await spawn([&]() -> HANDLE {
             auto handle = ::CreateFileA(
                 lpFileName, dwDesiredAccess, dwShareMode, lpSecurityAttributes,
                 dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);

@@ -19,7 +19,7 @@ import sphinx_rtd_theme
 
 # -- Project information -----------------------------------------------------
 
-project = 'sk-config'
+project = 'sk-cio'
 copyright = '2021, SiKol Ltd.'
 author = 'SiKol Ltd.'
 
