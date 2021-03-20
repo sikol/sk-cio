@@ -87,15 +87,15 @@ object type can be fixed at compile time if required.
 Basic channel concepts
 ----------------------
 
-``channel_base<T>``
-^^^^^^^^^^^^^^^^^^^
+``channel_base``
+^^^^^^^^^^^^^^^^
 
 
 ``channel_base`` is the basic channel concept which all channels implement.
 
 The following type is provided:
 
-* ``channel_base<T>::value_type``: the object type supported by this channel,
+* ``channel_base::value_type``: the object type supported by this channel,
   such as ``char``.
 
 The following functions are provided:
@@ -108,10 +108,10 @@ Return true if this channel is open, otherwise false.
 
 .. code-block:: c++
 
-  auto channel_base<T>::async_close()
+  auto channel_base::async_close()
        -> task<std::error_code>;
   
-  auto channel_base<T>::close()
+  auto channel_base::close()
        -> std::error_code;
 
 Flush any buffered data and close the channel.
@@ -119,8 +119,8 @@ Flush any buffered data and close the channel.
 Sequential channel concepts
 ---------------------------
 
-``oseqchannel<T>``
-^^^^^^^^^^^^^^^^^^
+``oseqchannel``
+^^^^^^^^^^^^^^^
 
 ``oseqchannel`` is a channel that supports sequential output.
 
@@ -128,12 +128,12 @@ The following functions are provided:
 
 .. code-block:: c++
 
-    auto oseqchannel<T>::write_some(io_size_t n,
-                                    sk::readable_buffer_of<T> &buf)
+    auto oseqchannel::write_some(io_size_t n,
+                                 sk::readable_buffer &buf)
          -> expected<io_size_t, std::error_code>;
 
-    auto oseqchannel<T>::async_write_some(io_size_t n,
-                                          sk::readable_buffer_of<T> &buf)
+    auto oseqchannel::async_write_some(io_size_t n,
+                                       sk::readable_buffer &buf)
          -> task<expected<io_size_t, std::error_code>>;
 
 Write up to ``n`` objects from ``buf`` to the channel.  If ``n`` is
@@ -144,8 +144,8 @@ data in the buffer.  The data written is discarded from the buffer.
 also write less.  On success, returns the number of objects written;
 otherwise, no objects are written and an error code is returned.
 
-``iseqchannel<T>``
-^^^^^^^^^^^^^^^^^^
+``iseqchannel``
+^^^^^^^^^^^^^^^
 
 ``iseqchannel`` is a channel that supports sequential input.
 
@@ -153,12 +153,12 @@ The following functions are provided:
 
 .. code-block:: c++
 
-    auto iseqchannel<T>::read_some(io_size_t n,
-                                   sk::writable_buffer_of<T> &buf)
+    auto iseqchannel::read_some(io_size_t n,
+                                sk::writable_buffer_of<T> &buf)
          -> expected<io_size_t, std::error_code>;
 
-    auto iseqchannel<T>::async_read_some(io_size_t n,
-                                         sk::writable_buffer_of<T> &buf)
+    auto iseqchannel::async_read_some(io_size_t n,
+                                      sk::writable_buffer_of<T> &buf)
          -> task<expected<io_size_t, std::error_code>>;
 
 Read up to ``n`` objects from the channel and append them to ``buf``.
@@ -169,18 +169,18 @@ remaining space in the buffer.
 but may also read less.  On success, returns the number of objects
 read; otherwise, no objects are read and an error code is returned.
 
-``seqchannel<T>``
+``seqchannel``
 ^^^^^^^^^^^^^^^^^^^
 
-``seqchannel<T>`` is a sequential channel that supports both input
-and output.  It provides the interface of both ``iseqchannel<T>`` and
-``oseqchannel<T>``.
+``seqchannel`` is a sequential channel that supports both input
+and output.  It provides the interface of both ``iseqchannel`` and
+``oseqchannel``.
 
 Record-oriented channel concepts
 --------------------------------
 
-``orsqchannel<T>``
-^^^^^^^^^^^^^^^^^^
+``orsqchannel``
+^^^^^^^^^^^^^^^
 
 ``orsqchannel`` is a channel that supports record-oriented output.
 
@@ -188,12 +188,12 @@ The following functions are provided:
 
 .. code-block:: c++
 
-    auto orsqchannel<T>::write_rec(io_size_t n,
-                                   sk::readable_buffer_of<T> &buf)
+    auto orsqchannel::write_rec(io_size_t n,
+                                sk::readable_buffer &buf)
          -> std::error_code;
 
-    auto orsqchannel<T>::async_write_rec(io_size_t n,
-                                         sk::readable_buffer_of<T> &buf)
+    auto orsqchannel::async_write_rec(io_size_t n,
+                                      sk::readable_buffer &buf)
          -> task<std::error_code>;
 
 Write a record consisting of ``n`` objects from ``buf`` to the channel.
@@ -204,8 +204,8 @@ buffer.
 If the entire record was written, returns ``error::no_error``.  Otherwise,
 the record was not written and the error is returned.
 
-``irsqchannel<T>``
-^^^^^^^^^^^^^^^^^^
+``irsqchannel``
+^^^^^^^^^^^^^^^
 
 ``irsqchannel`` is a channel that supports record-oriented input.
 
@@ -213,12 +213,12 @@ The following functions are provided:
 
 .. code-block:: c++
 
-    auto irsqchannel<T>::read_rec(io_size_t n,
-                                  sk::writable_buffer_of<T> &buf)
+    auto irsqchannel::read_rec(io_size_t n,
+                               sk::writable_buffer_of<T> &buf)
          -> expected<io_size_t, std::error_code>;
 
-    auto irsqchannel<T>::async_read_rec(io_size_t n,
-                                        sk::writable_buffer_of<T> &buf)
+    auto irsqchannel::async_read_rec(io_size_t n,
+                                     sk::writable_buffer_of<T> &buf)
          -> task<expected<io_size_t, std::error_code>>;
 
 Read a record consisting of up to ``n`` objects from the channel and
@@ -231,19 +231,19 @@ If entire record was read, the size of the record is returned (minus
 any discarded data).  Otherwise, nothing was read and an error is
 returned.
 
-``iorsqchannel<T>``
-^^^^^^^^^^^^^^^^^^^
+``sqchannel``
+^^^^^^^^^^^^^
 
-``iorsqchannel<T>`` is a record-oriented channel that supports both 
-input and output.  It provides the interface of both ``irsqchannel<T>``
-and ``orsqchannel<T>``.
+``iorsqchannel`` is a record-oriented channel that supports both 
+input and output.  It provides the interface of both ``irsqchannel``
+and ``orsqchannel``.
 
 
 Direct access channel concepts
 ------------------------------
 
-``odachannel<T>``
-^^^^^^^^^^^^^^^^^^
+``odachannel``
+^^^^^^^^^^^^^^
 
 ``odachannel`` is a channel that supports direct access output.
 
@@ -251,13 +251,13 @@ The following functions are provided:
 
 .. code-block:: c++
 
-    auto odachannel<T>::write_some_at(io_size_t n,
-                                      io_offset_t loc,
-                                      sk::readable_buffer_of<T> &buf)
+    auto odachannel::write_some_at(io_size_t n,
+                                   io_offset_t loc,
+                                   sk::readable_buffer &buf)
          -> expected<io_size_t, std::error_code>;
 
-    auto odachannel<T>::async_write_some_at(io_size_t n,
-                                             sk::readable_buffer_of<T> &buf)
+    auto odachannel::async_write_some_at(io_size_t n,
+                                         sk::readable_buffer &buf)
          -> task<expected<io_size_t, std::error_code>>;
 
 Write up to ``n`` objects from ``buf`` to the channel at location ``loc``.
@@ -268,8 +268,8 @@ remaining data in the buffer.  The data written is discarded from the buffer.
 also write less.  On success, returns the number of objects written;
 otherwise, no objects are written and an error code is returned.
 
-``idachannel<T>``
-^^^^^^^^^^^^^^^^^^
+``idachannel``
+^^^^^^^^^^^^^^
 
 ``idachannel`` is a channel that supports direct access input.
 
@@ -277,14 +277,14 @@ The following functions are provided:
 
 .. code-block:: c++
 
-    auto idachannel<T>::read_some_at(io_size_t n,
-                                     io_offset_t loc,
-                                     sk::writable_buffer_of<T> &buf)
+    auto idachannel::read_some_at(io_size_t n,
+                                  io_offset_t loc,
+                                  sk::writable_buffer &buf)
          -> expected<io_size_t, std::error_code>;
 
-    auto idachannel<T>::async_read_some_at(io_size_t n,
-                                           io_offset_t loc,
-                                           sk::writable_buffer_of<T> &buf)
+    auto idachannel::async_read_some_at(io_size_t n,
+                                        io_offset_t loc,
+                                        sk::writable_buffer &buf)
          -> task<expected<io_size_t, std::error_code>>;
 
 Read up to ``n`` objects from the channel at location ``loc`` and append
@@ -295,10 +295,10 @@ as equal to the remaining space in the buffer.
 but may also read less.  On success, returns the number of objects
 read; otherwise, no objects are read and an error code is returned.
 
-``iodachannel<T>``
-^^^^^^^^^^^^^^^^^^^
+``achannel``
+^^^^^^^^^^^^
 
-``iodachannel<T>`` is a direct access channel that supports both input
-and output.  It provides the interface of both ``idachannel<T>`` and
-``odachannel<T>``.
+``iodachannel`` is a direct access channel that supports both input
+and output.  It provides the interface of both ``idachannel`` and
+``odachannel``.
 

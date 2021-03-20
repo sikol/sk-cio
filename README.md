@@ -4,6 +4,8 @@
 
 Windows only for now.
 
+* [Documents](https://sk-cio.readthedocs.io/en/latest/index.html)
+
 Requires:
 
 * [sk-buffer](https://github.com/sikol/sk-buffer)

@@ -113,15 +113,6 @@ namespace sk::cio {
         };
 
     /*************************************************************************
-     * oseqchannel_of: an oseqchannel which can write objects of the
-     * specified type.
-     */
-    template<typename Channel, typename T>
-    concept oseqchannel_of =
-        oseqchannel<Channel> &&
-        std::same_as<T, typename Channel::value_type>;
-
-    /*************************************************************************
      * iseqchannel - a channel that can be read from sequentially.
      */
     template <typename Channel>
@@ -141,25 +132,10 @@ namespace sk::cio {
         };
 
     /*************************************************************************
-     * iseqchannel_of: an iseqchannel which can read objects of the
-     * specified type.
-     */
-    template<typename Channel, typename T>
-    concept iseqchannel_of =
-        iseqchannel<Channel> &&
-        std::same_as<T, typename Channel::value_type>;
-
-
-    /*************************************************************************
      * seqchannel - a sequential channel that supports both input and output.
      */
     template <typename Channel>
     concept seqchannel = iseqchannel<Channel> && oseqchannel<Channel>;
-
-    template <typename Channel, typename Char>
-    concept seqchannel_of = 
-        oseqchannel_of<Channel, Char> &&
-        iseqchannel_of<Channel, Char>;
 
     /*************************************************************************
      * 
@@ -193,15 +169,6 @@ namespace sk::cio {
         };
 
     /*************************************************************************
-     * odachannel_of: an odachannel which can write objects of the
-     * specified type.
-     */
-    template<typename Channel, typename T>
-    concept odachannel_of =
-        odachannel<Channel> &&
-        std::same_as<T, typename Channel::value_type>;
-
-    /*************************************************************************
      * idachannel - a direct access channel that can be read from.
      */
     template <typename Channel>
@@ -221,25 +188,10 @@ namespace sk::cio {
         };
 
     /*************************************************************************
-     * idachannel_of: an idachannel which can read objects of the
-     * specified type.
-     */
-    template<typename Channel, typename T>
-    concept idachannel_of =
-        idachannel<Channel> &&
-        std::same_as<T, typename Channel::value_type>;
-
-
-    /*************************************************************************
      * dachannel - a direct access channel that supports both input and output.
      */
     template <typename Channel>
     concept dachannel = idachannel<Channel> && odachannel<Channel>;
-
-    template <typename Channel, typename Char>
-    concept dachannel_of = 
-        odachannel_of<Channel, Char> &&
-        idachannel_of<Channel, Char>;
 
     /*************************************************************************
      *
