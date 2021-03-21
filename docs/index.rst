@@ -13,6 +13,7 @@ both a synchronous API and a coroutine-based asynchronous API.
    expected.rst
    concepts.rst
    io_functions.rst
+   filechannel.rst
 
 Supported compilers
 -------------------
