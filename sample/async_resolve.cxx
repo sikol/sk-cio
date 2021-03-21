@@ -26,39 +26,53 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_WIN32_WINDOWS_HXX_INCLUDED
-#define SK_CIO_WIN32_WINDOWS_HXX_INCLUDED
+#include <cstdio>
+#include <iostream>
+#include <ranges>
 
-/*
- * Include <windows.h> with reasonable options.
- */
+#include <fmt/core.h>
 
-#ifdef _WIN32
+#include <sk/cio/net/address.hxx>
+#include <sk/cio/reactor.hxx>
 
-#    ifndef WIN32_LEAN_AND_MEAN
-#        define WIN32_LEAN_AND_MEAN
-#        define SK_WIN32_UNDEFINE_WIN32_LEAN_AND_MEAN
-#    endif
+using namespace sk::cio;
 
-#    ifndef NOMINMAX
-#        define NOMINMAX
-#        define SK_WIN32_UNDEFINE_NOMINMAX
-#    endif
+task<void> resolve(std::string const &name) {
+    std::cout << name << ": ";
 
-#    include <windows.h>
-#    include <winsock2.h>
-#    include <ws2tcpip.h>
+    auto addresses = co_await net::async_resolve_address(name, "");
+    if (!addresses) {
+        std::cout << addresses.error().message() << '\n';
+        co_return;
+    }
 
-#    ifdef SK_WIN32_UNDEFINE_WIN32_LEAN_AND_MEAN
-#        undef WIN32_LEAN_AND_MEAN
-#        undef SK_WIN32_UNDEFINE_WIN32_LEAN_AND_MEAN
-#    endif
+    if (addresses->empty()) {
+        std::cout << "no addresses\n";
+        co_return;
+    }
 
-#    ifdef SK_WIN32_UNDEFINE_NOMINMAX
-#        undef NOMINMAX
-#        undef SK_WIN32_UNDEFINE_NOMINMAX
-#    endif
+    std::cout << '\n';
 
-#endif // _WIN32
+    for (auto &&address : *addresses)
+        std::cout << '\t' << address << '\n';
 
-#endif // SK_CIO_WIN32_WINDOWS_HXX_INCLUDED
+    std::cout << '\n';
+
+}
+
+int main(int argc, char **argv) {
+    using namespace std::chrono_literals;
+
+    if (argc < 2) {
+        fmt::print(stderr, "usage: {} <file> [file...]", argv[0]);
+        return 1;
+    }
+
+    sk::cio::reactor_handle reactor;
+
+    for (auto &&name : std::span(argv + 1, argv + argc)) {
+        resolve(name).wait();
+    }
+
+    return 0;
+}

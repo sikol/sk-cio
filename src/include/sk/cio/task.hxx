@@ -36,8 +36,7 @@
 #include <iostream>
 #include <optional>
 #include <thread>
-
-#include <sk/cio/win32/windows.hxx>
+#include <utility>
 
 namespace sk::cio {
 
@@ -106,14 +105,12 @@ namespace sk::cio {
         task &operator=(task const &) = delete;
         task &operator=(task &&other) = delete;
 
-        task(task &&other) noexcept : coro_handle(other.coro_handle) {
-            other.coro_handle = {};
-        }
+        task(task &&other) noexcept
+            : coro_handle(std::exchange(other.coro_handle, {})) {}
 
         ~task() {
-            // std::cerr << "~task(): destroy " << coro_handle.address() <<
-            // '\n';
-            coro_handle.destroy();
+            if (coro_handle)
+                coro_handle.destroy();
         }
 
         bool await_ready() {
@@ -193,21 +190,16 @@ namespace sk::cio {
 
         task(std::coroutine_handle<promise_type> coro_handle_)
             : coro_handle(coro_handle_) {
-            // std::cerr << "task<void>(), create " << coro_handle.address()
-            //         << '\n';
         }
 
         task(task const &) = delete;
         task &operator=(task const &) = delete;
         task &operator=(task &&other) = delete;
 
-        task(task &&other) noexcept : coro_handle(other.coro_handle) {
-            other.coro_handle = {};
-        }
+        task(task &&other) noexcept
+            : coro_handle(std::exchange(other.coro_handle, {})) {}
 
         ~task() {
-            // std::cerr << "~task<void>(), destroy " << coro_handle.address()
-            //          << '\n';
             coro_handle.destroy();
         }
 

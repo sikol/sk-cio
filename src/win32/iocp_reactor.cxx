@@ -67,6 +67,9 @@ namespace sk::cio::win32 {
     }
 
     auto iocp_reactor::start() -> void {
+        WSADATA wsadata;
+        ::WSAStartup(MAKEWORD(2, 2), &wsadata);
+
         reactor_thread = std::jthread([=, this] { reactor_thread_fn(); });
     }
 

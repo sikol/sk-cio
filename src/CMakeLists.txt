@@ -33,6 +33,7 @@ add_library(sk-cio)
 target_sources(sk-cio PRIVATE 
     error.cxx
     reactor.cxx
+    net/resolve.cxx
     
     include/sk/cio/channel/filechannel.hxx
     include/sk/cio/channel/dafilechannel.hxx
@@ -58,8 +59,11 @@ if(WIN32)
         win32/iocp_reactor.cxx
         win32/async_api.cxx
 
-        "include/sk/cio/win32/channel/detail/filechannel_base.hxx"
-        "include/sk/cio/win32/channel/detail/idafilechannel_base.hxx"
+        include/sk/cio/win32/channel/detail/filechannel_base.hxx
+        include/sk/cio/win32/channel/detail/idafilechannel_base.hxx
+        include/sk/cio/win32/channel/detail/iseqfilechannel_base.hxx
+        include/sk/cio/win32/channel/detail/oseqfilechannel_base.hxx
+        include/sk/cio/win32/channel/detail/odafilechannel_base.hxx
         include/sk/cio/win32/channel/idafilechannel.hxx
         include/sk/cio/win32/channel/odafilechannel.hxx
         include/sk/cio/win32/channel/iseqfilechannel.hxx
@@ -70,11 +74,18 @@ if(WIN32)
         include/sk/cio/win32/windows.hxx
         include/sk/cio/win32/spawn.hxx
         include/sk/cio/win32/async_api.hxx
-     "include/sk/cio/win32/channel/detail/iseqfilechannel_base.hxx" "include/sk/cio/win32/channel/detail/oseqfilechannel_base.hxx" "include/sk/cio/win32/channel/detail/odafilechannel_base.hxx")
+
+        include/sk/cio/net/address.hxx
+        )
 endif()
 
 target_include_directories(sk-cio PUBLIC include)
 target_link_libraries(sk-cio PUBLIC tl::expected)
+
+if (WIN32)
+    target_link_libraries(sk-cio PUBLIC wsock32 ws2_32)
+endif()
+
 target_compile_features(sk-cio PUBLIC cxx_std_20)
 
 install(DIRECTORY "include/sk" TYPE INCLUDE)
