@@ -27,23 +27,23 @@
  */
 
 #ifndef SK_CIO_CONCEPTS_HXX_INCLUDED
-#    define SK_CIO_CONCEPTS_HXX_INCLUDED
+#define SK_CIO_CONCEPTS_HXX_INCLUDED
 
 namespace sk::cio {
 
     /*************************************************************************
-	 *
-	 * Concept of an I/O reactor.
-	 * 
-	 */
+     *
+     * Concept of an I/O reactor.
+     *
+     */
 
-	// clang-format off
+    // clang-format off
 	template<typename Reactor>
 	concept reactor = requires(Reactor & r) {
 		{ r.start() };
 		{ r.stop() };
 	};
-	// clang-format on
+    // clang-format on
 
 } // namespace sk::cio
 

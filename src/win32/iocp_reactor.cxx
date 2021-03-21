@@ -44,12 +44,10 @@ namespace sk::cio::win32 {
             ULONG_PTR completion_key;
             iocp_coro_state *overlapped = nullptr;
 
-            // std::cerr << "reactor: waiting\n";
             auto ret = ::GetQueuedCompletionStatus(
-                completion_port.handle_value, &bytes_transferred,
+                completion_port.native_handle(), &bytes_transferred,
                 &completion_key, reinterpret_cast<OVERLAPPED **>(&overlapped),
                 INFINITE);
-            // std::cerr << "reactor: got event\n";
 
             if (overlapped == nullptr)
                 // Happens when our completion port is closed.
@@ -78,7 +76,7 @@ namespace sk::cio::win32 {
     }
 
     auto iocp_reactor::associate_handle(HANDLE h) -> void {
-        ::CreateIoCompletionPort(h, completion_port.handle_value, 0, 0);
+        ::CreateIoCompletionPort(h, completion_port.native_handle(), 0, 0);
     }
 
 } // namespace sk::cio::win32

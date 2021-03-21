@@ -26,20 +26,21 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_WIN32_CHANNEL_IDAFILECHANNEL_HXX_INCLUDED
-#define SK_CIO_WIN32_CHANNEL_IDAFILECHANNEL_HXX_INCLUDED
+#ifndef SK_CIO_WIN32_CHANNEL_SEQFILECHANNEL_HXX_INCLUDED
+#define SK_CIO_WIN32_CHANNEL_SEQFILECHANNEL_HXX_INCLUDED
 
 #include <filesystem>
 #include <system_error>
 
-#include <sk/cio/detail/config.hxx>
 #include <sk/buffer/buffer.hxx>
 #include <sk/cio/channel/concepts.hxx>
+#include <sk/cio/channel/filechannel.hxx>
 #include <sk/cio/error.hxx>
 #include <sk/cio/task.hxx>
 #include <sk/cio/types.hxx>
 #include <sk/cio/win32/channel/detail/filechannel_base.hxx>
-#include <sk/cio/win32/channel/detail/idafilechannel_base.hxx>
+#include <sk/cio/win32/channel/detail/iseqfilechannel_base.hxx>
+#include <sk/cio/win32/channel/detail/oseqfilechannel_base.hxx>
 #include <sk/cio/win32/error.hxx>
 #include <sk/cio/win32/handle.hxx>
 #include <sk/cio/win32/iocp_reactor.hxx>
@@ -48,29 +49,25 @@ namespace sk::cio::win32 {
 
     /*************************************************************************
      *
-     * idafilechannel: a direct access channel that reads from a file.
+     * seqfilechannel: a direct access channel that writes to a file.
      */
 
     // clang-format off
     template <typename CharT>
-    struct idafilechannel final 
-            : detail::filechannel_base<CharT, idafilechannel<CharT>>
-            , detail::idafilechannel_base<CharT, idafilechannel<CharT>> {
+    struct seqfilechannel final 
+            : detail::filechannel_base<CharT, seqfilechannel<CharT>>
+            , detail::iseqfilechannel_base<CharT, seqfilechannel<CharT>>
+            , detail::oseqfilechannel_base<CharT, seqfilechannel<CharT>> {
 
         /*
-         * Create an idafilechannel which is closed.
+         * Create a seqfilechannel which is closed.
          */
-        idafilechannel() = default;
-
-        idafilechannel(idafilechannel const &) = delete;
-        idafilechannel(idafilechannel &&) noexcept = default;
-        idafilechannel &operator=(idafilechannel const &) = delete;
-        idafilechannel &operator=(idafilechannel &&) noexcept = default;
+        seqfilechannel() = default;
 
         /*
          * Open a file.
          */
-        [[nodiscard]] 
+        [[nodiscard]]
         auto async_open(std::filesystem::path const &,
                         fileflags_t = fileflags::none) 
             -> task<expected<void, std::error_code>>;
@@ -79,41 +76,48 @@ namespace sk::cio::win32 {
         auto open(std::filesystem::path const &,
                   fileflags_t = fileflags::none) 
             -> expected<void, std::error_code>;
+
+        seqfilechannel(seqfilechannel const &) = delete;
+        seqfilechannel(seqfilechannel &&) noexcept = default;
+        seqfilechannel &operator=(seqfilechannel const &) = delete;
+        seqfilechannel &operator=(seqfilechannel &&) noexcept = default;
+        ~seqfilechannel();
     };
+
     // clang-format on
 
-    static_assert(idachannel<idafilechannel<char>>);
+    static_assert(seqchannel<seqfilechannel<char>>);
 
     /*************************************************************************
-     * idafilechannel::async_open()
+     * seqfilechannel::async_open()
      */
     template <typename CharT>
-    auto idafilechannel<CharT>::async_open(std::filesystem::path const &path,
+    auto seqfilechannel<CharT>::async_open(std::filesystem::path const &path,
                                            fileflags_t flags)
         -> task<expected<void, std::error_code>> {
 
-        if (flags & fileflags::write)
-            co_return make_unexpected(cio::error::filechannel_invalid_flags);
-
-        flags |= fileflags::read;
+        flags |= fileflags::read | fileflags::write;
         co_return co_await this->_async_open(path, flags);
     }
 
     /*************************************************************************
-     * idafilechannel::open()
+     * seqfilechannel::open()
      */
     template <typename CharT>
-    auto idafilechannel<CharT>::open(std::filesystem::path const &path,
+    auto seqfilechannel<CharT>::open(std::filesystem::path const &path,
                                      fileflags_t flags)
         -> expected<void, std::error_code> {
 
-        if (flags & fileflags::write)
-            return make_unexpected(cio::error::filechannel_invalid_flags);
-
-        flags |= fileflags::read;
+        flags |= fileflags::read | fileflags::write;
         return this->_open(path, flags);
     }
 
+    /*************************************************************************
+     * seqfilechannel::~seqfilechannel()
+     */
+    template <typename CharT>
+    seqfilechannel<CharT>::~seqfilechannel() = default;
+
 } // namespace sk::cio::win32
 
-#endif // SK_CIO_WIN32_CHANNEL_IDAFILECHANNEL_HXX_INCLUDED
+#endif // SK_CIO_WIN32_CHANNEL_SEQFILECHANNEL_HXX_INCLUDED

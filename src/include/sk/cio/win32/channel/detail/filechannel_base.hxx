@@ -43,19 +43,20 @@
 #include <sk/cio/win32/error.hxx>
 #include <sk/cio/win32/handle.hxx>
 
-namespace sk::cio::win32 {
+namespace sk::cio::win32::detail {
     /*************************************************************************
      *
      * dafilechannel_base: base class for direct access file channels.
      *
      */
 
-    template <typename CharT>
-    struct filechannel_base {
+    // clang-format off
+    template <typename CharT, typename T>
+        requires (sizeof(CharT) == sizeof(char))
+    struct filechannel_base 
+    {
         using value_type = CharT;
         using native_handle_type = win32::unique_handle;
-
-        native_handle_type native_handle{INVALID_HANDLE_VALUE};
 
         filechannel_base(filechannel_base const &) = delete;
         filechannel_base(filechannel_base &&) noexcept = default;
@@ -67,36 +68,50 @@ namespace sk::cio::win32 {
          */
         auto is_open() const -> bool;
 
-        /*
-         * Close the file.  The result of closing a file with outstanding async
-         * operations is undefined.
-         */
-        auto async_close() -> task<std::error_code>;
-        auto close() -> std::error_code;
+        [[nodiscard]] 
+        auto async_close() 
+             -> task<expected<void, std::error_code>>;
+
+        [[nodiscard]] 
+        auto close() 
+             -> expected<void, std::error_code>;
+
+        [[nodiscard]] 
+        auto _async_open(std::filesystem::path const &,
+                         fileflags_t)
+            -> task<expected<void, std::error_code>>;
+
+        [[nodiscard]]
+        auto _open(std::filesystem::path const &,
+                   fileflags_t)
+            -> expected<void, std::error_code>;
+
+        [[nodiscard]] 
+        auto _make_flags(fileflags_t flags,
+                         DWORD &dwDesiredAccess,
+                         DWORD &dwCreationDisposition,
+                         DWORD &dwShareMode) 
+             -> bool;
+
+        native_handle_type native_handle;
 
     protected:
         filechannel_base() = default;
         ~filechannel_base() = default;
-
-        auto _async_open(std::filesystem::path const &, fileflags_t)
-            -> task<expected<void, std::error_code>>;
-        auto _open(std::filesystem::path const &, fileflags_t)
-            -> expected<void, std::error_code>;
-        auto _make_flags(fileflags_t flags, DWORD &dwDesiredAccess,
-                         DWORD &dwCreationDisposition, DWORD &dwShareMode)
-            -> bool;
     };
-
-    static_assert(channel_base<filechannel_base<char>>);
+    // clang-format on
 
     /*************************************************************************
      * filechannel_base::_make_flags()
      */
-    template <typename CharT>
-    auto filechannel_base<CharT>::_make_flags(fileflags_t flags,
-                                              DWORD &dwDesiredAccess,
-                                              DWORD &dwCreationDisposition,
-                                              DWORD &dwShareMode) -> bool {
+    // clang-format off
+    template <typename CharT, typename T>
+        requires(sizeof(CharT) == sizeof(char)) 
+    auto filechannel_base<CharT, T>::_make_flags(
+            fileflags_t flags, DWORD &dwDesiredAccess,
+            DWORD &dwCreationDisposition, DWORD &dwShareMode)
+        -> bool {
+        // clang-format on
 
         // Must specify either read or write.
         if ((flags & (fileflags::read | fileflags::write)) == 0)
@@ -104,6 +119,11 @@ namespace sk::cio::win32 {
 
         // Read access only
         if ((flags & fileflags::read) && !(flags & fileflags::write)) {
+            // These flags are not valid for reading.
+            if (flags &
+                (fileflags::trunc | fileflags::append | fileflags::create_new))
+                return false;
+
             dwDesiredAccess = GENERIC_READ;
             dwCreationDisposition = OPEN_EXISTING;
             dwShareMode = FILE_SHARE_READ;
@@ -112,20 +132,31 @@ namespace sk::cio::win32 {
 
         // Write access or read-write access
         if (flags & fileflags::write) {
-            dwDesiredAccess |= GENERIC_WRITE;
+            // Must specify either create_new or open_existing (or both).
+            if (!(flags & (fileflags::create_new | fileflags::open_existing)))
+                return false;
 
-            if (flags & fileflags::read)
-                dwDesiredAccess |= GENERIC_READ;
+            // Per
+            // https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew
+            // When opening a file for write, specify both GENERIC_READ and
+            // GENERIC_WRITE even if we don't intend to read from the file.
+            dwDesiredAccess |= GENERIC_READ | GENERIC_WRITE;
 
+            // if (flags & fileflags::read)
+            //    dwDesiredAccess |= GENERIC_READ;
+
+            // Must create a new file.
             if ((flags & fileflags::create_new) &&
                 !(flags & fileflags::open_existing))
                 dwCreationDisposition = CREATE_NEW;
+            // Can create a new file or open an existing one.
             else if ((flags & fileflags::create_new) &&
                      (flags & fileflags::open_existing)) {
                 if (flags & fileflags::trunc)
                     dwCreationDisposition = CREATE_ALWAYS;
                 else
                     dwCreationDisposition = OPEN_ALWAYS;
+                // Can only open an existing file.
             } else if (!(flags & fileflags::create_new) &&
                        (flags & fileflags::open_existing)) {
                 if (flags & fileflags::trunc)
@@ -133,19 +164,27 @@ namespace sk::cio::win32 {
                 else
                     dwCreationDisposition = OPEN_EXISTING;
             }
-        } else
-            return false;
 
-        return true;
+            return true;
+        }
+
+        return false;
     }
 
     /*************************************************************************
      * filechannel_base::async_open()
      */
-    template <typename CharT>
-    auto filechannel_base<CharT>::_async_open(std::filesystem::path const &path,
-                                              fileflags_t flags)
+    // clang-format off
+    template <typename CharT, typename T>
+        requires(sizeof(CharT) == sizeof(char)) 
+    auto filechannel_base<CharT, T>::_async_open(
+            std::filesystem::path const &path,
+            fileflags_t flags)
         -> task<expected<void, std::error_code>> {
+        // clang-format on
+
+        if (is_open())
+            co_return make_unexpected(cio::error::channel_already_open);
 
         DWORD dwDesiredAccess = 0;
         DWORD dwShareMode = 0;
@@ -166,19 +205,24 @@ namespace sk::cio::win32 {
             co_return make_unexpected(
                 win32::win32_to_generic_error(win32::get_last_error()));
 
-        native_handle.assign(handle);
+        static_cast<T *>(this)->native_handle.assign(handle);
         co_return {};
     }
 
     /*************************************************************************
      * filechannel_base::open()
      */
-    template <typename CharT>
-    auto filechannel_base<CharT>::_open(std::filesystem::path const &path,
-                                        fileflags_t flags)
+    // clang-format off
+    template <typename CharT, typename T>
+        requires(sizeof(CharT) == sizeof(char)) 
+    auto filechannel_base<CharT, T>::_open(
+            std::filesystem::path const &path,
+            fileflags_t flags)
         -> expected<void, std::error_code> {
+        // clang-format on
 
-        std::wstring wpath(path.native());
+        if (is_open())
+            return make_unexpected(cio::error::channel_already_open);
 
         DWORD dwDesiredAccess = 0;
         DWORD dwShareMode = 0;
@@ -187,6 +231,8 @@ namespace sk::cio::win32 {
         if (!_make_flags(flags, dwDesiredAccess, dwCreationDisposition,
                          dwShareMode))
             return make_unexpected(cio::error::filechannel_invalid_flags);
+
+        std::wstring wpath(path.native());
 
         auto handle =
             ::CreateFileW(wpath.c_str(), dwDesiredAccess, dwShareMode, nullptr,
@@ -202,38 +248,61 @@ namespace sk::cio::win32 {
         // associate the handle with the completion port.
         reactor_handle::get_global_reactor().associate_handle(handle);
 
-        native_handle.assign(handle);
+        static_cast<T *>(this)->native_handle.assign(handle);
         return {};
     }
 
     /*************************************************************************
      * filechannel_base::is_open()
      */
-    template <typename CharT>
-    auto filechannel_base<CharT>::is_open() const -> bool {
-        return native_handle != INVALID_HANDLE_VALUE;
+    // clang-format off
+    template <typename CharT, typename T>
+        requires(sizeof(CharT) == sizeof(char))
+    auto filechannel_base<CharT, T>::is_open() const
+        -> bool {
+        // clang-format on
+
+        return static_cast<bool>(static_cast<T const *>(this)->native_handle);
     }
 
     /*************************************************************************
      * filechannel_base::close()
      */
-    template <typename CharT>
-    auto filechannel_base<CharT>::close() -> std::error_code {
-        native_handle.close();
-        // XXX return error
-        cio::error::no_error;
+    // clang-format off
+    template <typename CharT, typename T>
+        requires(sizeof(CharT) == sizeof(char))
+    auto filechannel_base<CharT, T>::close()
+        -> expected<void, std::error_code> {
+        // clang-format on
+
+        if (!is_open())
+            return make_unexpected(cio::error::channel_not_open);
+
+        auto err = static_cast<T *>(this)->native_handle.close();
+        if (err)
+            return make_unexpected(err);
+        return {};
     }
 
     /*************************************************************************
      * filechannel_base::async_close()
      */
-    template <typename CharT>
-    auto filechannel_base<CharT>::async_close() -> task<std::error_code> {
-        native_handle.close();
-        // XXX return error; make async.
-        co_return cio::error::no_error;
+    // clang-format off
+    template <typename CharT, typename T>
+        requires(sizeof(CharT) == sizeof(char))
+    auto filechannel_base<CharT, T>::async_close()
+        -> task<expected<void, std::error_code>> {
+        // clang-format on
+        
+        // XXX should be async
+        auto err = static_cast<T *>(this)->native_handle.close();
+
+        if (err)
+            co_return make_unexpected(err);
+
+        co_return {};
     }
 
-} // namespace sk::cio::win32
+} // namespace sk::cio::win32::detail
 
 #endif // SK_CIO_WIN32_CHANNEL_DAFILECHANNEL_BASE_HXX_INCLUDED

@@ -29,49 +29,98 @@
 #ifndef SK_CIO_WIN32_HANDLE_HXX_INCLUDED
 #define SK_CIO_WIN32_HANDLE_HXX_INCLUDED
 
+#include <system_error>
+
+#include <sk/cio/detail/config.hxx>
+#include <sk/cio/expected.hxx>
 #include <sk/cio/win32/windows.hxx>
+#include <sk/cio/win32/error.hxx>
 
 namespace sk::cio::win32 {
 
-    struct unique_handle {
-        explicit unique_handle(HANDLE handle_value_)
-            : handle_value(handle_value_) {}
+    /*************************************************************************
+     *
+     * RAII wrapper for Windows handles.
+     *
+     * unique_handle: this handle can only have one owner.  The handle is not
+     * copyable, but it can be moved.
+     */
 
+    struct unique_handle {
+        // Create an empty unique_handle.
+        unique_handle() noexcept
+            : _native_handle(INVALID_HANDLE_VALUE), _is_valid(false) {}
+
+        // Create a unique_handle from a native handle.
+        explicit unique_handle(HANDLE handle_value_) noexcept
+            : _native_handle(handle_value_)
+            , _is_valid(true) {}
+
+        // Move construction.
         unique_handle(unique_handle &&other) noexcept
-            : handle_value(other.handle_value) {
-            other.handle_value = nullptr;
+            : _native_handle(other._native_handle)
+            , _is_valid(true) {
+
+            other._is_valid = false;
         }
 
+        // Move assignment.
         unique_handle &operator=(unique_handle &&other) noexcept {
             if (this == &other)
                 return *this;
 
             close();
 
-            handle_value = other.handle_value;
-            other.handle_value = nullptr;
+            _native_handle = other._native_handle;
+            other._is_valid = false;
             return *this;
         }
 
-        ~unique_handle() {
+        // Destructor.  
+        ~unique_handle() noexcept {
             close();
         }
 
+        // Not copyable.
         unique_handle(unique_handle const &) = delete;
         unique_handle &operator=(unique_handle const &) = delete;
 
-        auto assign(HANDLE handle_value_) -> void {
+        // Assign a new value to this handle.
+        auto assign(HANDLE native_handle) noexcept -> void {
             close();
-            handle_value = handle_value_;
+            _native_handle = native_handle;
+            _is_valid = true;
         }
 
-        auto close() -> void {
-            if (handle_value != nullptr && handle_value != INVALID_HANDLE_VALUE)
-                ::CloseHandle(handle_value);
-            handle_value = nullptr;
+        // Close the handle.
+        auto close() noexcept -> std::error_code {
+            if (!_is_valid)
+                return win32::error::success;
+
+            _is_valid = false;
+            if (::CloseHandle(_native_handle))
+                return win32::error::success;
+            else
+                return win32::get_last_error();
         }
 
-        HANDLE handle_value{nullptr};
+        // Test if we have a valid handle.
+        operator bool() const noexcept {
+            return _is_valid;
+        }
+
+        // Return the Win32 handle.
+        auto native_handle() -> HANDLE {
+#ifdef SK_CIO_CHECKED
+            if (!_is_valid)
+                throw cio::detail::checked_error("attempt to access invalid handle");
+#endif
+            return _native_handle;
+        }
+
+    private:
+        bool _is_valid;
+        HANDLE _native_handle;
     };
 
 } // namespace sk::async::win32

@@ -32,6 +32,7 @@
 #ifdef _WIN32
 #    include <sk/cio/win32/channel/iseqfilechannel.hxx>
 #    include <sk/cio/win32/channel/oseqfilechannel.hxx>
+#    include <sk/cio/win32/channel/seqfilechannel.hxx>
 
 namespace sk::cio {
 
@@ -41,10 +42,8 @@ namespace sk::cio {
     template <typename CharT>
     using oseqfilechannel = win32::oseqfilechannel<CharT>;
 
-#    if 0
-    template < typename CharT>
+    template <typename CharT>
     using seqfilechannel = win32::seqfilechannel<CharT>;
-#    endif
 
 } // namespace sk::cio
 

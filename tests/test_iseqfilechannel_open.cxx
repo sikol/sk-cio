@@ -36,6 +36,8 @@
 using namespace sk::cio;
 
 TEST_CASE("iseqfilechannel::open() existing file") {
+    std::ignore = std::remove("test.txt");
+
     {
         std::ofstream testfile("test.txt", std::ios::binary | std::ios::trunc);
         testfile << "This is a test\n";
@@ -46,5 +48,36 @@ TEST_CASE("iseqfilechannel::open() existing file") {
         iseqfilechannel<char> chnl;
         auto ret = chnl.open("test.txt");
         REQUIRE(ret);
+    }
+}
+
+TEST_CASE("iseqfilechannel::open() with write flags is an error") {
+    iseqfilechannel<char> chnl;
+
+    auto ret = chnl.open("test.txt", fileflags::write);
+    REQUIRE(!ret);
+    REQUIRE(ret.error() == error::filechannel_invalid_flags);
+
+    ret = chnl.open("test.txt", fileflags::trunc);
+    REQUIRE(!ret);
+    REQUIRE(ret.error() == error::filechannel_invalid_flags);
+
+    ret = chnl.open("test.txt", fileflags::append);
+    REQUIRE(!ret);
+    REQUIRE(ret.error() == error::filechannel_invalid_flags);
+
+    ret = chnl.open("test.txt", fileflags::create_new);
+    REQUIRE(!ret);
+    REQUIRE(ret.error() == error::filechannel_invalid_flags);
+}
+
+TEST_CASE("iseqfilechannel::open() non-existing file") {
+    std::ignore = std::remove("test.txt");
+
+    {
+        iseqfilechannel<char> chnl;
+        auto ret = chnl.open("test.txt");
+        REQUIRE(!ret);
+        REQUIRE(ret.error() == std::errc::no_such_file_or_directory);
     }
 }

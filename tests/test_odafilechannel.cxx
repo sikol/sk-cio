@@ -49,7 +49,7 @@ TEST_CASE("odafilechannel::write()") {
         auto err = chnl.open("test.txt", fileflags::create_new);
         if (!err) {
             INFO(err.error().message());
-            REQUIRE(err);
+            REQUIRE(false);
         }
 
         std::string data("This is a test.\n");

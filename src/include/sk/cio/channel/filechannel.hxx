@@ -54,8 +54,8 @@ namespace sk::cio {
         // When opening a file for writing, allowing creating a new file.
         inline constexpr fileflags_t create_new = 0x10;
 
-        // When opening a file for writing, allowing opening an existing
-        // file.
+        // When opening a file, allowing opening an existing file.
+        // This can be specified for input files, but it's implied anyway.
         inline constexpr fileflags_t open_existing = 0x20;
     };
 

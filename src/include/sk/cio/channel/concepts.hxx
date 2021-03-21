@@ -39,6 +39,7 @@
 #include <sk/buffer/range_buffer.hxx>
 #include <sk/cio/task.hxx>
 #include <sk/cio/types.hxx>
+#include <sk/cio/expected.hxx>
 
 namespace sk::cio {
 
@@ -74,10 +75,12 @@ namespace sk::cio {
         typename Channel::value_type;
 
         // Close the channel synchronously.
-        { channel.close() } -> std::same_as<std::error_code>;
+        { channel.close() } 
+            -> std::same_as<expected<void, std::error_code>>;
 
         // Close the channel asynchronously.
-        { channel.async_close() } -> std::same_as<task<std::error_code>>;
+        { channel.async_close() } 
+            -> std::same_as<task<expected<void, std::error_code>>>;
     };
 
     /*************************************************************************

@@ -32,7 +32,6 @@
 #include <sk/cio/reactor.hxx>
 
 int main(int argc, char **argv) {
-    std::cerr << "main: starting the reactor\n";
     sk::cio::reactor_handle reactor;
 
     int result = Catch::Session().run(argc, argv);

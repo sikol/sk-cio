@@ -38,7 +38,6 @@
 #include <thread>
 
 #include <sk/cio/win32/windows.hxx>
-#include <tl/expected.hpp>
 
 namespace sk::cio {
 
@@ -240,11 +239,6 @@ namespace sk::cio {
             return future.get();
         }
     };
-
-    template <typename T, typename Error>
-    using expected = tl::expected<T, Error>;
-
-    using tl::make_unexpected;
 
 } // namespace sk::cio
 

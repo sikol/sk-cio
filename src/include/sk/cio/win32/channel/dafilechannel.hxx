@@ -26,8 +26,8 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_WIN32_CHANNEL_IDAFILECHANNEL_HXX_INCLUDED
-#define SK_CIO_WIN32_CHANNEL_IDAFILECHANNEL_HXX_INCLUDED
+#ifndef SK_CIO_WIN32_CHANNEL_DAFILECHANNEL_HXX_INCLUDED
+#define SK_CIO_WIN32_CHANNEL_DAFILECHANNEL_HXX_INCLUDED
 
 #include <filesystem>
 #include <system_error>
@@ -40,6 +40,7 @@
 #include <sk/cio/types.hxx>
 #include <sk/cio/win32/channel/detail/filechannel_base.hxx>
 #include <sk/cio/win32/channel/detail/idafilechannel_base.hxx>
+#include <sk/cio/win32/channel/detail/odafilechannel_base.hxx>
 #include <sk/cio/win32/error.hxx>
 #include <sk/cio/win32/handle.hxx>
 #include <sk/cio/win32/iocp_reactor.hxx>
@@ -48,24 +49,26 @@ namespace sk::cio::win32 {
 
     /*************************************************************************
      *
-     * idafilechannel: a direct access channel that reads from a file.
+     * dafilechannel: a direct access channel that reads and writes a file.
      */
 
     // clang-format off
     template <typename CharT>
-    struct idafilechannel final 
-            : detail::filechannel_base<CharT, idafilechannel<CharT>>
-            , detail::idafilechannel_base<CharT, idafilechannel<CharT>> {
+    struct dafilechannel final 
+            : detail::filechannel_base<CharT, dafilechannel<CharT>>
+            , detail::idafilechannel_base<CharT, dafilechannel<CharT>>
+            , detail::odafilechannel_base<CharT, dafilechannel<CharT>> {
 
         /*
-         * Create an idafilechannel which is closed.
+         * Create an dafilechannel which is closed.
          */
-        idafilechannel() = default;
+        dafilechannel() = default;
 
-        idafilechannel(idafilechannel const &) = delete;
-        idafilechannel(idafilechannel &&) noexcept = default;
-        idafilechannel &operator=(idafilechannel const &) = delete;
-        idafilechannel &operator=(idafilechannel &&) noexcept = default;
+        dafilechannel(dafilechannel const &) = delete;
+        dafilechannel(dafilechannel &&) noexcept = default;
+        dafilechannel &operator=(dafilechannel const &) = delete;
+        dafilechannel &operator=(dafilechannel &&) noexcept = default;
+        ~dafilechannel() = default;
 
         /*
          * Open a file.
@@ -79,41 +82,36 @@ namespace sk::cio::win32 {
         auto open(std::filesystem::path const &,
                   fileflags_t = fileflags::none) 
             -> expected<void, std::error_code>;
+
     };
     // clang-format on
 
-    static_assert(idachannel<idafilechannel<char>>);
+    static_assert(dachannel<dafilechannel<char>>);
 
     /*************************************************************************
-     * idafilechannel::async_open()
+     * dafilechannel::async_open()
      */
     template <typename CharT>
-    auto idafilechannel<CharT>::async_open(std::filesystem::path const &path,
+    auto dafilechannel<CharT>::async_open(std::filesystem::path const &path,
                                            fileflags_t flags)
         -> task<expected<void, std::error_code>> {
 
-        if (flags & fileflags::write)
-            co_return make_unexpected(cio::error::filechannel_invalid_flags);
-
-        flags |= fileflags::read;
+        flags |= fileflags::read | fileflags::write;
         co_return co_await this->_async_open(path, flags);
     }
 
     /*************************************************************************
-     * idafilechannel::open()
+     * dafilechannel::open()
      */
     template <typename CharT>
-    auto idafilechannel<CharT>::open(std::filesystem::path const &path,
-                                     fileflags_t flags)
+    auto dafilechannel<CharT>::open(std::filesystem::path const &path,
+                                    fileflags_t flags)
         -> expected<void, std::error_code> {
 
-        if (flags & fileflags::write)
-            return make_unexpected(cio::error::filechannel_invalid_flags);
-
-        flags |= fileflags::read;
+        flags |= fileflags::read | fileflags::write;
         return this->_open(path, flags);
     }
 
 } // namespace sk::cio::win32
 
-#endif // SK_CIO_WIN32_CHANNEL_IDAFILECHANNEL_HXX_INCLUDED
+#endif // SK_CIO_WIN32_CHANNEL_DAFILECHANNEL_HXX_INCLUDED

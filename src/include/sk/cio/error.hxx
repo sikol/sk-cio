@@ -34,6 +34,12 @@
 
 namespace sk::cio {
 
+    /*************************************************************************
+     *
+     * Channel error codes.
+     * 
+     */
+
     enum struct error : int {
         // Operation succeeded
         no_error = 0,
@@ -47,8 +53,14 @@ namespace sk::cio {
         // The buffer passed to a write operation has no data in it.
         no_data_in_buffer = 3,
 
-        // The flags passed to a filechannel's open() were not valid.
+        // The flags passed to filechannel's open() were not valid.
         filechannel_invalid_flags = 4,
+
+        // Attempt to open a channel which is already open.
+        channel_already_open = 5,
+
+        // Attempt to use a channel which is not open.
+        channel_not_open = 6,
     };
 
     namespace detail {

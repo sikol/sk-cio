@@ -53,6 +53,9 @@ namespace sk::cio {
             case error::filechannel_invalid_flags:
                 return "invalid filechannel flags";
 
+            case error::channel_already_open:
+                return "channel is already open";
+
             default:
                 return "unknown error";
             }

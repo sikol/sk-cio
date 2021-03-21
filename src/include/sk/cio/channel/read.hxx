@@ -30,6 +30,7 @@
 #define SK_CIO_CHANNEL_READ_HXX_INCLUDED
 
 #include <sk/cio/channel/concepts.hxx>
+#include <sk/cio/expected.hxx>
 
 namespace sk::cio {
 
