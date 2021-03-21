@@ -32,7 +32,7 @@ add_library(sk-cio)
 
 target_sources(sk-cio PRIVATE 
     error.cxx
-
+    reactor.cxx
     
     include/sk/cio/channel/dafilechannel.hxx
     include/sk/cio/channel/seqfilechannel.hxx
@@ -43,20 +43,28 @@ target_sources(sk-cio PRIVATE
     include/sk/cio/error.hxx
     include/sk/cio/task.hxx
     include/sk/cio/types.hxx
- "include/sk/cio/reactor.hxx" "include/sk/cio/concepts.hxx" "reactor.cxx" "include/sk/cio/spawn.hxx")
+    include/sk/cio/reactor.hxx
+    include/sk/cio/concepts.hxx
+    include/sk/cio/spawn.hxx
+    include/sk/cio/channel/filechannel.hxx
+)
 
 if(WIN32)
     target_sources(sk-cio PRIVATE
         win32/error.cxx
         win32/iocp_reactor.cxx
+        win32/async_api.cxx
 
-        "include/sk/cio/win32/channel/filechannel_base.hxx"
+        include/sk/cio/win32/channel/filechannel_base.hxx
         include/sk/cio/win32/channel/idafilechannel.hxx
         include/sk/cio/win32/error.hxx
         include/sk/cio/win32/handle.hxx
         include/sk/cio/win32/iocp_reactor.hxx
         include/sk/cio/win32/windows.hxx
-     "include/sk/cio/win32/spawn.hxx" "include/sk/cio/win32/async_api.hxx" "win32/async_api.cxx")
+        include/sk/cio/win32/spawn.hxx
+        include/sk/cio/win32/async_api.hxx
+        include/sk/cio/win32/channel/odafilechannel.hxx
+     "include/sk/cio/win32/channel/oseqfilechannel.hxx")
 endif()
 
 target_include_directories(sk-cio PUBLIC include)

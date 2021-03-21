@@ -53,6 +53,11 @@ namespace sk::cio::win32 {
                                         LPDWORD lpNumberOfBytesRead,
                                         DWORD64 Offset);
 
+    task<std::error_code> AsyncWriteFile(HANDLE hFile, LPCVOID lpBuffer,
+                                         DWORD nNumberOfBytesToWrite,
+                                         LPDWORD lpNumberOfBytesWritten,
+                                         DWORD64 Offset);
+
 } // namespace sk::cio::win32
 
 #endif // SK_CIO_WIN32_ASYNC_API_HXX_INCLUDED

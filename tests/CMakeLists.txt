@@ -29,7 +29,7 @@ cmake_minimum_required(VERSION 3.12)
 add_executable(test_cio 
 	main.cxx
 	test_task.cxx
-	"test_iseqfilechannel.cxx" "test_idafilechannel.cxx")
+	"test_iseqfilechannel.cxx" "test_idafilechannel.cxx" "test_odafilechannel.cxx" "test_iseqfilechannel_open.cxx")
 
 target_link_libraries(test_cio PRIVATE sk-cio Catch2::Catch2)
 

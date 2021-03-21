@@ -35,9 +35,20 @@
 namespace sk::cio {
 
     enum struct error : int {
+        // Operation succeeded
         no_error = 0,
+
+        // End of file reached.
         end_of_file = 1,
+
+        // The buffer passed to a read operation has no space to read into.
         no_space_in_buffer = 2,
+
+        // The buffer passed to a write operation has no data in it.
+        no_data_in_buffer = 3,
+
+        // The flags passed to a filechannel's open() were not valid.
+        filechannel_invalid_flags = 4,
     };
 
     namespace detail {

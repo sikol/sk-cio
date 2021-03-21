@@ -27,11 +27,24 @@
  */
 
 #include <sk/cio/reactor.hxx>
+#include <sk/cio/task.hxx>
+#include <sk/cio/win32/windows.hxx>
 #include <sk/cio/win32/async_api.hxx>
 #include <sk/cio/win32/iocp_reactor.hxx>
 #include <sk/cio/win32/spawn.hxx>
 
+/*************************************************************************
+ * 
+ * Win32 async functions.  These are wrappers around API I/O functions to
+ * turn them into awaiters, using overlapped I/O where possible, or else
+ * dispatching the work to std::async.
+ */
+
 namespace sk::cio::win32 {
+
+    /*************************************************************************
+     * AsyncCreateFileW()
+     */
 
     task<HANDLE> AsyncCreateFileW(LPCWSTR lpFileName, DWORD dwDesiredAccess,
                                   DWORD dwShareMode,
@@ -52,6 +65,9 @@ namespace sk::cio::win32 {
         });
     }
 
+    /*************************************************************************
+     * AsyncCreateFileA()
+     */
     task<HANDLE> AsyncCreateFileA(LPCSTR lpFileName, DWORD dwDesiredAccess,
                                   DWORD dwShareMode,
                                   LPSECURITY_ATTRIBUTES lpSecurityAttributes,
@@ -70,6 +86,9 @@ namespace sk::cio::win32 {
         });
     }
 
+    /*************************************************************************
+     * AsyncReadFile()
+     */
     struct co_ReadFile_awaiter {
         HANDLE hFile;
         LPVOID lpBuffer;
@@ -123,6 +142,65 @@ namespace sk::cio::win32 {
 
         co_return co_await co_ReadFile_awaiter{
             hFile, lpBuffer, nNumberOfBytesToRead, lpNumberOfBytesRead,
+            &overlapped};
+    }
+
+    /*************************************************************************
+     * AsyncWriteFile()
+     */
+    struct co_WriteFile_awaiter {
+        HANDLE hFile;
+        LPCVOID lpBuffer;
+        DWORD nNumberOfBytesToWrite;
+        LPDWORD lpNumberOfBytesWritten;
+        iocp_coro_state *overlapped;
+
+        bool did_suspend = false;
+
+        bool await_ready() {
+            return false;
+        }
+
+        bool await_suspend(std::coroutine_handle<> coro_handle_) {
+            std::lock_guard lock(overlapped->mutex);
+            overlapped->coro_handle = coro_handle_;
+
+            overlapped->success =
+                ::WriteFile(hFile, lpBuffer, nNumberOfBytesToWrite,
+                           lpNumberOfBytesWritten, overlapped);
+
+            if (!overlapped->success && (GetLastError() == ERROR_IO_PENDING))
+                return did_suspend = true;
+
+            return did_suspend = false;
+        }
+
+        std::error_code await_resume() {
+            DWORD error;
+
+            if (did_suspend) {
+                error = overlapped->error;
+                *lpNumberOfBytesWritten = overlapped->bytes_transferred;
+            } else {
+                error = GetLastError();
+            }
+
+            return win32::make_win32_error(error);
+        }
+    };
+
+    task<std::error_code> AsyncWriteFile(HANDLE hFile, LPCVOID lpBuffer,
+                                         DWORD nNumberOfBytesToWrite,
+                                         LPDWORD lpNumberOfBytesWritten,
+                                         DWORD64 Offset) {
+
+        iocp_coro_state overlapped;
+        memset(&overlapped, 0, sizeof(OVERLAPPED));
+        overlapped.Offset = static_cast<DWORD>(Offset & 0xFFFFFFFFUL);
+        overlapped.OffsetHigh = static_cast<DWORD>(Offset >> 32);
+
+        co_return co_await co_WriteFile_awaiter{
+            hFile, lpBuffer, nNumberOfBytesToWrite, lpNumberOfBytesWritten,
             &overlapped};
     }
 

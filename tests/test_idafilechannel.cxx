@@ -52,8 +52,8 @@ TEST_CASE("idafilechannel::read()") {
 
     idafilechannel<char> chnl;
     auto ret = chnl.open("test.txt");
-    if (ret) {
-        INFO(ret.message());
+    if (!ret) {
+        INFO(ret.error().message());
         REQUIRE(false);
     }
 
@@ -88,8 +88,8 @@ TEST_CASE("idafilechannel::async_read()") {
 
     idafilechannel<char> chnl;
     auto ret = chnl.async_open("test.txt").wait();
-    if (ret) {
-        INFO(ret.message());
+    if (!ret) {
+        INFO(ret.error().message());
         REQUIRE(false);
     }
 

@@ -26,61 +26,39 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <cstdio>
-#include <ranges>
-#include <iostream>
+#ifndef SK_CIO_CHANNEL_FILECHANNEL_HXX_INCLUDED
+#define SK_CIO_CHANNEL_FILECHANNEL_HXX_INCLUDED
 
-#include <fmt/core.h>
+#include <cstdint>
 
-#include <sk/cio/channel/seqfilechannel.hxx>
-#include <sk/cio/reactor.hxx>
-#include <sk/cio/task.hxx>
-#include <sk/cio/error.hxx>
-#include <sk/buffer/fixed_buffer.hxx>
+namespace sk::cio {
 
-using namespace sk::cio;
+    using fileflags_t = std::uint32_t;
 
-task<void> print_file(std::string const &name) {
-    iseqfilechannel<char> chnl;
+    namespace fileflags {
+        // No flags
+        inline constexpr fileflags_t none = 0x0;
 
-    auto err = co_await chnl.async_open(name);
-    if (!err) {
-        std::cerr << name << ": " << err.error().message() << "\n";
-        co_return;
-    }
+        // Open the file for writing.
+        inline constexpr fileflags_t write = 0x1;
 
-    for (;;) {
-        sk::fixed_buffer<char, 1024> buffer;
-        auto nbytes = co_await chnl.async_read_some(unlimited, buffer);
+        // Open the file for reading.
+        inline constexpr fileflags_t read = 0x2;
 
-        if (!nbytes) {
-            if (nbytes.error() != sk::cio::error::end_of_file)
-                std::cerr << name << ": " << nbytes.error().message() << "\n";
-            break;
-        }
+        // When opening a file for writing, truncate it.
+        inline constexpr fileflags_t trunc = 0x4;
 
-        for (auto &&range : buffer.readable_ranges())
-            std::cout.write(std::ranges::data(range), std::ranges::size(range));
+        // When opening a file for writing, seek to the end.
+        inline constexpr fileflags_t append = 0x8;
 
-        buffer.discard(*nbytes);
-    }
+        // When opening a file for writing, allowing creating a new file.
+        inline constexpr fileflags_t create_new = 0x10;
 
-    co_await chnl.async_close();
-}
+        // When opening a file for writing, allowing opening an existing
+        // file.
+        inline constexpr fileflags_t open_existing = 0x20;
+    };
 
-int main(int argc, char **argv) {
-    using namespace std::chrono_literals;
+} // namespace sk::cio
 
-    if (argc < 2) {
-        fmt::print(stderr, "usage: {} <file> [file...]", argv[0]);
-        return 1;
-    }
-
-    sk::cio::reactor_handle reactor;
-
-    for (auto &&file : std::span(argv + 1, argv + argc)) {
-        print_file(file).wait();
-    }
-
-    return 0;
-}
+#endif // SK_CIO_CHANNEL_FILECHANNEL_HXX_INCLUDED

@@ -36,15 +36,19 @@
 namespace sk::cio {
 
     // Type representing an I/O offset inside a direct access channel.
-    // This is a signed type so we can support seeking backwards.
-    using io_offset_t = std::int64_t;
+    using io_offset_t = std::uint64_t;
+
+    // Offset value indicating data should be written at the end of
+    // the file.
+    constexpr io_offset_t at_end = std::numeric_limits<io_offset_t>::max();
 
     // Type representing the size of an I/O operation.
-    using io_size_t = std::size_t;
+    using io_size_t = std::uint64_t;
 
     // Value indicating an I/O operation should read or write as much
     // as possible.
     constexpr io_size_t unlimited = std::numeric_limits<io_size_t>::max();
 
 } // namespace sk::cio
+
 #endif // SK_CIO_TYPES_HXX_INCLUDED

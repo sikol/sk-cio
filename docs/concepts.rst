@@ -114,10 +114,10 @@ Return true if this channel is open, otherwise false.
 .. code-block:: c++
 
   auto channel_base::async_close()
-       -> task<std::error_code>;
+       -> task<expected<void, std::error_code>>;
   
   auto channel_base::close()
-       -> std::error_code;
+       -> expected<void, std::error_code>;
 
 Flush any buffered data and close the channel.
 
@@ -218,11 +218,11 @@ The following functions are provided:
 
     auto orsqchannel::write_rec(io_size_t n,
                                 sk::readable_buffer &buf)
-         -> std::error_code;
+         -> expected<void, std::error_code>;
 
     auto orsqchannel::async_write_rec(io_size_t n,
                                       sk::readable_buffer &buf)
-         -> task<std::error_code>;
+         -> task<expected<void, std::error_code>>;
 
 Write a record consisting of ``n`` objects from ``buf`` to the channel.
 If ``n`` is ``unlimited``, then ``n`` will be treated as equal to the

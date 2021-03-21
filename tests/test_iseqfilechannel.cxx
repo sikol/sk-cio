@@ -52,8 +52,8 @@ TEST_CASE("iseqfilechannel::read()") {
 
     iseqfilechannel<char> chnl;
     auto ret = chnl.open("test.txt");
-    if (ret) {
-        INFO(ret.message());
+    if (!ret) {
+        INFO(ret.error().message());
         REQUIRE(false);
     }
 
@@ -87,8 +87,8 @@ TEST_CASE("iseqfilechannel::async_read()") {
 
     iseqfilechannel<char> chnl;
     auto ret = chnl.open("test.txt");
-    if (ret) {
-        INFO(ret.message());
+    if (!ret) {
+        INFO(ret.error().message());
         REQUIRE(false);
     }
 

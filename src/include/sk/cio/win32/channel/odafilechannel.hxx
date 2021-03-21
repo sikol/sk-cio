@@ -26,14 +26,15 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_WIN32_CHANNEL_ISEQFILECHANNEL_HXX_INCLUDED
-#define SK_CIO_WIN32_CHANNEL_ISEQFILECHANNEL_HXX_INCLUDED
+#ifndef SK_CIO_WIN32_CHANNEL_ODAFILECHANNEL_HXX_INCLUDED
+#define SK_CIO_WIN32_CHANNEL_ODAFILECHANNEL_HXX_INCLUDED
 
 #include <filesystem>
 #include <system_error>
 
 #include <sk/buffer/buffer.hxx>
 #include <sk/cio/channel/concepts.hxx>
+#include <sk/cio/channel/filechannel.hxx>
 #include <sk/cio/error.hxx>
 #include <sk/cio/task.hxx>
 #include <sk/cio/types.hxx>
@@ -44,19 +45,19 @@
 
 namespace sk::cio::win32 {
 
-    // clang-format off
-
     /*************************************************************************
      *
-     * iseqfilechannel: a sequential-access channel to a file.
-     * Although this is a sequential channel, it also supports seeking.
+     * odafilechannel: a direct access channel that writes to a file.
      */
+
+    // clang-format off
     template <typename CharT>
-    struct iseqfilechannel final : filechannel_base<CharT> {
+    struct odafilechannel final : filechannel_base<CharT> {
+
         /*
-         * Create an iseqfilechannel which is closed.
+         * Create an odafilechannel which is closed.
          */
-        iseqfilechannel() = default;
+        odafilechannel() = default;
 
         /*
          * Open a file.
@@ -67,187 +68,186 @@ namespace sk::cio::win32 {
             -> expected<void, std::error_code>;
 
         /*
-         * Create an iseqfilechannel from a native handle.
+         * Create an odafilechannel from a native handle.
          */
-        explicit iseqfilechannel(
+        explicit odafilechannel(
             typename filechannel_base<CharT>::native_handle_type &&handle);
 
-        explicit iseqfilechannel(iseqfilechannel const &) = delete;
-        iseqfilechannel(iseqfilechannel &&) noexcept = default;
-        iseqfilechannel &operator=(iseqfilechannel const &) = delete;
-        iseqfilechannel &operator=(iseqfilechannel &&) noexcept = default;
-        ~iseqfilechannel();
+        odafilechannel(odafilechannel const &) = delete;
+        odafilechannel(odafilechannel &&) noexcept = default;
+        odafilechannel &operator=(odafilechannel const &) = delete;
+        odafilechannel &operator=(odafilechannel &&) noexcept = default;
+        ~odafilechannel();
 
         /*
-         * Read data.
+         * Write data.
          */
-        template <sk::writable_buffer Buffer>
-        auto async_read_some(io_size_t n, Buffer &buffer)
-            -> task<expected<io_size_t, std::error_code>> 
+        template <sk::readable_buffer Buffer>
+        auto async_write_some_at(io_size_t, io_offset_t, Buffer &buffer)
+            -> task<expected<io_size_t, std::error_code>>
             requires std::same_as<
                 sk::buffer_value_t<Buffer>, 
                 typename filechannel_base<CharT>::value_type>;
 
-        template <sk::writable_buffer Buffer>
-        auto read_some(io_size_t n, Buffer &buffer)
-            -> expected<io_size_t, std::error_code> 
+        template <sk::readable_buffer Buffer>
+        auto write_some_at(io_size_t, io_offset_t, Buffer &buffer)
+            -> expected<io_size_t, std::error_code>
             requires std::same_as<
-                sk::buffer_value_t<Buffer>,
+                sk::buffer_value_t<Buffer>, 
                 typename filechannel_base<CharT>::value_type>;
-
-    private:
-        io_offset_t _read_position{0};
     };
-
     // clang-format on
 
-    static_assert(iseqchannel<iseqfilechannel<char>>);
+    static_assert(odachannel<odafilechannel<char>>);
 
     /*************************************************************************
-     * iseqfilechannel::async_open()
+     * odafilechannel::odafilechannel()
      */
     template <typename CharT>
-    auto iseqfilechannel<CharT>::async_open(std::filesystem::path const &path,
-                                            fileflags_t flags)
-        -> task<expected<void, std::error_code>> {
-
-        if (flags & fileflags::write)
-            co_return make_unexpected(cio::error::filechannel_invalid_flags);
-
-        flags |= fileflags::read;
-        co_return co_await this->_async_open(path, flags);
-    }
-
-    /*************************************************************************
-     * iseqfilechannel::open()
-     */
-    template <typename CharT>
-    auto iseqfilechannel<CharT>::open(std::filesystem::path const &path,
-                                      fileflags_t flags) -> 
-        expected<void, std::error_code> {
-
-        if (flags & fileflags::write)
-            return make_unexpected(cio::error::filechannel_invalid_flags);
-
-        flags |= fileflags::read;
-        return this->_open(path, flags);
-    }
-
-    /*************************************************************************
-     * iseqfilechannel::iseqfilechannel()
-     */
-    template <typename CharT>
-    iseqfilechannel<CharT>::iseqfilechannel(
+    odafilechannel<CharT>::odafilechannel(
         typename filechannel_base<CharT>::native_handle_type &&native_handle_)
         : filechannel_base<CharT>(native_handle_) {}
 
     /*************************************************************************
-     * iseqfilechannel::~iseqfilechannel()
+     * odafilechannel::async_open()
      */
     template <typename CharT>
-    iseqfilechannel<CharT>::~iseqfilechannel() = default;
+    auto odafilechannel<CharT>::async_open(std::filesystem::path const &path,
+                                           fileflags_t flags)
+        -> task<expected<void, std::error_code>> {
+
+        if (flags & fileflags::read)
+            co_return make_unexpected(cio::error::filechannel_invalid_flags);
+
+        flags |= fileflags::write;
+        co_return co_await this->_async_open(path, flags);
+    }
 
     /*************************************************************************
-     * iseqfilechannel::async_read_some()
+     * odafilechannel::open()
+     */
+    template <typename CharT>
+    auto odafilechannel<CharT>::open(std::filesystem::path const &path,
+                                     fileflags_t flags)
+        -> expected<void, std::error_code> {
+
+        if (flags & fileflags::read)
+            return make_unexpected(cio::error::filechannel_invalid_flags);
+
+        flags |= fileflags::write;
+        return this->_open(path, flags);
+    }
+
+    /*************************************************************************
+     * odafilechannel::~odafilechannel()
+     */
+    template <typename CharT>
+    odafilechannel<CharT>::~odafilechannel() = default;
+
+    /*************************************************************************
+     * odafilechannel::async_write_some_at()
      */
 
     // clang-format off
     template <typename CharT>
-    template <sk::writable_buffer Buffer>
-    auto iseqfilechannel<CharT>::async_read_some(io_size_t nobjs,
-                                                 Buffer &buffer)
+    template <sk::readable_buffer Buffer>
+    auto odafilechannel<CharT>::async_write_some_at(io_size_t nobjs,
+                                                    io_offset_t loc,
+                                                    Buffer &buffer)
         -> task<expected<io_size_t, std::error_code>> 
         requires std::same_as<
             sk::buffer_value_t<Buffer>, 
             typename filechannel_base<CharT>::value_type>
     {
-    // clang-format on
-        DWORD bytes_read = 0;
+        // clang-format on
 
-        auto ranges = buffer.writable_ranges();
+        DWORD bytes_written = 0;
+
+        auto ranges = buffer.readable_ranges();
 
         if (std::ranges::size(ranges) == 0)
-            co_return 0u;
+            co_return make_unexpected(cio::error::no_data_in_buffer);
 
         auto first_range = *std::ranges::begin(ranges);
         auto buf_data = std::ranges::data(first_range);
         auto buf_size = std::ranges::size(first_range);
 
         // The maximum I/O size we can support.
-        auto max_objs =
+        static auto max_objs =
             static_cast<std::size_t>(std::numeric_limits<DWORD>::max()) /
             sizeof(CharT);
 
-        // Can't read more than max_objs.
+        // Can't write more than max_objs.
         if (nobjs > max_objs)
             nobjs = max_objs;
 
-        // Can't read more than we have buffer space for.
+        // Can't write more than we have buffer space for.
         if (nobjs > buf_size)
             nobjs = buf_size;
 
-        // The number of bytes we'll read.
+        // The number of bytes we'll write.
         DWORD dwbytes = static_cast<DWORD>(nobjs) * sizeof(CharT);
 
-        auto ret = co_await win32::AsyncReadFile(
+        auto ret = co_await win32::AsyncWriteFile(
             filechannel_base<CharT>::native_handle.handle_value, buf_data,
-            dwbytes, &bytes_read, _read_position);
+            dwbytes, &bytes_written, loc);
 
         if (ret)
             co_return make_unexpected(win32::win32_to_generic_error(ret));
 
-        auto objs_read = bytes_read * sizeof(CharT);
-        buffer.commit(objs_read);
-        _read_position += bytes_read;
-        co_return objs_read;
+        auto objs_written = bytes_written * sizeof(CharT);
+        buffer.discard(objs_written);
+        co_return objs_written;
     }
 
     /*************************************************************************
-     * iseqfilechannel::read_some()
+     * idafilechannel::write_some_at()
      */
 
     // clang-format off
     template <typename CharT>
-    template <sk::writable_buffer Buffer>
-    auto iseqfilechannel<CharT>::read_some(io_size_t nobjs, Buffer &buffer)
+    template <sk::readable_buffer Buffer>
+    auto odafilechannel<CharT>::write_some_at(io_size_t nobjs,
+                                              io_offset_t loc,
+                                              Buffer &buffer)
         -> expected<io_size_t, std::error_code> 
         requires std::same_as<
             sk::buffer_value_t<Buffer>, 
             typename filechannel_base<CharT>::value_type>
     {
-    // clang-format on
+        // clang-format on
 
-        DWORD bytes_read = 0;
+        DWORD bytes_written = 0;
 
-        auto ranges = buffer.writable_ranges();
+        auto ranges = buffer.readable_ranges();
 
         if (std::ranges::size(ranges) == 0)
-            return 0u;
+            return make_unexpected(cio::error::no_data_in_buffer);
 
         auto first_range = *std::ranges::begin(ranges);
         auto buf_data = std::ranges::data(first_range);
         auto buf_size = std::ranges::size(first_range);
 
         // The maximum I/O size we can support.
-        auto max_objs =
+        static auto max_objs =
             static_cast<std::size_t>(std::numeric_limits<DWORD>::max()) /
             sizeof(CharT);
 
-        // Can't read more than max_objs.
+        // Can't write more than max_objs.
         if (nobjs > max_objs)
             nobjs = max_objs;
 
-        // Can't read more than we have buffer space for.
+        // Can't write more than we have buffer space for.
         if (nobjs > buf_size)
             nobjs = buf_size;
 
-        // The number of bytes we'll read.
+        // The number of bytes we'll write.
         DWORD dwbytes = static_cast<DWORD>(nobjs) * sizeof(CharT);
 
         OVERLAPPED overlapped;
         std::memset(&overlapped, 0, sizeof(overlapped));
-        overlapped.Offset = static_cast<DWORD>(_read_position & 0xFFFFFFFFUL);
-        overlapped.OffsetHigh = static_cast<DWORD>(_read_position >> 32);
+        overlapped.Offset = static_cast<DWORD>(loc & 0xFFFFFFFFUL);
+        overlapped.OffsetHigh = static_cast<DWORD>(loc >> 32);
 
         // Create an event for the OVERLAPPED.  We don't actually use the event
         // but it has to be present.
@@ -265,25 +265,24 @@ namespace sk::cio::win32 {
             reinterpret_cast<std::uintptr_t>(event_handle) | 0x1);
 
         auto ret =
-            ::ReadFile(filechannel_base<CharT>::native_handle.handle_value,
-                       buf_data, dwbytes, &bytes_read, &overlapped);
+            ::WriteFile(filechannel_base<CharT>::native_handle.handle_value,
+                        buf_data, dwbytes, &bytes_written, &overlapped);
 
         if (!ret && (::GetLastError() == ERROR_IO_PENDING))
             ret = ::GetOverlappedResult(
                 filechannel_base<CharT>::native_handle.handle_value,
-                &overlapped, &bytes_read, TRUE);
+                &overlapped, &bytes_written, TRUE);
 
         if (!ret) {
             return make_unexpected(
                 win32::win32_to_generic_error(win32::get_last_error()));
         }
 
-        auto objs_read = bytes_read * sizeof(CharT);
-        buffer.commit(objs_read);
-        _read_position += bytes_read;
-        return objs_read;
+        auto objs_written = bytes_written * sizeof(CharT);
+        buffer.discard(objs_written);
+        return objs_written;
     }
 
 } // namespace sk::cio::win32
 
-#endif // SK_CIO_WIN32_CHANNEL_ISEQFILECHANNEL_HXX_INCLUDED
+#endif // SK_CIO_WIN32_CHANNEL_ODAFILECHANNEL_HXX_INCLUDED

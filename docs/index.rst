@@ -10,8 +10,9 @@ both a synchronous API and a coroutine-based asynchronous API.
    :caption: Contents:
 
    license.rst
-   io_functions.rst
+   expected.rst
    concepts.rst
+   io_functions.rst
 
 Supported compilers
 -------------------

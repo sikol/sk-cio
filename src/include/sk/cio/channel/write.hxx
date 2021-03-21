@@ -41,58 +41,113 @@ namespace sk::cio {
      *
      */
 
-    /*
-     * async_write()
+    /*************************************************************************
+     * write_some()
      */
 
-    template <oseqchannel Channel, 
-              std::ranges::contiguous_range Range>
-    requires(std::is_same_v<channel_value_t<Channel>,
-                            std::ranges::range_value_t<Range>>)
-    auto async_write(Channel &channel, Range &&range) {
-        auto buf = sk::make_readable_range_buffer(range);
-        return channel.async_write(buf);
+    template<oseqchannel Channel, sk::readable_buffer Buffer>
+    auto write_some(Channel &channel,
+                    io_size_t n, 
+                    Buffer &buffer)
+        -> expected<io_size_t, std::error_code>
+           requires std::same_as<channel_value_t<Channel>,
+                                  sk::buffer_value_t<Buffer>> {
+
+        return channel.write_some(n, buffer);
     }
 
-    /*
-     * write()
-     */
-    template <oseqchannel Channel, 
-              std::ranges::contiguous_range Range>
-    requires(std::is_same_v<channel_value_t<Channel>,
-                            std::ranges::range_value_t<Range>>)
-    auto write(Channel &channel, Range &&range) {
-        auto buf = sk::make_readable_range_buffer(range);
-        return channel.write(buf);
+    template<oseqchannel Channel, sk::readable_buffer Buffer>
+    auto async_write_some(Channel &channel,
+                          io_size_t n, 
+                          Buffer &buffer)
+         -> task<expected<io_size_t, std::error_code>>
+         requires std::same_as<channel_value_t<Channel>,
+                               sk::buffer_value_t<Buffer>> {
+
+        return channel.async_write_some(n, buffer);
     }
 
-    /*
-     * async_write_at() 
-     */
+    template<oseqchannel Channel, std::ranges::contiguous_range Range>
+    auto write_some(Channel &channel,
+                    io_size_t n, 
+                    Range &range)
+         -> expected<io_size_t, std::error_code>
+         requires std::same_as<channel_value_t<Channel>,
+                               std::ranges::range_value_t<Range>> {
 
-    template <odachannel Channel, 
-              std::ranges::contiguous_range Range>
-    requires(std::is_same_v<channel_value_t<Channel>,
-                            std::ranges::range_value_t<Range>>)
-    auto async_write_at(Channel &channel, io_offset_t offset, Range &&range) {
-        auto buf = sk::make_readable_range_buffer(range);
-        return channel.async_write_at(offset, buf);
+        auto buffer = sk::make_readable_range_buffer(range);
+        return write_some(channel, n, buffer);
     }
 
-    /*
-     * write_at()
+
+    template<oseqchannel Channel, std::ranges::contiguous_range Range>
+    auto async_write_some(Channel &channel,
+                          io_size_t n, 
+                          Range &range)
+         -> task<expected<io_size_t, std::error_code>>
+         requires std::same_as<channel_value_t<Channel>,
+                               std::ranges::range_value_t<Range>> {
+
+        auto buffer = sk::make_readable_range_buffer(range);
+        co_return co_await async_write_some(channel, n, buffer);
+    }
+
+    /*************************************************************************
+     * write_some_at()
      */
-    template <odachannel Channel, 
-              std::ranges::contiguous_range Range>
-    requires(std::is_same_v<channel_value_t<Channel>,
-                            std::ranges::range_value_t<Range>>)
-    auto write_at(Channel &channel, io_offset_t offset, Range &&range) {
-        auto buf = sk::make_readable_range_buffer(range);
-        return channel.write_at(offset, buf);
+
+    template<odachannel Channel, sk::readable_buffer Buffer>
+    auto write_some_at(Channel &channel,
+                       io_size_t n, 
+                       io_offset_t loc,
+                       Buffer &buffer)
+        -> expected<io_size_t, std::error_code>
+           requires std::same_as<channel_value_t<Channel>,
+                                 sk::buffer_value_t<Buffer>> {
+
+        return channel.write_some_at(n, loc, buffer);
+    }
+
+    template<odachannel Channel, sk::writable_buffer Buffer>
+    auto async_write_some_at(Channel &channel,
+                             io_size_t n, 
+                             io_offset_t loc,
+                             Buffer &buffer)
+         -> task<expected<io_size_t, std::error_code>>
+         requires std::same_as<channel_value_t<Channel>,
+                               sk::buffer_value_t<Buffer>> {
+
+        return channel.async_write_some_at(n, loc, buffer);
+    }
+
+    template<odachannel Channel, std::ranges::contiguous_range Range>
+    auto write_some_at(Channel &channel,
+                       io_size_t n, 
+                       io_offset_t loc,
+                       Range const &range)
+         -> expected<io_size_t, std::error_code>
+         requires std::same_as<channel_value_t<Channel>,
+                               std::ranges::range_value_t<Range>> {
+
+        auto buffer = sk::make_readable_range_buffer(range);
+        return write_some_at(channel, n, loc, buffer);
+    }
+
+    template<odachannel Channel, std::ranges::contiguous_range Range>
+    auto async_write_some_at(Channel &channel,
+                             io_size_t n, 
+                             io_offset_t loc,
+                             Range const &range)
+         -> task<expected<io_size_t, std::error_code>>
+         requires std::same_as<channel_value_t<Channel>,
+                               std::ranges::range_value_t<Range>> {
+
+        auto buffer = sk::make_readable_range_buffer(range);
+        co_return co_await async_write_some_at(channel, n, loc, buffer);
     }
 
     // clang-format on
 
 } // namespace sk::cio
 
-#endif // SK_CIO_CHANNEL_WRITE_HXX_INCLUDED
+#endif // SK_CIO_CHANNEL_READ_HXX_INCLUDED

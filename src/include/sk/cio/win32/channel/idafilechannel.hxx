@@ -26,8 +26,8 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_WIN32_CHANNEL_IFILECHANNEL_HXX_INCLUDED
-#define SK_CIO_WIN32_CHANNEL_IFILECHANNEL_HXX_INCLUDED
+#ifndef SK_CIO_WIN32_CHANNEL_IDAFILECHANNEL_HXX_INCLUDED
+#define SK_CIO_WIN32_CHANNEL_IDAFILECHANNEL_HXX_INCLUDED
 
 #include <filesystem>
 #include <system_error>
@@ -57,6 +57,14 @@ namespace sk::cio::win32 {
          * Create an idafilechannel which is closed.
          */
         idafilechannel() = default;
+
+        /*
+         * Open a file.
+         */
+        auto async_open(std::filesystem::path const &, fileflags_t = fileflags::none) 
+            -> task<expected<void, std::error_code>>;
+        auto open(std::filesystem::path const &, fileflags_t = fileflags::none) 
+            -> expected<void, std::error_code>;
 
         /*
          * Create an idafilechannel from a native handle.
@@ -98,6 +106,36 @@ namespace sk::cio::win32 {
     idafilechannel<CharT>::idafilechannel(
         typename filechannel_base<CharT>::native_handle_type &&native_handle_)
         : filechannel_base<CharT>(native_handle_) {}
+
+    /*************************************************************************
+     * idafilechannel::async_open()
+     */
+    template <typename CharT>
+    auto idafilechannel<CharT>::async_open(std::filesystem::path const &path,
+                                           fileflags_t flags)
+        -> task<expected<void, std::error_code>> {
+
+        if (flags & fileflags::write)
+            co_return make_unexpected(cio::error::filechannel_invalid_flags);
+
+        flags |= fileflags::read;
+        co_return co_await this->_async_open(path, flags);
+    }
+
+    /*************************************************************************
+     * idafilechannel::open()
+     */
+    template <typename CharT>
+    auto idafilechannel<CharT>::open(std::filesystem::path const &path,
+                                     fileflags_t flags)
+        -> expected<void, std::error_code> {
+
+        if (flags & fileflags::write)
+            return make_unexpected(cio::error::filechannel_invalid_flags);
+
+        flags |= fileflags::read;
+        return this->_open(path, flags);
+    }
 
     /*************************************************************************
      * idafilechannel::~idafilechannel()
@@ -246,4 +284,4 @@ namespace sk::cio::win32 {
 
 } // namespace sk::cio::win32
 
-#endif // SK_CIO_WIN32_CHANNEL_IFILECHANNEL_HXX_INCLUDED
+#endif // SK_CIO_WIN32_CHANNEL_IDAFILECHANNEL_HXX_INCLUDED

@@ -31,16 +31,17 @@
 
 #ifdef _WIN32
 #    include <sk/cio/win32/channel/idafilechannel.hxx>
+#    include <sk/cio/win32/channel/odafilechannel.hxx>
 
 namespace sk::cio {
 
     template <typename CharT>
     using idafilechannel = win32::idafilechannel<CharT>;
 
-    #if 0
     template <typename CharT>
     using odafilechannel = win32::odafilechannel<CharT>;
 
+    #    if 0
     template <typename CharT>
     using dafilechannel = win32::dafilechannel<CharT>;
     #endif

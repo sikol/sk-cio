@@ -26,61 +26,25 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <cstdio>
-#include <ranges>
+#include <fstream>
 #include <iostream>
 
-#include <fmt/core.h>
+#include <catch.hpp>
 
 #include <sk/cio/channel/seqfilechannel.hxx>
-#include <sk/cio/reactor.hxx>
-#include <sk/cio/task.hxx>
-#include <sk/cio/error.hxx>
-#include <sk/buffer/fixed_buffer.hxx>
 
 using namespace sk::cio;
 
-task<void> print_file(std::string const &name) {
-    iseqfilechannel<char> chnl;
-
-    auto err = co_await chnl.async_open(name);
-    if (!err) {
-        std::cerr << name << ": " << err.error().message() << "\n";
-        co_return;
+TEST_CASE("iseqfilechannel::open() existing file") {
+    {
+        std::ofstream testfile("test.txt", std::ios::binary | std::ios::trunc);
+        testfile << "This is a test\n";
+        testfile.close();
     }
 
-    for (;;) {
-        sk::fixed_buffer<char, 1024> buffer;
-        auto nbytes = co_await chnl.async_read_some(unlimited, buffer);
-
-        if (!nbytes) {
-            if (nbytes.error() != sk::cio::error::end_of_file)
-                std::cerr << name << ": " << nbytes.error().message() << "\n";
-            break;
-        }
-
-        for (auto &&range : buffer.readable_ranges())
-            std::cout.write(std::ranges::data(range), std::ranges::size(range));
-
-        buffer.discard(*nbytes);
+    {
+        iseqfilechannel<char> chnl;
+        auto ret = chnl.open("test.txt");
+        REQUIRE(ret);
     }
-
-    co_await chnl.async_close();
-}
-
-int main(int argc, char **argv) {
-    using namespace std::chrono_literals;
-
-    if (argc < 2) {
-        fmt::print(stderr, "usage: {} <file> [file...]", argv[0]);
-        return 1;
-    }
-
-    sk::cio::reactor_handle reactor;
-
-    for (auto &&file : std::span(argv + 1, argv + argc)) {
-        print_file(file).wait();
-    }
-
-    return 0;
 }
