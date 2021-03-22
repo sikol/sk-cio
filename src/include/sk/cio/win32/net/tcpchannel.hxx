@@ -26,38 +26,49 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_WIN32_CHANNEL_ISEQFILECHANNEL_BASE_HXX_INCLUDED
-#define SK_CIO_WIN32_CHANNEL_ISEQFILECHANNEL_BASE_HXX_INCLUDED
+#ifndef SK_CIO_WIN32_NET_TCPCHANNEL_HXX_INCLUDED
+#define SK_CIO_WIN32_NET_TCPCHANNEL_HXX_INCLUDED
 
-#include <filesystem>
-#include <system_error>
+#include <cstddef>
 
-#include <sk/buffer/buffer.hxx>
 #include <sk/cio/channel/concepts.hxx>
-#include <sk/cio/detail/config.hxx>
-#include <sk/cio/error.hxx>
+#include <sk/cio/expected.hxx>
+#include <sk/cio/net/address.hxx>
+#include <sk/cio/spawn.hxx>
 #include <sk/cio/task.hxx>
-#include <sk/cio/types.hxx>
-#include <sk/cio/win32/channel/detail/filechannel_base.hxx>
-#include <sk/cio/win32/error.hxx>
+#include <sk/cio/win32/async_api.hxx>
 #include <sk/cio/win32/handle.hxx>
-#include <sk/cio/win32/iocp_reactor.hxx>
 
-namespace sk::cio::win32::detail {
+namespace sk::cio::win32::net {
 
     // clang-format off
+    struct tcpchannel {
+        using value_type = std::byte;
+        using native_handle_type = unique_socket;
 
-    /*************************************************************************
-     *
-     * iseqfilechannel_base: a sequential-access channel to a file.
-     *
-     */
-    template <typename T>
-    struct iseqfilechannel_base {
-        explicit iseqfilechannel_base(iseqfilechannel_base const &) = delete;
-        iseqfilechannel_base(iseqfilechannel_base &&) noexcept = default;
-        iseqfilechannel_base &operator=(iseqfilechannel_base const &) = delete;
-        iseqfilechannel_base &operator=(iseqfilechannel_base &&) noexcept = default;
+        tcpchannel();
+        tcpchannel(unique_socket &&);
+        tcpchannel(tcpchannel const &) = delete;
+        tcpchannel(tcpchannel &&) noexcept = default;
+        tcpchannel &operator=(tcpchannel const &) = delete;
+        tcpchannel &operator=(tcpchannel &&) noexcept = default;
+        ~tcpchannel() = default;
+
+        /*
+         * Test if this channel has been opened.
+         */
+        auto is_open() const -> bool;
+
+        /*
+         * Connect to a remote host.
+         */
+        [[nodiscard]]
+        auto async_connect(cio::net::address const &addr)
+            -> task<expected<void, std::error_code>>;
+
+        [[nodiscard]]
+        auto connect(cio::net::address const &addr)
+            -> expected<void, std::error_code>;
 
         /*
          * Read data.
@@ -74,31 +85,143 @@ namespace sk::cio::win32::detail {
             -> expected<io_size_t, std::error_code> 
             requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>;
 
-    protected:
-        iseqfilechannel_base() = default;
-        ~iseqfilechannel_base() = default;
+        /*
+         * Close the socket.
+         */
+        [[nodiscard]] 
+        auto async_close() 
+             -> task<expected<void, std::error_code>>;
+
+        [[nodiscard]] 
+        auto close() 
+             -> expected<void, std::error_code>;
 
     private:
-        io_offset_t _read_position{0};
+        native_handle_type _native_handle;
     };
-
     // clang-format on
 
     /*************************************************************************
-     * iseqfilechannel_base::async_read_some()
+     * tcpchannel::tcpchannel()
+     */
+
+    inline tcpchannel::tcpchannel() {}
+
+    inline tcpchannel::tcpchannel(unique_socket &&sock)
+        : _native_handle(std::move(sock)) {}
+
+    /*************************************************************************
+     * tcpchannel::is_open()
+     */
+
+    inline auto tcpchannel::is_open() const -> bool {
+        return _native_handle;
+    }
+
+    /*************************************************************************
+     * tcpchannel::close()
+     */
+    inline auto tcpchannel::close() -> expected<void, std::error_code> {
+
+        if (!is_open())
+            return make_unexpected(cio::error::channel_not_open);
+
+        auto err = _native_handle.close();
+        if (err)
+            return make_unexpected(err);
+        return {};
+    }
+
+    /*************************************************************************
+     * tcpchannel::async_close()
+     */
+    inline auto tcpchannel::async_close()
+        -> task<expected<void, std::error_code>> {
+
+        auto err = co_await spawn([&]() { return _native_handle.close(); });
+
+        if (err)
+            co_return make_unexpected(err);
+
+        co_return {};
+    }
+
+    /*************************************************************************
+     * tcpchannel::async_connect()
+     */
+    inline auto tcpchannel::async_connect(cio::net::address const &addr)
+        -> task<expected<void, std::error_code>> {
+
+#ifdef SK_CIO_CHECKED
+        if (is_open())
+            throw cio::detail::checked_error(
+                "attempt to re-connect a connected tcpchannel");
+#endif
+
+        auto sock = ::WSASocketW(addr.address_family(), SOCK_STREAM,
+                                 IPPROTO_TCP, nullptr, 0, WSA_FLAG_OVERLAPPED);
+
+        if (sock == INVALID_SOCKET)
+            co_return make_unexpected(win32::get_last_winsock_error());
+
+        unique_socket sock_(sock);
+
+        auto ret = co_await win32::AsyncConnectEx(
+            _native_handle.native_socket(),
+            reinterpret_cast<sockaddr const *>(&addr.native_address),
+            addr.native_address_length, nullptr, 0, nullptr);
+
+        if (!ret)
+            co_return make_unexpected(ret.error());
+
+        _native_handle = std::move(sock_);
+    }
+
+    /*************************************************************************
+     * tcpchannel::connect()
+     */
+    inline auto tcpchannel::connect(cio::net::address const &addr)
+        -> expected<void, std::error_code> {
+
+#ifdef SK_CIO_CHECKED
+        if (is_open())
+            throw cio::detail::checked_error(
+                "attempt to re-connect a connected tcpchannel");
+#endif
+
+        auto sock = ::WSASocketW(addr.address_family(), SOCK_STREAM,
+                                 IPPROTO_TCP, nullptr, 0, WSA_FLAG_OVERLAPPED);
+
+        if (sock == INVALID_SOCKET)
+            return make_unexpected(win32::get_last_winsock_error());
+
+        unique_socket sock_(sock);
+
+        auto ret = ::WSAConnect(
+            _native_handle.native_socket(),
+            reinterpret_cast<sockaddr const *>(&addr.native_address),
+            addr.native_address_length, nullptr, nullptr, nullptr, nullptr);
+
+        if (ret)
+            return make_unexpected(win32::get_last_winsock_error());
+
+        _native_handle = std::move(sock_);
+    }
+
+    /*************************************************************************
+     * tcpchannel::async_read_some()
      */
 
     // clang-format off
-    template <typename T>
     template <sk::writable_buffer Buffer>
-    auto iseqfilechannel_base<T>::async_read_some(io_size_t nobjs,
-                                                  Buffer &buffer)
+    inline auto tcpchannel::async_read_some(io_size_t nobjs,
+                                            Buffer &buffer)
         -> task<expected<io_size_t, std::error_code>> 
         requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>
     {
         // clang-format on
 #ifdef SK_CIO_CHECKED
-        if (!static_cast<T *>(this)->is_open())
+        if (!is_open())
             throw cio::detail::checked_error(
                 "attempt to read from a closed channel");
 #endif
@@ -130,33 +253,31 @@ namespace sk::cio::win32::detail {
         DWORD dwbytes = static_cast<DWORD>(nobjs);
 
         auto ret = co_await win32::AsyncReadFile(
-            static_cast<T *>(this)->native_handle.native_handle(), buf_data,
-            dwbytes, &bytes_read, _read_position);
+            reinterpret_cast<HANDLE>(_native_handle.native_socket()), buf_data,
+            dwbytes, &bytes_read, 0);
 
         if (!ret)
             co_return make_unexpected(
                 win32::win32_to_generic_error(ret.error()));
 
         buffer.commit(bytes_read);
-        _read_position += bytes_read;
         co_return bytes_read;
     }
 
     /*************************************************************************
-     * iseqfilechannel_base::read_some()
+     * tcpchannel::read_some()
      */
 
     // clang-format off
-    template <typename T>
     template <sk::writable_buffer Buffer>
-    auto iseqfilechannel_base<T>::read_some(io_size_t nobjs, Buffer &buffer)
+    inline auto tcpchannel::read_some(io_size_t nobjs, Buffer &buffer)
         -> expected<io_size_t, std::error_code> 
         requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>
     {
         // clang-format on
 
 #ifdef SK_CIO_CHECKED
-        if (!static_cast<T *>(this)->is_open())
+        if (!is_open())
             throw cio::detail::checked_error(
                 "attempt to read from a closed channel");
 #endif
@@ -189,8 +310,6 @@ namespace sk::cio::win32::detail {
 
         OVERLAPPED overlapped;
         std::memset(&overlapped, 0, sizeof(overlapped));
-        overlapped.Offset = static_cast<DWORD>(_read_position & 0xFFFFFFFFUL);
-        overlapped.OffsetHigh = static_cast<DWORD>(_read_position >> 32);
 
         // Create an event for the OVERLAPPED.  We don't actually use the event
         // but it has to be present.
@@ -208,24 +327,21 @@ namespace sk::cio::win32::detail {
             reinterpret_cast<std::uintptr_t>(event_handle) | 0x1);
 
         auto ret =
-            ::ReadFile(static_cast<T *>(this)->native_handle.native_handle(),
+            ::ReadFile(reinterpret_cast<HANDLE>(_native_handle.native_socket()),
                        buf_data, dwbytes, &bytes_read, &overlapped);
 
         if (!ret && (::GetLastError() == ERROR_IO_PENDING))
-            ret = ::GetOverlappedResult(
-                static_cast<T *>(this)->native_handle.native_handle(),
-                &overlapped, &bytes_read, TRUE);
+            ret = ::GetOverlappedResult(_native_handle.native_socket(),
+                                        &overlapped, &bytes_read, TRUE);
 
-        if (!ret) {
+        if (!ret)
             return make_unexpected(
                 win32::win32_to_generic_error(win32::get_last_error()));
-        }
 
         buffer.commit(bytes_read);
-        _read_position += bytes_read;
         return bytes_read;
     }
 
-} // namespace sk::cio::win32::detail
+} // namespace sk::cio::win32::net
 
-#endif // SK_CIO_WIN32_CHANNEL_ISEQFILECHANNEL_BASE_HXX_INCLUDED
+#endif // SK_CIO_WIN32_NET_TCPCHANNEL_HXX_INCLUDED

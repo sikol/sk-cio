@@ -39,7 +39,7 @@ namespace sk::cio::win32 {
         auto win32_errc_category::message(int c) const -> std::string {
             LPSTR msgbuf;
 
-            auto len = FormatMessageA(
+            auto len = ::FormatMessageA(
                 FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
                     FORMAT_MESSAGE_IGNORE_INSERTS,
                 nullptr, c, 0, reinterpret_cast<LPSTR>(&msgbuf), 0, nullptr);
@@ -72,6 +72,10 @@ namespace sk::cio::win32 {
         }
     }
 
+    auto make_win32_error(int e) -> std::error_code {
+        return make_error_code(static_cast<error>(e));
+    }
+
     auto make_win32_error(DWORD e) -> std::error_code {
         return make_error_code(static_cast<error>(e));
     }
@@ -81,7 +85,11 @@ namespace sk::cio::win32 {
     }
 
     auto get_last_error() -> std::error_code {
-        return make_win32_error(GetLastError());
+        return make_win32_error(::GetLastError());
+    }
+
+    auto get_last_winsock_error() -> std::error_code {
+        return make_win32_error(::WSAGetLastError());
     }
 
     auto win32_to_generic_error(std::error_code ec) -> std::error_code {

@@ -29,34 +29,48 @@
 #ifndef SK_CIO_WIN32_ASYNC_API_HXX_INCLUDED
 #define SK_CIO_WIN32_ASYNC_API_HXX_INCLUDED
 
-#include <sk/cio/win32/windows.hxx>
+#include <system_error>
+
 #include <sk/cio/task.hxx>
+#include <sk/cio/expected.hxx>
+#include <sk/cio/win32/windows.hxx>
 
 namespace sk::cio::win32 {
 
-    task<HANDLE> AsyncCreateFileW(LPCWSTR lpFileName, DWORD dwDesiredAccess,
-                                  DWORD dwShareMode,
-                                  LPSECURITY_ATTRIBUTES lpSecurityAttributes,
-                                  DWORD dwCreationDisposition,
-                                  DWORD dwFlagsAndAttributes,
-                                  HANDLE hTemplateFile);
+    auto AsyncCreateFileW(LPCWSTR lpFileName, DWORD dwDesiredAccess,
+                          DWORD dwShareMode,
+                          LPSECURITY_ATTRIBUTES lpSecurityAttributes,
+                          DWORD dwCreationDisposition,
+                          DWORD dwFlagsAndAttributes, HANDLE hTemplateFile)
+        -> task<expected<HANDLE, std::error_code>>;
 
-    task<HANDLE> AsyncCreateFileA(LPCSTR lpFileName, DWORD dwDesiredAccess,
-                                  DWORD dwShareMode,
-                                  LPSECURITY_ATTRIBUTES lpSecurityAttributes,
-                                  DWORD dwCreationDisposition,
-                                  DWORD dwFlagsAndAttributes,
-                                  HANDLE hTemplateFile);
+    auto AsyncCreateFileA(LPCSTR lpFileName, DWORD dwDesiredAccess,
+                          DWORD dwShareMode,
+                          LPSECURITY_ATTRIBUTES lpSecurityAttributes,
+                          DWORD dwCreationDisposition,
+                          DWORD dwFlagsAndAttributes, HANDLE hTemplateFile)
+        -> task<expected<HANDLE, std::error_code>>;
 
-    task<std::error_code> AsyncReadFile(HANDLE hFile, LPVOID lpBuffer,
-                                        DWORD nNumberOfBytesToRead,
-                                        LPDWORD lpNumberOfBytesRead,
-                                        DWORD64 Offset);
+    auto AsyncReadFile(HANDLE hFile, LPVOID lpBuffer,
+                       DWORD nNumberOfBytesToRead, LPDWORD lpNumberOfBytesRead,
+                       DWORD64 Offset)
+        -> task<expected<void, std::error_code>>;
 
-    task<std::error_code> AsyncWriteFile(HANDLE hFile, LPCVOID lpBuffer,
-                                         DWORD nNumberOfBytesToWrite,
-                                         LPDWORD lpNumberOfBytesWritten,
-                                         DWORD64 Offset);
+    auto AsyncWriteFile(HANDLE hFile, LPCVOID lpBuffer,
+                        DWORD nNumberOfBytesToWrite,
+                        LPDWORD lpNumberOfBytesWritten, DWORD64 Offset)
+        -> task<expected<void, std::error_code>>;
+
+    auto AsyncConnectEx(SOCKET, sockaddr const *name, int namelen,
+                        PVOID lpSendBuffer, DWORD dwSendDataLength,
+                        LPDWORD lpdwBytesSent)
+        -> task<expected<void, std::error_code>>;
+
+    auto AsyncAcceptEx(SOCKET sListenSocket, SOCKET sAcceptSocket,
+                       PVOID lpOutputBuffer, DWORD dwReceiveDataLength,
+                       DWORD dwLocalAddressLength, DWORD dwRemoteAddressLength,
+                       LPDWORD lpdwBytesReceived)
+        -> task<expected<void, std::error_code>>;
 
 } // namespace sk::cio::win32
 

@@ -52,10 +52,9 @@ namespace sk::cio::win32 {
      */
 
     // clang-format off
-    template <typename CharT>
     struct idafilechannel final 
-            : detail::filechannel_base<CharT, idafilechannel<CharT>>
-            , detail::idafilechannel_base<CharT, idafilechannel<CharT>> {
+            : detail::filechannel_base<idafilechannel>
+            , detail::idafilechannel_base<idafilechannel> {
 
         /*
          * Create an idafilechannel which is closed.
@@ -82,13 +81,12 @@ namespace sk::cio::win32 {
     };
     // clang-format on
 
-    static_assert(idachannel<idafilechannel<char>>);
+    static_assert(idachannel<idafilechannel>);
 
     /*************************************************************************
      * idafilechannel::async_open()
      */
-    template <typename CharT>
-    auto idafilechannel<CharT>::async_open(std::filesystem::path const &path,
+    inline auto idafilechannel::async_open(std::filesystem::path const &path,
                                            fileflags_t flags)
         -> task<expected<void, std::error_code>> {
 
@@ -102,8 +100,7 @@ namespace sk::cio::win32 {
     /*************************************************************************
      * idafilechannel::open()
      */
-    template <typename CharT>
-    auto idafilechannel<CharT>::open(std::filesystem::path const &path,
+    inline auto idafilechannel::open(std::filesystem::path const &path,
                                      fileflags_t flags)
         -> expected<void, std::error_code> {
 

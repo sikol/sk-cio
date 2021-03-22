@@ -26,58 +26,63 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <fstream>
+#include <cstdio>
 #include <iostream>
+#include <ranges>
 
-#include <catch.hpp>
+#include <fmt/core.h>
 
-#include <sk/cio/channel/seqfilechannel.hxx>
+#include <sk/cio/net/address.hxx>
+#include <sk/cio/net/tcpserverchannel.hxx>
+#include <sk/cio/reactor.hxx>
+#include <sk/buffer/fixed_buffer.hxx>
 
 using namespace sk::cio;
 
-TEST_CASE("iseqfilechannel::open() existing file") {
-    std::ignore = std::remove("test.txt");
-
-    {
-        std::ofstream testfile("test.txt", std::ios::binary | std::ios::trunc);
-        testfile << "This is a test\n";
-        testfile.close();
+task<void> run(std::string const &addr, std::string const &port) {
+    auto netaddr = net::make_address(addr, port);
+    if (!netaddr) {
+        fmt::print(stderr, "{}:{}: {}\n", addr, port,
+                   netaddr.error().message());
+        co_return;
     }
 
-    {
-        iseqfilechannel chnl;
-        auto ret = chnl.open("test.txt");
-        REQUIRE(ret);
+    auto server = net::tcpserverchannel::listen(*netaddr);
+
+    for (;;) {
+        auto client = co_await server->async_accept();
+        if (!client) {
+            fmt::print(stderr, "async_accept(): {}\n",
+                       client.error().message());
+            co_return;
+        }
+
+        sk::fixed_buffer<std::byte, 1024> buf;
+        for (;;) {
+            auto ret = co_await client->async_read_some(unlimited, buf);
+            if (!ret) {
+                fmt::print(stderr, "read err: {}\n", ret.error().message());
+                co_return;
+            }
+
+            for (auto &&range : buf.readable_ranges())
+                std::cout.write(
+                    reinterpret_cast<char const *>(std::ranges::data(range)),
+                    std::ranges::size(range));
+        }
     }
 }
 
-TEST_CASE("iseqfilechannel::open() with write flags is an error") {
-    iseqfilechannel chnl;
 
-    auto ret = chnl.open("test.txt", fileflags::write);
-    REQUIRE(!ret);
-    REQUIRE(ret.error() == error::filechannel_invalid_flags);
+int main(int argc, char **argv) {
+    using namespace std::chrono_literals;
 
-    ret = chnl.open("test.txt", fileflags::trunc);
-    REQUIRE(!ret);
-    REQUIRE(ret.error() == error::filechannel_invalid_flags);
-
-    ret = chnl.open("test.txt", fileflags::append);
-    REQUIRE(!ret);
-    REQUIRE(ret.error() == error::filechannel_invalid_flags);
-
-    ret = chnl.open("test.txt", fileflags::create_new);
-    REQUIRE(!ret);
-    REQUIRE(ret.error() == error::filechannel_invalid_flags);
-}
-
-TEST_CASE("iseqfilechannel::open() non-existing file") {
-    std::ignore = std::remove("test.txt");
-
-    {
-        iseqfilechannel chnl;
-        auto ret = chnl.open("test.txt");
-        REQUIRE(!ret);
-        REQUIRE(ret.error() == std::errc::no_such_file_or_directory);
+    if (argc != 3) {
+        fmt::print(stderr, "usage: {} <address> <port>", argv[0]);
+        return 1;
     }
+
+    sk::cio::reactor_handle reactor;
+    run(argv[1], argv[2]).wait();
+    return 0;
 }

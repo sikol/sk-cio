@@ -51,7 +51,7 @@ target_sources(sk-cio PRIVATE
     include/sk/cio/expected.hxx
 
     include/sk/cio/detail/config.hxx
-)
+ "include/sk/cio/net/tcpchannel.hxx" "include/sk/cio/channel/charchannel.hxx" "include/sk/cio/net/tcpserverchannel.hxx")
 
 if(WIN32)
     target_sources(sk-cio PRIVATE
@@ -76,7 +76,7 @@ if(WIN32)
         include/sk/cio/win32/async_api.hxx
 
         include/sk/cio/net/address.hxx
-        )
+         "include/sk/cio/win32/net/tcpchannel.hxx" "include/sk/cio/win32/net/tcpserverchannel.hxx")
 endif()
 
 target_include_directories(sk-cio PUBLIC include)

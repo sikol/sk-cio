@@ -36,14 +36,9 @@
 
 namespace sk::cio {
 
-    template <typename CharT>
-    using iseqfilechannel = win32::iseqfilechannel<CharT>;
-
-    template <typename CharT>
-    using oseqfilechannel = win32::oseqfilechannel<CharT>;
-
-    template <typename CharT>
-    using seqfilechannel = win32::seqfilechannel<CharT>;
+    using win32::iseqfilechannel;
+    using win32::oseqfilechannel;
+    using win32::seqfilechannel;
 
 } // namespace sk::cio
 

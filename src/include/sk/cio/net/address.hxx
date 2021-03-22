@@ -87,6 +87,10 @@ namespace sk::cio::net {
         // For consistency, store it ourselves.
         socklen_t native_address_length;
 
+        int address_family() const {
+            return native_address.ss_family;
+        }
+
         // Construct an address from a sockaddr.
         address(sockaddr_storage const *ss, socklen_t len)
             : native_address_length(len) {
@@ -105,20 +109,17 @@ namespace sk::cio::net {
         }
     };
 
-    std::ostream &operator<<(std::ostream &strm, address const &addr);
+    // Create an address from an address and service string.
+    // 
+    // This does not attempt to resolve either argument, so they should
+    // be literal strings.
+    //
+    // If only host is specified, the host in the return address will be
+    // the "any" address.
+    auto make_address(std::string const &host, std::string const &service)
+        -> expected<address, std::error_code>;
 
-    /*************************************************************************
-     *
-     * endpoint: represents a network endpoint that can be connected to.
-     * This includes its address, and details of the socket protocol required
-     * to make the connection.
-     *
-     */
-    struct endpoint {
-        struct address address;
-        int socktype;
-        int protocol;
-    };
+    std::ostream &operator<<(std::ostream &strm, address const &addr);
 
     /*************************************************************************
      *
@@ -127,15 +128,6 @@ namespace sk::cio::net {
      *
      */
     auto async_resolve_address(std::string hostname, std::string port)
-        -> task<expected<std::vector<address>, std::error_code>>;
-
-    /*************************************************************************
-     *
-     * async_resolve_endpoint(): resolve a hostname to a list of endpoints
-     * using the operating system's resolver.
-     *
-     */
-    auto async_resolve_endpoint(std::string hostname, std::string port)
         -> task<expected<std::vector<address>, std::error_code>>;
 
 } // namespace sk::cio::net

@@ -39,6 +39,7 @@
 #include <sk/cio/reactor.hxx>
 #include <sk/cio/task.hxx>
 #include <sk/cio/types.hxx>
+#include <sk/cio/spawn.hxx>
 #include <sk/cio/win32/async_api.hxx>
 #include <sk/cio/win32/error.hxx>
 #include <sk/cio/win32/handle.hxx>
@@ -51,11 +52,10 @@ namespace sk::cio::win32::detail {
      */
 
     // clang-format off
-    template <typename CharT, typename T>
-        requires (sizeof(CharT) == sizeof(char))
+    template <typename T>
     struct filechannel_base 
     {
-        using value_type = CharT;
+        using value_type = std::byte;
         using native_handle_type = win32::unique_handle;
 
         filechannel_base(filechannel_base const &) = delete;
@@ -105,9 +105,8 @@ namespace sk::cio::win32::detail {
      * filechannel_base::_make_flags()
      */
     // clang-format off
-    template <typename CharT, typename T>
-        requires(sizeof(CharT) == sizeof(char)) 
-    auto filechannel_base<CharT, T>::_make_flags(
+    template <typename T>
+    auto filechannel_base<T>::_make_flags(
             fileflags_t flags, DWORD &dwDesiredAccess,
             DWORD &dwCreationDisposition, DWORD &dwShareMode)
         -> bool {
@@ -175,9 +174,8 @@ namespace sk::cio::win32::detail {
      * filechannel_base::async_open()
      */
     // clang-format off
-    template <typename CharT, typename T>
-        requires(sizeof(CharT) == sizeof(char)) 
-    auto filechannel_base<CharT, T>::_async_open(
+    template <typename T>
+    auto filechannel_base<T>::_async_open(
             std::filesystem::path const &path,
             fileflags_t flags)
         -> task<expected<void, std::error_code>> {
@@ -201,11 +199,11 @@ namespace sk::cio::win32::detail {
             dwCreationDisposition, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED,
             NULL);
 
-        if (handle == INVALID_HANDLE_VALUE)
+        if (!handle)
             co_return make_unexpected(
-                win32::win32_to_generic_error(win32::get_last_error()));
+                win32::win32_to_generic_error(handle.error()));
 
-        static_cast<T *>(this)->native_handle.assign(handle);
+        static_cast<T *>(this)->native_handle.assign(*handle);
         co_return {};
     }
 
@@ -213,9 +211,8 @@ namespace sk::cio::win32::detail {
      * filechannel_base::open()
      */
     // clang-format off
-    template <typename CharT, typename T>
-        requires(sizeof(CharT) == sizeof(char)) 
-    auto filechannel_base<CharT, T>::_open(
+    template <typename T>
+    auto filechannel_base<T>::_open(
             std::filesystem::path const &path,
             fileflags_t flags)
         -> expected<void, std::error_code> {
@@ -256,9 +253,8 @@ namespace sk::cio::win32::detail {
      * filechannel_base::is_open()
      */
     // clang-format off
-    template <typename CharT, typename T>
-        requires(sizeof(CharT) == sizeof(char))
-    auto filechannel_base<CharT, T>::is_open() const
+    template <typename T>
+    auto filechannel_base<T>::is_open() const
         -> bool {
         // clang-format on
 
@@ -269,9 +265,8 @@ namespace sk::cio::win32::detail {
      * filechannel_base::close()
      */
     // clang-format off
-    template <typename CharT, typename T>
-        requires(sizeof(CharT) == sizeof(char))
-    auto filechannel_base<CharT, T>::close()
+    template <typename T>
+    auto filechannel_base<T>::close()
         -> expected<void, std::error_code> {
         // clang-format on
 
@@ -288,14 +283,13 @@ namespace sk::cio::win32::detail {
      * filechannel_base::async_close()
      */
     // clang-format off
-    template <typename CharT, typename T>
-        requires(sizeof(CharT) == sizeof(char))
-    auto filechannel_base<CharT, T>::async_close()
+    template <typename T>
+    auto filechannel_base<T>::async_close()
         -> task<expected<void, std::error_code>> {
         // clang-format on
-        
-        // XXX should be async
-        auto err = static_cast<T *>(this)->native_handle.close();
+
+        auto err = co_await spawn(
+            [&] { return static_cast<T *>(this)->native_handle.close(); });
 
         if (err)
             co_return make_unexpected(err);

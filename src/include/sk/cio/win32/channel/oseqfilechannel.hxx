@@ -31,6 +31,7 @@
 
 #include <filesystem>
 #include <system_error>
+#include <cstddef>
 
 #include <sk/buffer/buffer.hxx>
 #include <sk/cio/channel/concepts.hxx>
@@ -52,10 +53,9 @@ namespace sk::cio::win32 {
      */
 
     // clang-format off
-    template <typename CharT>
     struct oseqfilechannel final 
-        : detail::filechannel_base<CharT, oseqfilechannel<CharT>>
-        , detail::oseqfilechannel_base<CharT, oseqfilechannel<CharT>> {
+        : detail::filechannel_base<oseqfilechannel>
+        , detail::oseqfilechannel_base<oseqfilechannel> {
 
         /*
          * Create an oseqfilechannel which is closed.
@@ -84,13 +84,12 @@ namespace sk::cio::win32 {
 
     // clang-format on
 
-    static_assert(oseqchannel<oseqfilechannel<char>>);
+    static_assert(oseqchannel<oseqfilechannel>);
 
     /*************************************************************************
      * oseqfilechannel::async_open()
      */
-    template <typename CharT>
-    auto oseqfilechannel<CharT>::async_open(std::filesystem::path const &path,
+    inline auto oseqfilechannel::async_open(std::filesystem::path const &path,
                                             fileflags_t flags)
         -> task<expected<void, std::error_code>> {
 
@@ -104,8 +103,7 @@ namespace sk::cio::win32 {
     /*************************************************************************
      * oseqfilechannel::open()
      */
-    template <typename CharT>
-    auto oseqfilechannel<CharT>::open(std::filesystem::path const &path,
+    inline auto oseqfilechannel::open(std::filesystem::path const &path,
                                       fileflags_t flags)
         -> expected<void, std::error_code> {
 

@@ -34,23 +34,25 @@
 #include <stdexcept>
 #include <string>
 
-#include <sk/cio/channel/read.hxx>
 #include <sk/cio/channel/dafilechannel.hxx>
+#include <sk/cio/channel/read.hxx>
 #include <sk/cio/task.hxx>
 
 using namespace sk::cio;
 
 TEST_CASE("idafilechannel::read()") {
+    std::string test_string = "This is a test\n";
+
     {
         std::ofstream testfile("test.txt", std::ios::binary | std::ios::trunc);
-        testfile << "This is a test\n";
-        testfile << "This is a test\n";
-        testfile << "This is a test\n";
+        testfile << test_string;
+        testfile << test_string;
+        testfile << test_string;
         testfile.flush();
         testfile.close();
     }
 
-    idafilechannel<char> chnl;
+    idafilechannel chnl;
     auto ret = chnl.open("test.txt");
     if (!ret) {
         INFO(ret.error().message());
@@ -58,7 +60,7 @@ TEST_CASE("idafilechannel::read()") {
     }
 
     for (int i = 3; i >= 0; --i) {
-        std::string buf(15, 'X');
+        std::vector<std::byte> buf(15 - i);
         auto nbytes = read_some_at(chnl, 15 - i, i, buf);
         if (!nbytes) {
             INFO(nbytes.error().message());
@@ -66,27 +68,31 @@ TEST_CASE("idafilechannel::read()") {
         }
 
         REQUIRE(*nbytes == 15 - i);
-        auto expected = std::string("This is a test\n").substr(i);
-        REQUIRE(buf.substr(0, 15 - i) == expected);
+        auto expected = std::vector<std::byte>(
+            reinterpret_cast<std::byte *>(test_string.data() + i),
+            reinterpret_cast<std::byte *>(test_string.data() + test_string.size()));
+        REQUIRE(buf == expected);
     }
 
-    std::string buf(15, 'X');
+    std::vector<std::byte> buf(15);
     auto nbytes = read_some_at(chnl, unlimited, 50, buf);
     REQUIRE(!nbytes);
     REQUIRE(nbytes.error() == error::end_of_file);
 }
 
 TEST_CASE("idafilechannel::async_read()") {
+    std::string test_string = "This is a test\n";
+
     {
         std::ofstream testfile("test.txt", std::ios::binary | std::ios::trunc);
-        testfile << "This is a test\n";
-        testfile << "This is a test\n";
-        testfile << "This is a test\n";
+        testfile << test_string;
+        testfile << test_string;
+        testfile << test_string;
         testfile.flush();
         testfile.close();
     }
 
-    idafilechannel<char> chnl;
+    idafilechannel chnl;
     auto ret = chnl.async_open("test.txt").wait();
     if (!ret) {
         INFO(ret.error().message());
@@ -94,7 +100,7 @@ TEST_CASE("idafilechannel::async_read()") {
     }
 
     for (int i = 3; i >= 0; --i) {
-        std::string buf(15, 'X');
+        std::vector<std::byte> buf(15 - i);
         auto nbytes = async_read_some_at(chnl, 15 - i, i, buf).wait();
         if (!nbytes) {
             INFO(nbytes.error().message());
@@ -102,11 +108,14 @@ TEST_CASE("idafilechannel::async_read()") {
         }
 
         REQUIRE(*nbytes == 15 - i);
-        auto expected = std::string("This is a test\n").substr(i);
-        REQUIRE(buf.substr(0, 15 - i) == expected);
+        auto expected = std::vector<std::byte>(
+            reinterpret_cast<std::byte *>(test_string.data() + i),
+            reinterpret_cast<std::byte *>(test_string.data() +
+                                          test_string.size()));
+        REQUIRE(buf == expected);
     }
 
-    std::string buf(15, 'X');
+    std::vector<std::byte> buf(15);
     auto nbytes = async_read_some_at(chnl, unlimited, 50, buf).wait();
     REQUIRE(!nbytes);
     REQUIRE(nbytes.error() == error::end_of_file);

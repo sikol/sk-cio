@@ -33,8 +33,8 @@
 
 #include <sk/cio/detail/config.hxx>
 #include <sk/cio/expected.hxx>
-#include <sk/cio/win32/windows.hxx>
 #include <sk/cio/win32/error.hxx>
+#include <sk/cio/win32/windows.hxx>
 
 namespace sk::cio::win32 {
 
@@ -53,13 +53,11 @@ namespace sk::cio::win32 {
 
         // Create a unique_handle from a native handle.
         explicit unique_handle(HANDLE handle_value_) noexcept
-            : _native_handle(handle_value_)
-            , _is_valid(true) {}
+            : _native_handle(handle_value_), _is_valid(true) {}
 
         // Move construction.
         unique_handle(unique_handle &&other) noexcept
-            : _native_handle(other._native_handle)
-            , _is_valid(true) {
+            : _native_handle(other._native_handle), _is_valid(true) {
 
             other._is_valid = false;
         }
@@ -76,7 +74,7 @@ namespace sk::cio::win32 {
             return *this;
         }
 
-        // Destructor.  
+        // Destructor.
         ~unique_handle() noexcept {
             close();
         }
@@ -113,7 +111,8 @@ namespace sk::cio::win32 {
         auto native_handle() -> HANDLE {
 #ifdef SK_CIO_CHECKED
             if (!_is_valid)
-                throw cio::detail::checked_error("attempt to access invalid handle");
+                throw cio::detail::checked_error(
+                    "attempt to access invalid handle");
 #endif
             return _native_handle;
         }
@@ -123,6 +122,79 @@ namespace sk::cio::win32 {
         HANDLE _native_handle;
     };
 
-} // namespace sk::async::win32
+    /*************************************************************************
+     *
+     * unique_socket: a unique handle to a Winsock socket.
+     */
+
+    struct unique_socket {
+        unique_socket() noexcept : _native_socket(INVALID_SOCKET) {}
+
+        explicit unique_socket(SOCKET native_socket) noexcept
+            : _native_socket(native_socket) {}
+
+        unique_socket(unique_socket &&other) noexcept
+            : _native_socket(std::exchange(other._native_socket, INVALID_SOCKET)) {
+        }
+
+        unique_socket &operator=(unique_socket &&other) noexcept {
+            if (this == &other)
+                return *this;
+
+            close();
+
+            _native_socket =
+                std::exchange(other._native_socket, INVALID_SOCKET);
+            return *this;
+        }
+
+        ~unique_socket() noexcept {
+            close();
+        }
+
+        // Not copyable.
+        unique_socket(unique_socket const &) = delete;
+        unique_socket &operator=(unique_socket const &) = delete;
+
+        // Assign a new value to this socket.
+        auto assign(SOCKET native_socket) noexcept -> void {
+            close();
+            _native_socket = native_socket;
+        }
+
+        // Close the handle.
+        auto close() noexcept -> std::error_code {
+            if (!*this)
+                return win32::error::success;
+
+            auto ret = ::closesocket(_native_socket);
+            _native_socket = INVALID_SOCKET;
+
+            if (ret == 0)
+                return win32::error::success;
+            else
+                return win32::get_last_winsock_error();
+        }
+
+        // Test if we have a valid socket.
+        operator bool() const noexcept {
+            return _native_socket != INVALID_SOCKET;
+        }
+
+        // Return the socket.
+        auto native_socket() -> SOCKET {
+#ifdef SK_CIO_CHECKED
+            if (!*this)
+                throw cio::detail::checked_error(
+                    "attempt to access invalid socket");
+#endif
+            return _native_socket;
+        }
+
+    private:
+        SOCKET _native_socket;
+    };
+
+} // namespace sk::cio::win32
 
 #endif // SK_CIO_WIN32_HANDLE_HXX_INCLUDED

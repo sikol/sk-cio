@@ -32,9 +32,9 @@
 #include <filesystem>
 #include <system_error>
 
-#include <sk/cio/detail/config.hxx>
 #include <sk/buffer/buffer.hxx>
 #include <sk/cio/channel/concepts.hxx>
+#include <sk/cio/detail/config.hxx>
 #include <sk/cio/error.hxx>
 #include <sk/cio/task.hxx>
 #include <sk/cio/types.hxx>
@@ -53,11 +53,10 @@ namespace sk::cio::win32 {
      */
 
     // clang-format off
-    template <typename CharT>
     struct dafilechannel final 
-            : detail::filechannel_base<CharT, dafilechannel<CharT>>
-            , detail::idafilechannel_base<CharT, dafilechannel<CharT>>
-            , detail::odafilechannel_base<CharT, dafilechannel<CharT>> {
+            : detail::filechannel_base<dafilechannel>
+            , detail::idafilechannel_base<dafilechannel>
+            , detail::odafilechannel_base<dafilechannel> {
 
         /*
          * Create an dafilechannel which is closed.
@@ -86,14 +85,13 @@ namespace sk::cio::win32 {
     };
     // clang-format on
 
-    static_assert(dachannel<dafilechannel<char>>);
+    static_assert(dachannel<dafilechannel>);
 
     /*************************************************************************
      * dafilechannel::async_open()
      */
-    template <typename CharT>
-    auto dafilechannel<CharT>::async_open(std::filesystem::path const &path,
-                                           fileflags_t flags)
+    inline auto dafilechannel::async_open(std::filesystem::path const &path,
+                                          fileflags_t flags)
         -> task<expected<void, std::error_code>> {
 
         flags |= fileflags::read | fileflags::write;
@@ -103,8 +101,7 @@ namespace sk::cio::win32 {
     /*************************************************************************
      * dafilechannel::open()
      */
-    template <typename CharT>
-    auto dafilechannel<CharT>::open(std::filesystem::path const &path,
+    inline auto dafilechannel::open(std::filesystem::path const &path,
                                     fileflags_t flags)
         -> expected<void, std::error_code> {
 

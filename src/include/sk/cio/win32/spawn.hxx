@@ -33,8 +33,9 @@
 
 namespace sk::cio::win32 {
 
-    /*
-     * Run a callable on another thread in a way that can be awaited.
+    /*************************************************************************
+     *
+     * spawn: run a callable on another thread in a way that can be awaited.
      */
 
     template <typename Callable>

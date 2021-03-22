@@ -36,14 +36,9 @@
 
 namespace sk::cio {
 
-    template <typename CharT>
-    using idafilechannel = win32::idafilechannel<CharT>;
-
-    template <typename CharT>
-    using odafilechannel = win32::odafilechannel<CharT>;
-
-    template <typename CharT>
-    using dafilechannel = win32::dafilechannel<CharT>;
+    using win32::idafilechannel;
+    using win32::odafilechannel;
+    using win32::dafilechannel;
 
 } // namespace sk::cio
 

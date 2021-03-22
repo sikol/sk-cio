@@ -29,12 +29,13 @@
 #ifndef SK_CIO_WIN32_CHANNEL_ISEQFILECHANNEL_HXX_INCLUDED
 #define SK_CIO_WIN32_CHANNEL_ISEQFILECHANNEL_HXX_INCLUDED
 
+#include <cstddef>
 #include <filesystem>
 #include <system_error>
 
 #include <sk/buffer/buffer.hxx>
-#include <sk/cio/detail/config.hxx>
 #include <sk/cio/channel/concepts.hxx>
+#include <sk/cio/detail/config.hxx>
 #include <sk/cio/error.hxx>
 #include <sk/cio/task.hxx>
 #include <sk/cio/types.hxx>
@@ -53,10 +54,9 @@ namespace sk::cio::win32 {
      * iseqfilechannel: a sequential-access channel to a file.
      * Although this is a sequential channel, it also supports seeking.
      */
-    template <typename CharT>
     struct iseqfilechannel final 
-            : detail::filechannel_base<CharT, iseqfilechannel<CharT>>
-            , detail::iseqfilechannel_base<CharT, iseqfilechannel<CharT>> {
+            : detail::filechannel_base<iseqfilechannel>
+            , detail::iseqfilechannel_base<iseqfilechannel> {
         /*
          * Create an iseqfilechannel which is closed.
          */
@@ -84,13 +84,12 @@ namespace sk::cio::win32 {
 
     // clang-format on
 
-    static_assert(iseqchannel<iseqfilechannel<char>>);
+    static_assert(iseqchannel<iseqfilechannel>);
 
     /*************************************************************************
      * iseqfilechannel::async_open()
      */
-    template <typename CharT>
-    auto iseqfilechannel<CharT>::async_open(std::filesystem::path const &path,
+    inline auto iseqfilechannel::async_open(std::filesystem::path const &path,
                                             fileflags_t flags)
         -> task<expected<void, std::error_code>> {
 
@@ -104,10 +103,9 @@ namespace sk::cio::win32 {
     /*************************************************************************
      * iseqfilechannel::open()
      */
-    template <typename CharT>
-    auto iseqfilechannel<CharT>::open(std::filesystem::path const &path,
-                                      fileflags_t flags) -> 
-        expected<void, std::error_code> {
+    inline auto iseqfilechannel::open(std::filesystem::path const &path,
+                                      fileflags_t flags)
+        -> expected<void, std::error_code> {
 
         if (flags & fileflags::write)
             return make_unexpected(cio::error::filechannel_invalid_flags);

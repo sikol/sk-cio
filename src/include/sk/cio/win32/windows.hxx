@@ -45,9 +45,12 @@
 #        define SK_WIN32_UNDEFINE_NOMINMAX
 #    endif
 
+// clang-format off
 #    include <windows.h>
 #    include <winsock2.h>
 #    include <ws2tcpip.h>
+#    include <mswsock.h>
+// clang-format on
 
 #    ifdef SK_WIN32_UNDEFINE_WIN32_LEAN_AND_MEAN
 #        undef WIN32_LEAN_AND_MEAN

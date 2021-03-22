@@ -69,11 +69,15 @@ namespace sk::cio::win32 {
     auto make_error_code(error e) -> std::error_code;
 
     // Construct a Win32 error from an error code.
+    auto make_win32_error(int e) -> std::error_code;
     auto make_win32_error(DWORD e) -> std::error_code;
     auto make_win32_error(LSTATUS e) -> std::error_code;
 
     // Return a Win32 error representing GetLastError()
     auto get_last_error() -> std::error_code;
+
+    // Return a Win32 error representing WSAGetLastError()
+    auto get_last_winsock_error() -> std::error_code;
 
     // Convert a Win32 error into a std::generic_category error if
     // there's an appropriate conversion.  This is used by the portable

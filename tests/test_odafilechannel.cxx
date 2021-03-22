@@ -41,9 +41,11 @@
 using namespace sk::cio;
 
 TEST_CASE("odafilechannel::write()") {
+    std::string test_string("This is a test.\n");
+
     {
         // Write at the end of a file.
-        odafilechannel<char> chnl;
+        odafilechannel chnl;
 
         std::ignore = std::remove("test.txt");
         auto err = chnl.open("test.txt", fileflags::create_new);
@@ -52,7 +54,9 @@ TEST_CASE("odafilechannel::write()") {
             REQUIRE(false);
         }
 
-        std::string data("This is a test.\n");
+        std::vector<std::byte> data(
+            reinterpret_cast<std::byte *>(test_string.data()),
+            reinterpret_cast<std::byte *>(test_string.data() + test_string.size()));
 
         auto ret = write_some_at(chnl, unlimited, at_end, data);
         if (!ret) {

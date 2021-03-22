@@ -34,23 +34,25 @@
 #include <stdexcept>
 #include <string>
 
-#include <sk/cio/channel/seqfilechannel.hxx>
 #include <sk/cio/channel/read.hxx>
+#include <sk/cio/channel/seqfilechannel.hxx>
 #include <sk/cio/task.hxx>
 
 using namespace sk::cio;
 
 TEST_CASE("iseqfilechannel::read()") {
+    std::string test_string("This is a test\n");
+
     {
         std::ofstream testfile("test.txt", std::ios::binary | std::ios::trunc);
-        testfile << "This is a test\n";
-        testfile << "This is a test\n";
-        testfile << "This is a test\n";
+        testfile << test_string;
+        testfile << test_string;
+        testfile << test_string;
         testfile.flush();
         testfile.close();
     }
 
-    iseqfilechannel<char> chnl;
+    iseqfilechannel chnl;
     auto ret = chnl.open("test.txt");
     if (!ret) {
         INFO(ret.error().message());
@@ -58,7 +60,7 @@ TEST_CASE("iseqfilechannel::read()") {
     }
 
     for (int i = 0; i < 3; ++i) {
-        std::string buf(15, 'X');
+        std::vector<std::byte> buf(15);
         auto nbytes = read_some(chnl, unlimited, buf);
         if (!nbytes) {
             INFO(nbytes.error().message());
@@ -66,34 +68,40 @@ TEST_CASE("iseqfilechannel::read()") {
         }
 
         REQUIRE(*nbytes == 15);
-        REQUIRE(buf == "This is a test\n");
+        std::vector<std::byte> data_(
+            reinterpret_cast<std::byte *>(test_string.data()),
+            reinterpret_cast<std::byte *>(test_string.data() +
+                                          test_string.size()));
+        REQUIRE(buf == data_);
     }
 
-    std::string buf(15, 'X');
+    std::vector<std::byte> buf(15);
     auto nbytes = read_some(chnl, unlimited, buf);
     REQUIRE(!nbytes);
     REQUIRE(nbytes.error() == error::end_of_file);
 }
 
 TEST_CASE("iseqfilechannel::async_read()") {
+    std::string test_string("This is a test\n");
+
     {
         std::ofstream testfile("test.txt", std::ios::binary | std::ios::trunc);
-        testfile << "This is a test\n";
-        testfile << "This is a test\n";
-        testfile << "This is a test\n";
+        testfile << test_string;
+        testfile << test_string;
+        testfile << test_string;
         testfile.flush();
         testfile.close();
     }
 
-    iseqfilechannel<char> chnl;
-    auto ret = chnl.open("test.txt");
+    iseqfilechannel chnl;
+    auto ret = chnl.async_open("test.txt").wait();
     if (!ret) {
         INFO(ret.error().message());
         REQUIRE(false);
     }
 
     for (int i = 0; i < 3; ++i) {
-        std::string buf(15, 'X');
+        std::vector<std::byte> buf(15);
         auto nbytes = async_read_some(chnl, unlimited, buf).wait();
         if (!nbytes) {
             INFO(nbytes.error().message());
@@ -101,10 +109,14 @@ TEST_CASE("iseqfilechannel::async_read()") {
         }
 
         REQUIRE(*nbytes == 15);
-        REQUIRE(buf == "This is a test\n");
+        std::vector<std::byte> data_(
+            reinterpret_cast<std::byte *>(test_string.data()),
+            reinterpret_cast<std::byte *>(test_string.data() +
+                                          test_string.size()));
+        REQUIRE(buf == data_);
     }
 
-    std::string buf(15, 'X');
+    std::vector<std::byte> buf(15);
     auto nbytes = async_read_some(chnl, unlimited, buf).wait();
     REQUIRE(!nbytes);
     REQUIRE(nbytes.error() == error::end_of_file);

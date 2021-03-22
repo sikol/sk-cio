@@ -51,7 +51,7 @@ namespace sk::cio::win32::detail {
      */
 
     // clang-format off
-    template <typename CharT, typename T>
+    template <typename T>
     struct oseqfilechannel_base {
         oseqfilechannel_base(oseqfilechannel_base const &) = delete;
         oseqfilechannel_base(oseqfilechannel_base &&) noexcept = default;
@@ -65,19 +65,13 @@ namespace sk::cio::win32::detail {
         [[nodiscard]]
         auto async_write_some(io_size_t, Buffer &buffer)
             -> task<expected<io_size_t, std::error_code>>
-
-            requires std::same_as<
-                sk::buffer_value_t<Buffer>, 
-                CharT>;
+            requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>;
 
         template <sk::readable_buffer Buffer>
         [[nodiscard]]
         auto write_some(io_size_t, Buffer &buffer)
             -> expected<io_size_t, std::error_code>
-
-            requires std::same_as<
-                sk::buffer_value_t<Buffer>, 
-                CharT>;
+            requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>;
 
     protected:
         oseqfilechannel_base() = default;
@@ -94,14 +88,12 @@ namespace sk::cio::win32::detail {
      */
 
     // clang-format off
-    template <typename CharT, typename T>
+    template<typename T>
     template <sk::readable_buffer Buffer>
-    auto oseqfilechannel_base<CharT, T>::async_write_some(io_size_t nobjs,
-                                                       Buffer &buffer)
+    auto oseqfilechannel_base<T>::async_write_some(io_size_t nobjs,
+                                                  Buffer &buffer)
         -> task<expected<io_size_t, std::error_code>> 
-        requires std::same_as<
-            sk::buffer_value_t<Buffer>, 
-            CharT>
+        requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>
     {
         // clang-format on
 #ifdef SK_CIO_CHECKED
@@ -123,8 +115,7 @@ namespace sk::cio::win32::detail {
 
         // The maximum I/O size we can support.
         static auto max_objs =
-            static_cast<std::size_t>(std::numeric_limits<DWORD>::max()) /
-            sizeof(CharT);
+            static_cast<std::size_t>(std::numeric_limits<DWORD>::max());
 
         // Can't write more than max_objs.
         if (nobjs > max_objs)
@@ -135,20 +126,19 @@ namespace sk::cio::win32::detail {
             nobjs = buf_size;
 
         // The number of bytes we'll write.
-        DWORD dwbytes = static_cast<DWORD>(nobjs) * sizeof(CharT);
+        DWORD dwbytes = static_cast<DWORD>(nobjs);
 
         auto ret = co_await win32::AsyncWriteFile(
-            filechannel_base<CharT>::native_handle.handle_value, buf_data,
+            static_cast<T *>(this)->native_handle.handle_value, buf_data,
             dwbytes, &bytes_written, _write_position);
 
         if (ret)
             co_return make_unexpected(win32::win32_to_generic_error(ret));
 
-        auto objs_written = bytes_written / sizeof(CharT);
-        buffer.discard(objs_written);
+        buffer.discard(bytes_written);
         if (_write_position != at_end)
             _write_position += bytes_written;
-        co_return objs_written;
+        co_return bytes_written;
     }
 
     /*************************************************************************
@@ -156,14 +146,12 @@ namespace sk::cio::win32::detail {
      */
 
     // clang-format off
-    template <typename CharT, typename T>
+    template <typename T>
     template <sk::readable_buffer Buffer>
-    auto oseqfilechannel_base<CharT, T>::write_some(io_size_t nobjs,
-                                                 Buffer &buffer)
+    auto oseqfilechannel_base<T>::write_some(io_size_t nobjs,
+                                             Buffer &buffer)
         -> expected<io_size_t, std::error_code> 
-        requires std::same_as<
-            sk::buffer_value_t<Buffer>, 
-            CharT>
+        requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>
     {
         // clang-format on
 #ifdef SK_CIO_CHECKED
@@ -185,8 +173,7 @@ namespace sk::cio::win32::detail {
 
         // The maximum I/O size we can support.
         static auto max_objs =
-            static_cast<std::size_t>(std::numeric_limits<DWORD>::max()) /
-            sizeof(CharT);
+            static_cast<std::size_t>(std::numeric_limits<DWORD>::max());
 
         // Can't write more than max_objs.
         if (nobjs > max_objs)
@@ -197,7 +184,7 @@ namespace sk::cio::win32::detail {
             nobjs = buf_size;
 
         // The number of bytes we'll write.
-        DWORD dwbytes = static_cast<DWORD>(nobjs) * sizeof(CharT);
+        DWORD dwbytes = static_cast<DWORD>(nobjs);
 
         OVERLAPPED overlapped;
         std::memset(&overlapped, 0, sizeof(overlapped));
@@ -220,26 +207,25 @@ namespace sk::cio::win32::detail {
             reinterpret_cast<std::uintptr_t>(event_handle) | 0x1);
 
         auto ret =
-            ::WriteFile(static_cast<T*>(this)->native_handle.handle_value,
+            ::WriteFile(static_cast<T *>(this)->native_handle.handle_value,
                         buf_data, dwbytes, &bytes_written, &overlapped);
 
         if (!ret && (::GetLastError() == ERROR_IO_PENDING))
             ret = ::GetOverlappedResult(
-                static_cast<T *>(this)->native_handle.handle_value,
-                &overlapped, &bytes_written, TRUE);
+                static_cast<T *>(this)->native_handle.handle_value, &overlapped,
+                &bytes_written, TRUE);
 
         if (!ret) {
             return make_unexpected(
                 win32::win32_to_generic_error(win32::get_last_error()));
         }
 
-        auto objs_written = bytes_written / sizeof(CharT);
-        buffer.discard(objs_written);
+        buffer.discard(bytes_written);
         if (_write_position != at_end)
             _write_position += bytes_written;
-        return objs_written;
+        return bytes_written;
     }
 
-} // namespace sk::cio::win32
+} // namespace sk::cio::win32::detail
 
 #endif // SK_CIO_WIN32_CHANNEL_OSEQFILECHANNEL_BASE_HXX_INCLUDED

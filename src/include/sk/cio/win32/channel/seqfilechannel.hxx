@@ -29,6 +29,7 @@
 #ifndef SK_CIO_WIN32_CHANNEL_SEQFILECHANNEL_HXX_INCLUDED
 #define SK_CIO_WIN32_CHANNEL_SEQFILECHANNEL_HXX_INCLUDED
 
+#include <cstddef>
 #include <filesystem>
 #include <system_error>
 
@@ -53,11 +54,10 @@ namespace sk::cio::win32 {
      */
 
     // clang-format off
-    template <typename CharT>
     struct seqfilechannel final 
-            : detail::filechannel_base<CharT, seqfilechannel<CharT>>
-            , detail::iseqfilechannel_base<CharT, seqfilechannel<CharT>>
-            , detail::oseqfilechannel_base<CharT, seqfilechannel<CharT>> {
+            : detail::filechannel_base<seqfilechannel>
+            , detail::iseqfilechannel_base<seqfilechannel>
+            , detail::oseqfilechannel_base<seqfilechannel> {
 
         /*
          * Create a seqfilechannel which is closed.
@@ -81,18 +81,17 @@ namespace sk::cio::win32 {
         seqfilechannel(seqfilechannel &&) noexcept = default;
         seqfilechannel &operator=(seqfilechannel const &) = delete;
         seqfilechannel &operator=(seqfilechannel &&) noexcept = default;
-        ~seqfilechannel();
+        ~seqfilechannel() = default;
     };
 
     // clang-format on
 
-    static_assert(seqchannel<seqfilechannel<char>>);
+    static_assert(seqchannel<seqfilechannel>);
 
     /*************************************************************************
      * seqfilechannel::async_open()
      */
-    template <typename CharT>
-    auto seqfilechannel<CharT>::async_open(std::filesystem::path const &path,
+    inline auto seqfilechannel::async_open(std::filesystem::path const &path,
                                            fileflags_t flags)
         -> task<expected<void, std::error_code>> {
 
@@ -103,20 +102,13 @@ namespace sk::cio::win32 {
     /*************************************************************************
      * seqfilechannel::open()
      */
-    template <typename CharT>
-    auto seqfilechannel<CharT>::open(std::filesystem::path const &path,
+    inline auto seqfilechannel::open(std::filesystem::path const &path,
                                      fileflags_t flags)
         -> expected<void, std::error_code> {
 
         flags |= fileflags::read | fileflags::write;
         return this->_open(path, flags);
     }
-
-    /*************************************************************************
-     * seqfilechannel::~seqfilechannel()
-     */
-    template <typename CharT>
-    seqfilechannel<CharT>::~seqfilechannel() = default;
 
 } // namespace sk::cio::win32
 

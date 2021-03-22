@@ -29,13 +29,14 @@
 #ifndef SK_CIO_WIN32_CHANNEL_ODAFILECHANNEL_HXX_INCLUDED
 #define SK_CIO_WIN32_CHANNEL_ODAFILECHANNEL_HXX_INCLUDED
 
+#include <cstddef>
 #include <filesystem>
 #include <system_error>
 
 #include <sk/buffer/buffer.hxx>
-#include <sk/cio/detail/config.hxx>
 #include <sk/cio/channel/concepts.hxx>
 #include <sk/cio/channel/filechannel.hxx>
+#include <sk/cio/detail/config.hxx>
 #include <sk/cio/error.hxx>
 #include <sk/cio/task.hxx>
 #include <sk/cio/types.hxx>
@@ -53,10 +54,9 @@ namespace sk::cio::win32 {
      */
 
     // clang-format off
-    template <typename CharT>
     struct odafilechannel final 
-            : detail::filechannel_base<CharT, odafilechannel<CharT>>
-            , detail::odafilechannel_base<CharT, odafilechannel<CharT>> {
+            : detail::filechannel_base<odafilechannel>
+            , detail::odafilechannel_base<odafilechannel> {
 
         /*
          * Create an odafilechannel which is closed.
@@ -85,13 +85,12 @@ namespace sk::cio::win32 {
     };
     // clang-format on
 
-    static_assert(odachannel<odafilechannel<char>>);
+    static_assert(odachannel<odafilechannel>);
 
     /*************************************************************************
      * odafilechannel::async_open()
      */
-    template <typename CharT>
-    auto odafilechannel<CharT>::async_open(std::filesystem::path const &path,
+    inline auto odafilechannel::async_open(std::filesystem::path const &path,
                                            fileflags_t flags)
         -> task<expected<void, std::error_code>> {
 
@@ -105,8 +104,7 @@ namespace sk::cio::win32 {
     /*************************************************************************
      * odafilechannel::open()
      */
-    template <typename CharT>
-    auto odafilechannel<CharT>::open(std::filesystem::path const &path,
+    inline auto odafilechannel::open(std::filesystem::path const &path,
                                      fileflags_t flags)
         -> expected<void, std::error_code> {
 

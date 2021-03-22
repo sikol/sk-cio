@@ -27,21 +27,21 @@
  */
 
 #include <cstdio>
-#include <ranges>
 #include <iostream>
+#include <ranges>
 
 #include <fmt/core.h>
 
+#include <sk/buffer/fixed_buffer.hxx>
 #include <sk/cio/channel/seqfilechannel.hxx>
+#include <sk/cio/error.hxx>
 #include <sk/cio/reactor.hxx>
 #include <sk/cio/task.hxx>
-#include <sk/cio/error.hxx>
-#include <sk/buffer/fixed_buffer.hxx>
 
 using namespace sk::cio;
 
 task<void> print_file(std::string const &name) {
-    iseqfilechannel<char> chnl;
+    iseqfilechannel chnl;
 
     auto err = co_await chnl.async_open(name);
     if (!err) {
@@ -50,7 +50,7 @@ task<void> print_file(std::string const &name) {
     }
 
     for (;;) {
-        sk::fixed_buffer<char, 1024> buffer;
+        sk::fixed_buffer<std::byte, 1024> buffer;
         auto nbytes = co_await chnl.async_read_some(unlimited, buffer);
 
         if (!nbytes) {
@@ -60,7 +60,9 @@ task<void> print_file(std::string const &name) {
         }
 
         for (auto &&range : buffer.readable_ranges())
-            std::cout.write(std::ranges::data(range), std::ranges::size(range));
+            std::cout.write(
+                reinterpret_cast<char const *>(std::ranges::data(range)),
+                std::ranges::size(range));
 
         buffer.discard(*nbytes);
     }

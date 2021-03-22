@@ -34,6 +34,14 @@
 #    include <sk/cio/win32/error.hxx>
 #endif
 
+#ifndef NI_MAXHOST
+#    define NI_MAXHOST 1025
+#endif
+
+#ifndef NI_MAXSERV
+#    define NI_MAXSERV 32
+#endif
+
 namespace sk::cio::net {
     namespace detail {
 
@@ -54,6 +62,33 @@ namespace sk::cio::net {
 
     auto make_error_code(resolver_error e) -> std::error_code {
         return {static_cast<int>(e), resolver_errc_category()};
+    }
+
+    /*************************************************************************
+     * make_address()
+     */
+    auto make_address(std::string const &hostname, std::string const &service)
+        -> expected<address, std::error_code> {
+
+        addrinfo hints;
+        addrinfo *gai_result;
+        std::memset(&hints, 0, sizeof(hints));
+        hints.ai_flags = AI_NUMERICHOST;
+
+        auto ret = ::getaddrinfo(hostname.c_str(),
+                                 service.empty() ? nullptr : service.c_str(),
+                                 &hints, &gai_result);
+
+        if (ret)
+            return make_unexpected(
+                make_error_code(static_cast<resolver_error>(ret)));
+
+        auto addr = address(gai_result->ai_addr,
+                            // On Windows, ai_addrlen is a size_t.
+                            static_cast<socklen_t>(gai_result->ai_addrlen));
+
+        freeaddrinfo(gai_result);
+        return addr;
     }
 
     /*************************************************************************
@@ -88,9 +123,13 @@ namespace sk::cio::net {
         co_return addresses;
     }
 
+    /*************************************************************************
+     * operator<< (ostream, address)
+     */
     std::ostream &operator<<(std::ostream &strm, address const &addr) {
         char host[NI_MAXHOST];
         char port[NI_MAXSERV];
+
         auto ret = getnameinfo(
             reinterpret_cast<sockaddr const *>(&addr.native_address),
             addr.native_address_length, host, sizeof(host), port, sizeof(port),

@@ -15,3 +15,4 @@ Requires:
 Example:
 
 * [async_type](sample/async_type.cxx)
+* [async_resolve](sample/async_resolve.cxx)

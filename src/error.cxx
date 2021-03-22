@@ -56,6 +56,14 @@ namespace sk::cio {
             case error::channel_already_open:
                 return "channel is already open";
 
+#ifdef _WIN32
+            case error::winsock_no_connectex:
+                return "Winsock implementation missing ConnectEx";
+
+            case error::winsock_no_acceptex:
+                return "Winsock implementation missing AcceptEx";
+#endif
+
             default:
                 return "unknown error";
             }

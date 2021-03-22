@@ -51,7 +51,7 @@ namespace sk::cio::win32::detail {
      */
 
     // clang-format off
-    template <typename CharT, typename T>
+    template <typename T>
     struct idafilechannel_base {
         idafilechannel_base(idafilechannel_base const &) = delete;
         idafilechannel_base(idafilechannel_base &&) noexcept = default;
@@ -68,10 +68,7 @@ namespace sk::cio::win32::detail {
                                 io_offset_t, 
                                 Buffer &buffer)
             -> task<expected<io_size_t, std::error_code>>
-
-            requires std::same_as<
-                sk::buffer_value_t<Buffer>, 
-                CharT>;
+            requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>;
 
         template <sk::writable_buffer Buffer>
         [[nodiscard]]
@@ -79,10 +76,7 @@ namespace sk::cio::win32::detail {
                           io_offset_t,
                           Buffer &buffer)
             -> expected<io_size_t, std::error_code>
-
-            requires std::same_as<
-                sk::buffer_value_t<Buffer>, 
-                CharT>;
+            requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>;
 
     protected:
         idafilechannel_base() = default;
@@ -94,15 +88,13 @@ namespace sk::cio::win32::detail {
      */
 
     // clang-format off
-    template <typename CharT, typename T>
+    template <typename T>
     template <sk::writable_buffer Buffer>
-    auto idafilechannel_base<CharT, T>::async_read_some_at(io_size_t nobjs,
-                                                        io_offset_t loc,
-                                                        Buffer &buffer)
+    auto idafilechannel_base<T>::async_read_some_at(io_size_t nobjs,
+                                                    io_offset_t loc,
+                                                    Buffer &buffer)
         -> task<expected<io_size_t, std::error_code>> 
-        requires std::same_as<
-            sk::buffer_value_t<Buffer>, 
-            CharT>
+        requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>
     {
         // clang-format on
 
@@ -117,7 +109,7 @@ namespace sk::cio::win32::detail {
         auto ranges = buffer.writable_ranges();
 
         if (std::ranges::size(ranges) == 0)
-            co_return 0u;
+            co_return make_unexpected(cio::error::no_space_in_buffer);
 
         auto first_range = *std::ranges::begin(ranges);
         auto buf_data = std::ranges::data(first_range);
@@ -125,8 +117,7 @@ namespace sk::cio::win32::detail {
 
         // The maximum I/O size we can support.
         auto max_objs =
-            static_cast<std::size_t>(std::numeric_limits<DWORD>::max()) /
-            sizeof(CharT);
+            static_cast<std::size_t>(std::numeric_limits<DWORD>::max());
 
         // Can't read more than max_objs.
         if (nobjs > max_objs)
@@ -137,18 +128,17 @@ namespace sk::cio::win32::detail {
             nobjs = buf_size;
 
         // The number of bytes we'll read.
-        DWORD dwbytes = static_cast<DWORD>(nobjs) * sizeof(CharT);
+        DWORD dwbytes = static_cast<DWORD>(nobjs);
 
         auto ret = co_await win32::AsyncReadFile(
             static_cast<T *>(this)->native_handle.native_handle(), buf_data,
             dwbytes, &bytes_read, loc);
 
-        if (ret)
-            co_return make_unexpected(win32::win32_to_generic_error(ret));
+        if (!ret)
+            co_return make_unexpected(win32::win32_to_generic_error(ret.error()));
 
-        auto objs_read = bytes_read * sizeof(CharT);
-        buffer.commit(objs_read);
-        co_return objs_read;
+        buffer.commit(bytes_read);
+        co_return bytes_read;
     }
 
     /*************************************************************************
@@ -156,15 +146,13 @@ namespace sk::cio::win32::detail {
      */
 
     // clang-format off
-    template <typename CharT, typename T>
+    template <typename T>
     template <sk::writable_buffer Buffer>
-    auto idafilechannel_base<CharT, T>::read_some_at(io_size_t nobjs,
-                                                  io_offset_t loc,
-                                                  Buffer &buffer)
+    auto idafilechannel_base<T>::read_some_at(io_size_t nobjs,
+                                              io_offset_t loc,
+                                              Buffer &buffer)
         -> expected<io_size_t, std::error_code> 
-        requires std::same_as<
-            sk::buffer_value_t<Buffer>, 
-            CharT>
+        requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>
     {
         // clang-format on
 
@@ -179,7 +167,7 @@ namespace sk::cio::win32::detail {
         auto ranges = buffer.writable_ranges();
 
         if (std::ranges::size(ranges) == 0)
-            return 0u;
+            return make_unexpected(cio::error::no_space_in_buffer);
 
         auto first_range = *std::ranges::begin(ranges);
         auto buf_data = std::ranges::data(first_range);
@@ -187,8 +175,7 @@ namespace sk::cio::win32::detail {
 
         // The maximum I/O size we can support.
         auto max_objs =
-            static_cast<std::size_t>(std::numeric_limits<DWORD>::max()) /
-            sizeof(CharT);
+            static_cast<std::size_t>(std::numeric_limits<DWORD>::max());
 
         // Can't read more than max_objs.
         if (nobjs > max_objs)
@@ -199,7 +186,7 @@ namespace sk::cio::win32::detail {
             nobjs = buf_size;
 
         // The number of bytes we'll read.
-        DWORD dwbytes = static_cast<DWORD>(nobjs) * sizeof(CharT);
+        DWORD dwbytes = static_cast<DWORD>(nobjs);
 
         OVERLAPPED overlapped;
         std::memset(&overlapped, 0, sizeof(overlapped));
@@ -235,9 +222,8 @@ namespace sk::cio::win32::detail {
                 win32::win32_to_generic_error(win32::get_last_error()));
         }
 
-        auto objs_read = bytes_read * sizeof(CharT);
-        buffer.commit(objs_read);
-        return objs_read;
+        buffer.commit(bytes_read);
+        return bytes_read;
     }
 
 } // namespace sk::cio::win32::detail

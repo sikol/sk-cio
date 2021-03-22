@@ -26,58 +26,22 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <fstream>
-#include <iostream>
+#ifndef SK_CIO_NET_TCPCHANNEL_HXX_INCLUDED
+#define SK_CIO_NET_TCPCHANNEL_HXX_INCLUDED
 
-#include <catch.hpp>
+#ifdef _WIN32
+#    include <sk/cio/win32/net/tcpchannel.hxx>
 
-#include <sk/cio/channel/seqfilechannel.hxx>
+namespace sk::cio::net {
 
-using namespace sk::cio;
+    using sk::cio::win32::net::tcpchannel;
 
-TEST_CASE("iseqfilechannel::open() existing file") {
-    std::ignore = std::remove("test.txt");
-
-    {
-        std::ofstream testfile("test.txt", std::ios::binary | std::ios::trunc);
-        testfile << "This is a test\n";
-        testfile.close();
-    }
-
-    {
-        iseqfilechannel chnl;
-        auto ret = chnl.open("test.txt");
-        REQUIRE(ret);
-    }
 }
 
-TEST_CASE("iseqfilechannel::open() with write flags is an error") {
-    iseqfilechannel chnl;
+#else
 
-    auto ret = chnl.open("test.txt", fileflags::write);
-    REQUIRE(!ret);
-    REQUIRE(ret.error() == error::filechannel_invalid_flags);
+#    error tcpchannel is not supported on this platform
 
-    ret = chnl.open("test.txt", fileflags::trunc);
-    REQUIRE(!ret);
-    REQUIRE(ret.error() == error::filechannel_invalid_flags);
+#endif
 
-    ret = chnl.open("test.txt", fileflags::append);
-    REQUIRE(!ret);
-    REQUIRE(ret.error() == error::filechannel_invalid_flags);
-
-    ret = chnl.open("test.txt", fileflags::create_new);
-    REQUIRE(!ret);
-    REQUIRE(ret.error() == error::filechannel_invalid_flags);
-}
-
-TEST_CASE("iseqfilechannel::open() non-existing file") {
-    std::ignore = std::remove("test.txt");
-
-    {
-        iseqfilechannel chnl;
-        auto ret = chnl.open("test.txt");
-        REQUIRE(!ret);
-        REQUIRE(ret.error() == std::errc::no_such_file_or_directory);
-    }
-}
+#endif // SK_CIO_NET_TCPCHANNEL_HXX_INCLUDED

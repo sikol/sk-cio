@@ -61,6 +61,14 @@ namespace sk::cio {
 
         // Attempt to use a channel which is not open.
         channel_not_open = 6,
+
+#ifdef _WIN32
+        // Winsock: could not obtain the ConnectEx() function.
+        winsock_no_connectex = 7,
+
+        // Winsock: could not obtain the AcceptEx() function.
+        winsock_no_acceptex = 8,
+#endif
     };
 
     namespace detail {
