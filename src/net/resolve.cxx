@@ -27,7 +27,7 @@
  */
 
 #include <sk/cio/net/address.hxx>
-#include <sk/cio/spawn.hxx>
+#include <sk/cio/async_invoke.hxx>
 #include <sk/cio/win32/windows.hxx>
 
 #ifdef _WIN32
@@ -101,7 +101,7 @@ namespace sk::cio::net {
         addrinfo *gai_result;
         std::memset(&hints, 0, sizeof(hints));
 
-        auto ret = co_await spawn([&] {
+        auto ret = co_await async_invoke([&] {
             return ::getaddrinfo(hostname.c_str(),
                                  port.empty() ? nullptr : port.c_str(), &hints,
                                  &gai_result);

@@ -47,11 +47,11 @@ target_sources(sk-cio PRIVATE
     include/sk/cio/types.hxx
     include/sk/cio/reactor.hxx
     include/sk/cio/concepts.hxx
-    include/sk/cio/spawn.hxx
+    "include/sk/cio/async_invoke.hxx"
     include/sk/cio/expected.hxx
 
     include/sk/cio/detail/config.hxx
- "include/sk/cio/net/tcpchannel.hxx" "include/sk/cio/channel/charchannel.hxx" "include/sk/cio/net/tcpserverchannel.hxx")
+ "include/sk/cio/net/tcpchannel.hxx" "include/sk/cio/channel/charchannel.hxx" "include/sk/cio/net/tcpserverchannel.hxx" "include/sk/cio/detach_task.hxx" "include/sk/cio/workq.hxx")
 
 if(WIN32)
     target_sources(sk-cio PRIVATE
@@ -72,7 +72,7 @@ if(WIN32)
         include/sk/cio/win32/handle.hxx
         include/sk/cio/win32/iocp_reactor.hxx
         include/sk/cio/win32/windows.hxx
-        include/sk/cio/win32/spawn.hxx
+        "include/sk/cio/win32/async_invoke.hxx"
         include/sk/cio/win32/async_api.hxx
 
         include/sk/cio/net/address.hxx

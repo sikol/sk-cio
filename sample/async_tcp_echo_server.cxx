@@ -32,12 +32,31 @@
 
 #include <fmt/core.h>
 
+#include <sk/cio/detach_task.hxx>
 #include <sk/cio/net/address.hxx>
 #include <sk/cio/net/tcpserverchannel.hxx>
+#include <sk/cio/net/tcpchannel.hxx>
 #include <sk/cio/reactor.hxx>
 #include <sk/buffer/fixed_buffer.hxx>
 
 using namespace sk::cio;
+
+task<void> handle_client(net::tcpchannel client) {
+    for (;;) {
+        sk::fixed_buffer<std::byte, 1024> buf;
+
+        auto ret = co_await client.async_read_some(unlimited, buf);
+        if (!ret) {
+            fmt::print(stderr, "read err: {}\n", ret.error().message());
+            co_return;
+        }
+
+        for (auto &&range : buf.readable_ranges())
+            std::cout.write(
+                reinterpret_cast<char const *>(std::ranges::data(range)),
+                std::ranges::size(range));
+    }
+}
 
 task<void> run(std::string const &addr, std::string const &port) {
     auto netaddr = net::make_address(addr, port);
@@ -57,19 +76,8 @@ task<void> run(std::string const &addr, std::string const &port) {
             co_return;
         }
 
-        sk::fixed_buffer<std::byte, 1024> buf;
-        for (;;) {
-            auto ret = co_await client->async_read_some(unlimited, buf);
-            if (!ret) {
-                fmt::print(stderr, "read err: {}\n", ret.error().message());
-                co_return;
-            }
-
-            for (auto &&range : buf.readable_ranges())
-                std::cout.write(
-                    reinterpret_cast<char const *>(std::ranges::data(range)),
-                    std::ranges::size(range));
-        }
+        auto client_task = handle_client(std::move(*client));
+        detach_task(client_task);
     }
 }
 

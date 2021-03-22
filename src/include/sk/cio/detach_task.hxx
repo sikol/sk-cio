@@ -26,57 +26,27 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_WIN32_SPAWN_HXX_INCLUDED
-#define SK_CIO_WIN32_SPAWN_HXX_INCLUDED
+#ifndef SK_CIO_DETACH_TASK_HXX_INCLUDED
+#define SK_CIO_DETACH_TASK_HXX_INCLUDED
 
 #include <sk/cio/reactor.hxx>
 
-namespace sk::cio::win32 {
+namespace sk::cio {
 
     /*************************************************************************
      *
-     * spawn: run a callable on another thread in a way that can be awaited.
+     * detach_task: run the given task, discard the result and delete it once
+     * it's finished.
      */
 
-    template <typename Callable>
-    struct co_spawn_awaiter {
-        using result_type = std::invoke_result_t<Callable>;
-        Callable c;
-        iocp_coro_state overlapped;
-        std::future<result_type> future;
-
-        co_spawn_awaiter(Callable &&c_) : c(std::move(c_)) {}
-
-        bool await_ready() {
-            return false;
-        }
-
-        bool await_suspend(std::coroutine_handle<> coro_handle_) {
-            std::lock_guard lock(overlapped.mutex);
-            overlapped.coro_handle = coro_handle_;
-
-            future = std::async(std::launch::async, [&]() -> result_type {
-                auto ret = c();
-                ::PostQueuedCompletionStatus(
-                    reactor_handle::get_global_reactor()
-                        .completion_port.native_handle(),
-                    0, 0, &overlapped);
-                return ret;
-            });
-
-            return true;
-        }
-
-        result_type await_resume() {
-            return std::move(future.get());
-        }
-    };
-
-    template <typename Callable>
-    auto spawn(Callable &&c) -> task<std::invoke_result_t<Callable>> {
-        co_return co_await co_spawn_awaiter(std::move(c));
+    template <typename T>
+    auto detach_task(task<T> &t) -> void {
+        task<T> *taskp = new task<T>(std::move(t));
+        taskp->detached = true;
+        reactor_handle::get_global_reactor().post([=] { 
+            taskp->start(); });
     }
 
-} // namespace sk::cio::win32
+} // namespace sk::cio
 
 #endif // SK_CIO_WIN32_SPAWN_HXX_INCLUDED

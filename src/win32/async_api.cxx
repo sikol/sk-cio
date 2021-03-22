@@ -30,7 +30,7 @@
 #include <sk/cio/task.hxx>
 #include <sk/cio/win32/async_api.hxx>
 #include <sk/cio/win32/iocp_reactor.hxx>
-#include <sk/cio/win32/spawn.hxx>
+#include <sk/cio/win32/async_invoke.hxx>
 #include <sk/cio/win32/windows.hxx>
 
 /*************************************************************************
@@ -100,7 +100,8 @@ namespace sk::cio::win32 {
                           DWORD dwFlagsAndAttributes, HANDLE hTemplateFile)
         -> task<expected<HANDLE, std::error_code>> {
 
-        co_return co_await spawn([&]() -> expected<HANDLE, std::error_code> {
+        co_return co_await async_invoke(
+            [&]() -> expected<HANDLE, std::error_code> {
             auto handle = ::CreateFileW(
                 lpFileName, dwDesiredAccess, dwShareMode, lpSecurityAttributes,
                 dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);
@@ -122,7 +123,8 @@ namespace sk::cio::win32 {
                           DWORD dwCreationDisposition,
                           DWORD dwFlagsAndAttributes, HANDLE hTemplateFile)
         -> task<expected<HANDLE, std::error_code>> {
-        co_return co_await spawn([&]() -> expected<HANDLE, std::error_code> {
+        co_return co_await async_invoke(
+            [&]() -> expected<HANDLE, std::error_code> {
             auto handle = ::CreateFileA(
                 lpFileName, dwDesiredAccess, dwShareMode, lpSecurityAttributes,
                 dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);

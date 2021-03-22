@@ -39,6 +39,7 @@
 #include <sk/cio/win32/error.hxx>
 #include <sk/cio/win32/handle.hxx>
 #include <sk/cio/win32/windows.hxx>
+#include <sk/cio/workq.hxx>
 
 namespace sk::cio::win32 {
 
@@ -73,9 +74,13 @@ namespace sk::cio::win32 {
         // Stop this reactor.
         auto stop() -> void;
 
+        // Post work to the reactor's thread pool.
+        auto post(std::function<void()> fn) -> void;
+
     private:
-        void reactor_thread_fn(void);
-        std::jthread reactor_thread;
+        workq _workq;
+        void completion_thread_fn(void);
+        std::jthread completion_thread;
     };
 
     static_assert(reactor<iocp_reactor>);

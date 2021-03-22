@@ -160,7 +160,8 @@ namespace sk::cio::win32::net {
     inline auto tcpserverchannel::async_close()
         -> task<expected<void, std::error_code>> {
 
-        auto err = co_await spawn([&] { return _native_handle.close(); });
+        auto err =
+            co_await async_invoke([&] { return _native_handle.close(); });
 
         if (err)
             co_return make_unexpected(err);

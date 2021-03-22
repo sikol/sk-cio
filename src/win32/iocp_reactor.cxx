@@ -38,7 +38,7 @@ namespace sk::cio::win32 {
         completion_port.assign(hdl);
     }
 
-    auto iocp_reactor::reactor_thread_fn() -> void {
+    auto iocp_reactor::completion_thread_fn() -> void {
         auto port_handle = completion_port.native_handle();
 
         for (;;) {
@@ -63,7 +63,11 @@ namespace sk::cio::win32 {
                     overlapped->error = 0;
                 overlapped->bytes_transferred = bytes_transferred;
             }
-            overlapped->coro_handle.resume();
+
+            auto h = overlapped->coro_handle;
+            _workq.post([=] {
+                h.resume();
+            });
         }
     }
 
@@ -71,16 +75,23 @@ namespace sk::cio::win32 {
         WSADATA wsadata;
         ::WSAStartup(MAKEWORD(2, 2), &wsadata);
 
-        reactor_thread = std::jthread([=, this] { reactor_thread_fn(); });
+        completion_thread =
+            std::jthread(&iocp_reactor::completion_thread_fn, this);
+        _workq.start_threads();
     }
 
     auto iocp_reactor::stop() -> void {
+        _workq.stop();
         completion_port.close();
-        reactor_thread.join();
+        completion_thread.join();
     }
 
     auto iocp_reactor::associate_handle(HANDLE h) -> void {
         ::CreateIoCompletionPort(h, completion_port.native_handle(), 0, 0);
+    }
+
+    auto iocp_reactor::post(std::function<void()> fn) -> void {
+        _workq.post(std::move(fn));
     }
 
 } // namespace sk::cio::win32

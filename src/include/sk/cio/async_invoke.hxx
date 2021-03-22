@@ -26,15 +26,15 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_SPAWN_HXX_INCLUDED
-#define SK_CIO_SPAWN_HXX_INCLUDED
+#ifndef SK_CIO_ASYNC_INVOKE_HXX_INCLUDED
+#define SK_CIO_ASYNC_INVOKE_HXX_INCLUDED
 
 #ifdef _WIN32
-#    include <sk/cio/win32/spawn.hxx>
+#    include <sk/cio/win32/async_invoke.hxx>
 
 namespace sk::cio {
 
-    using win32::spawn;
+    using win32::async_invoke;
 
 } // namespace sk::cio
 

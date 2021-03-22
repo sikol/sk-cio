@@ -39,7 +39,7 @@
 #include <sk/cio/reactor.hxx>
 #include <sk/cio/task.hxx>
 #include <sk/cio/types.hxx>
-#include <sk/cio/spawn.hxx>
+#include <sk/cio/async_invoke.hxx>
 #include <sk/cio/win32/async_api.hxx>
 #include <sk/cio/win32/error.hxx>
 #include <sk/cio/win32/handle.hxx>
@@ -288,7 +288,7 @@ namespace sk::cio::win32::detail {
         -> task<expected<void, std::error_code>> {
         // clang-format on
 
-        auto err = co_await spawn(
+        auto err = co_await async_invoke(
             [&] { return static_cast<T *>(this)->native_handle.close(); });
 
         if (err)
