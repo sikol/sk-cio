@@ -187,7 +187,6 @@ namespace sk::cio {
         };
 
         std::coroutine_handle<promise_type> coro_handle;
-        bool detached = false;
 
         task(std::coroutine_handle<promise_type> coro_handle_)
             : coro_handle(coro_handle_) {}
@@ -209,8 +208,6 @@ namespace sk::cio {
         }
 
         void await_resume() {
-            if (detached)
-                delete this;
         }
 
         auto await_suspend(std::coroutine_handle<> h) {

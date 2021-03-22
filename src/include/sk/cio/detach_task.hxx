@@ -33,18 +33,16 @@
 
 namespace sk::cio {
 
-    /*************************************************************************
-     *
-     * detach_task: run the given task, discard the result and delete it once
-     * it's finished.
-     */
+/*************************************************************************
+ *
+ * detach_task: run the given task, discard the result and delete it once
+ * it's finished.
+ */
 
     template <typename T>
     auto detach_task(task<T> &t) -> void {
-        task<T> *taskp = new task<T>(std::move(t));
-        taskp->detached = true;
-        reactor_handle::get_global_reactor().post([=] { 
-            taskp->start(); });
+        std::coroutine_handle<> h = std::exchange(t.coro_handle, {});
+        reactor_handle::get_global_reactor().post([=] { h.resume(); });
     }
 
 } // namespace sk::cio
