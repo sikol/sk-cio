@@ -38,6 +38,8 @@
 #include <sk/cio/net/tcpserverchannel.hxx>
 #include <sk/cio/net/tcpchannel.hxx>
 #include <sk/cio/reactor.hxx>
+#include <sk/cio/channel/read.hxx>
+#include <sk/cio/channel/write.hxx>
 #include <sk/buffer/fixed_buffer.hxx>
 
 using namespace sk::cio;
@@ -49,17 +51,20 @@ dtask handle_client(net::tcpchannel client) {
         sk::fixed_buffer<std::byte, 1024> buf;
 
         std::cerr << "handle_client() : wait to read\n";
-        auto ret = co_await client.async_read_some(unlimited, buf);
+        auto ret = co_await async_read_some(client, unlimited, buf);
         if (!ret) {
             fmt::print(stderr, "read err: {}\n", ret.error().message());
             co_return;
         }
 
         std::cerr << "handle_client() : read done\n";
-        for (auto &&range : buf.readable_ranges())
+        for (auto &&range : buf.readable_ranges()) {
             std::cout.write(
                 reinterpret_cast<char const *>(std::ranges::data(range)),
                 std::ranges::size(range));
+        }
+
+        co_await async_write_some(client, unlimited, buf);
         std::cerr << "handle_client() : end loop\n";
     }
 

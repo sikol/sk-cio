@@ -142,7 +142,7 @@ namespace sk::cio::win32::detail {
     }
 
     /*************************************************************************
-     * oseqfilechannel::write_some_at()
+     * oseqfilechannel_base::write_some()
      */
 
     // clang-format off

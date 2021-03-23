@@ -86,6 +86,21 @@ namespace sk::cio::win32::net {
             requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>;
 
         /*
+         * Write data.
+         */
+        template <sk::readable_buffer Buffer>
+        [[nodiscard]]
+        auto async_write_some(io_size_t, Buffer &buffer)
+            -> task<expected<io_size_t, std::error_code>>
+            requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>;
+
+        template <sk::readable_buffer Buffer>
+        [[nodiscard]]
+        auto write_some(io_size_t, Buffer &buffer)
+            -> expected<io_size_t, std::error_code>
+            requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>;
+
+        /*
          * Close the socket.
          */
         [[nodiscard]] 
@@ -349,6 +364,141 @@ namespace sk::cio::win32::net {
 
         buffer.commit(bytes_read);
         return bytes_read;
+    }
+
+    /*************************************************************************
+     * tcpchannel::async_write_some()
+     */
+
+    // clang-format off
+    template <sk::readable_buffer Buffer>
+    auto tcpchannel::async_write_some(io_size_t nobjs,
+                                      Buffer &buffer)
+        -> task<expected<io_size_t, std::error_code>> 
+        requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>
+    {
+        // clang-format on
+#ifdef SK_CIO_CHECKED
+        if (!this->is_open())
+            throw cio::detail::checked_error(
+                "attempt to write to a closed channel");
+#endif
+
+        DWORD bytes_written = 0;
+
+        auto ranges = buffer.readable_ranges();
+
+        if (std::ranges::size(ranges) == 0)
+            co_return make_unexpected(cio::error::no_data_in_buffer);
+
+        auto first_range = *std::ranges::begin(ranges);
+        auto buf_data = std::ranges::data(first_range);
+        auto buf_size = std::ranges::size(first_range);
+
+        // The maximum I/O size we can support.
+        static auto max_objs =
+            static_cast<std::size_t>(std::numeric_limits<DWORD>::max());
+
+        // Can't write more than max_objs.
+        if (nobjs > max_objs)
+            nobjs = max_objs;
+
+        // Can't write more than we have buffer space for.
+        if (nobjs > buf_size)
+            nobjs = buf_size;
+
+        // The number of bytes we'll write.
+        DWORD dwbytes = static_cast<DWORD>(nobjs);
+
+        auto ret = co_await win32::AsyncWriteFile(
+            reinterpret_cast<HANDLE>(_native_handle.native_socket()), buf_data,
+            dwbytes, &bytes_written, 0);
+
+        if (!ret)
+            co_return make_unexpected(win32::win32_to_generic_error(ret.error()));
+
+        buffer.discard(bytes_written);
+        co_return bytes_written;
+    }
+
+    /*************************************************************************
+     * tcpchannel::write_some()
+     */
+
+    // clang-format off
+    template <sk::readable_buffer Buffer>
+    auto tcpchannel::write_some(io_size_t nobjs,
+                                Buffer &buffer)
+        -> expected<io_size_t, std::error_code> 
+        requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>
+    {
+        // clang-format on
+#ifdef SK_CIO_CHECKED
+        if (!this->is_open())
+            throw cio::detail::checked_error(
+                "attempt to write to a closed channel");
+#endif
+
+        DWORD bytes_written = 0;
+
+        auto ranges = buffer.readable_ranges();
+
+        if (std::ranges::size(ranges) == 0)
+            return make_unexpected(cio::error::no_data_in_buffer);
+
+        auto first_range = *std::ranges::begin(ranges);
+        auto buf_data = std::ranges::data(first_range);
+        auto buf_size = std::ranges::size(first_range);
+
+        // The maximum I/O size we can support.
+        static auto max_objs =
+            static_cast<std::size_t>(std::numeric_limits<DWORD>::max());
+
+        // Can't write more than max_objs.
+        if (nobjs > max_objs)
+            nobjs = max_objs;
+
+        // Can't write more than we have buffer space for.
+        if (nobjs > buf_size)
+            nobjs = buf_size;
+
+        // The number of bytes we'll write.
+        DWORD dwbytes = static_cast<DWORD>(nobjs);
+
+        OVERLAPPED overlapped;
+        std::memset(&overlapped, 0, sizeof(overlapped));
+
+        // Create an event for the OVERLAPPED.  We don't actually use the event
+        // but it has to be present.
+        auto event_handle = ::CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        if (event_handle == nullptr)
+            return make_unexpected(
+                win32::win32_to_generic_error(win32::get_last_error()));
+
+        unique_handle evt(event_handle);
+
+        // Set the low bit on the event handle to prevent the completion packet
+        // being queued to the iocp_reactor, which won't know what to do with
+        // it.
+        overlapped.hEvent = reinterpret_cast<HANDLE>(
+            reinterpret_cast<std::uintptr_t>(event_handle) | 0x1);
+
+        auto ret = ::WriteFile(
+            reinterpret_cast<HANDLE>(_native_handle.native_socket()), buf_data,
+            dwbytes, &bytes_written, &overlapped);
+
+        if (!ret && (::GetLastError() == ERROR_IO_PENDING))
+            ret = ::GetOverlappedResult(
+                reinterpret_cast<HANDLE>(_native_handle.native_socket()),
+                &overlapped, &bytes_written, TRUE);
+
+        if (!ret) {
+            return make_unexpected(
+                win32::win32_to_generic_error(win32::get_last_error()));
+        }
+
+        buffer.discard(bytes_written);
+        return bytes_written;
     }
 
 } // namespace sk::cio::win32::net
