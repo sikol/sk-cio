@@ -114,7 +114,7 @@ namespace sk::cio {
             if (coro_handle) {
                 //std::cerr << "~dtask() : will destroy the coro\n";
                 coro_handle.destroy();
-            } else
+            }// else
                 //std::cerr << "~dtask() : not destroying the handle\n";
         }
 
