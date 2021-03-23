@@ -32,6 +32,7 @@
 
 #include <fmt/core.h>
 
+#include <sk/cio/dtask.hxx>
 #include <sk/cio/detach_task.hxx>
 #include <sk/cio/net/address.hxx>
 #include <sk/cio/net/tcpserverchannel.hxx>
@@ -41,21 +42,29 @@
 
 using namespace sk::cio;
 
-task<void> handle_client(net::tcpchannel client) {
+dtask handle_client(net::tcpchannel client) {
+    std::cerr << "handle_client() : start\n";
     for (;;) {
+        std::cerr << "handle_client() : in loop\n";
         sk::fixed_buffer<std::byte, 1024> buf;
 
+        std::cerr << "handle_client() : wait to read\n";
         auto ret = co_await client.async_read_some(unlimited, buf);
         if (!ret) {
             fmt::print(stderr, "read err: {}\n", ret.error().message());
             co_return;
         }
 
+        std::cerr << "handle_client() : read done\n";
         for (auto &&range : buf.readable_ranges())
             std::cout.write(
                 reinterpret_cast<char const *>(std::ranges::data(range)),
                 std::ranges::size(range));
+        std::cerr << "handle_client() : end loop\n";
     }
+
+    fmt::print(stderr, "handle_client() : return\n");
+    co_return;
 }
 
 task<void> run(std::string const &addr, std::string const &port) {
@@ -76,8 +85,9 @@ task<void> run(std::string const &addr, std::string const &port) {
             co_return;
         }
 
-        auto client_task = handle_client(std::move(*client));
-        detach_task(client_task);
+        co_await handle_client(std::move(*client));
+
+        //detach_task(client_task);
     }
 }
 

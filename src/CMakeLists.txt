@@ -51,7 +51,7 @@ target_sources(sk-cio PRIVATE
     include/sk/cio/expected.hxx
 
     include/sk/cio/detail/config.hxx
- "include/sk/cio/net/tcpchannel.hxx" "include/sk/cio/channel/charchannel.hxx" "include/sk/cio/net/tcpserverchannel.hxx" "include/sk/cio/detach_task.hxx" "include/sk/cio/workq.hxx")
+ "include/sk/cio/net/tcpchannel.hxx" "include/sk/cio/channel/charchannel.hxx" "include/sk/cio/net/tcpserverchannel.hxx" "include/sk/cio/detach_task.hxx" "include/sk/cio/workq.hxx" "include/sk/cio/dtask.hxx")
 
 if(WIN32)
     target_sources(sk-cio PRIVATE

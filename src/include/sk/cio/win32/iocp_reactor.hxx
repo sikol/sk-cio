@@ -44,6 +44,7 @@
 namespace sk::cio::win32 {
 
     struct iocp_coro_state : OVERLAPPED {
+        bool was_pending;
         BOOL success;
         DWORD error;
         DWORD bytes_transferred;

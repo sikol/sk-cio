@@ -56,12 +56,15 @@ namespace sk::cio::win32 {
 
             {
                 std::lock_guard lock(overlapped->mutex);
-                overlapped->success = ret;
-                if (!overlapped->success)
-                    overlapped->error = GetLastError();
-                else
-                    overlapped->error = 0;
-                overlapped->bytes_transferred = bytes_transferred;
+
+                if (overlapped->was_pending) {
+                    overlapped->success = ret;
+                    if (!overlapped->success)
+                        overlapped->error = GetLastError();
+                    else
+                        overlapped->error = 0;
+                    overlapped->bytes_transferred = bytes_transferred;
+                }
             }
 
             auto h = overlapped->coro_handle;

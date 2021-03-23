@@ -29,8 +29,8 @@
 #include <sk/cio/reactor.hxx>
 #include <sk/cio/task.hxx>
 #include <sk/cio/win32/async_api.hxx>
-#include <sk/cio/win32/iocp_reactor.hxx>
 #include <sk/cio/win32/async_invoke.hxx>
+#include <sk/cio/win32/iocp_reactor.hxx>
 #include <sk/cio/win32/windows.hxx>
 
 /*************************************************************************
@@ -50,7 +50,7 @@ namespace sk::cio::win32 {
 
     template <typename Impl>
     struct co_overlapped_awaiter {
-        bool did_suspend = false;
+        // bool did_suspend = false;
         iocp_coro_state *overlapped;
 
         co_overlapped_awaiter(iocp_coro_state *overlapped_)
@@ -73,12 +73,19 @@ namespace sk::cio::win32 {
             overlapped->success = static_cast<Impl *>(this)->overlapped_begin();
             overlapped->error = static_cast<Impl *>(this)->get_last_error();
 
-            return did_suspend = (!overlapped->success &&
-                                  (overlapped->error == ERROR_IO_PENDING));
+            overlapped->was_pending = (!overlapped->success &&
+                                       (overlapped->error == ERROR_IO_PENDING));
+            // We'd like to return false here if was_pending==false, because
+            // that means the I/O has completed and we have the data.  This
+            // doesn't work because the kernel will still post an event to
+            // our completion port, and we may have destroyed the OVERLAPPED
+            // by then.  So we always have to suspend here and wait for the
+            // event.
+            return true;
         }
 
         expected<void, std::error_code> await_resume() {
-            if (did_suspend)
+            if (overlapped->was_pending)
                 static_cast<Impl *>(this)->overlapped_suspended();
 
             if (overlapped->success)
@@ -102,16 +109,18 @@ namespace sk::cio::win32 {
 
         co_return co_await async_invoke(
             [&]() -> expected<HANDLE, std::error_code> {
-            auto handle = ::CreateFileW(
-                lpFileName, dwDesiredAccess, dwShareMode, lpSecurityAttributes,
-                dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);
+                auto handle =
+                    ::CreateFileW(lpFileName, dwDesiredAccess, dwShareMode,
+                                  lpSecurityAttributes, dwCreationDisposition,
+                                  dwFlagsAndAttributes, hTemplateFile);
 
-            if (handle != INVALID_HANDLE_VALUE) {
-                reactor_handle::get_global_reactor().associate_handle(handle);
-                return handle;
-            } else
-                return make_unexpected(win32::get_last_error());
-        });
+                if (handle != INVALID_HANDLE_VALUE) {
+                    reactor_handle::get_global_reactor().associate_handle(
+                        handle);
+                    return handle;
+                } else
+                    return make_unexpected(win32::get_last_error());
+            });
     }
 
     /*************************************************************************
@@ -125,16 +134,18 @@ namespace sk::cio::win32 {
         -> task<expected<HANDLE, std::error_code>> {
         co_return co_await async_invoke(
             [&]() -> expected<HANDLE, std::error_code> {
-            auto handle = ::CreateFileA(
-                lpFileName, dwDesiredAccess, dwShareMode, lpSecurityAttributes,
-                dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);
+                auto handle =
+                    ::CreateFileA(lpFileName, dwDesiredAccess, dwShareMode,
+                                  lpSecurityAttributes, dwCreationDisposition,
+                                  dwFlagsAndAttributes, hTemplateFile);
 
-            if (handle != INVALID_HANDLE_VALUE) {
-                reactor_handle::get_global_reactor().associate_handle(handle);
-                return handle;
-            } else
-                return make_unexpected(win32::get_last_error());
-        });
+                if (handle != INVALID_HANDLE_VALUE) {
+                    reactor_handle::get_global_reactor().associate_handle(
+                        handle);
+                    return handle;
+                } else
+                    return make_unexpected(win32::get_last_error());
+            });
     }
 
     /*************************************************************************
@@ -313,8 +324,8 @@ namespace sk::cio::win32 {
         BOOL overlapped_begin() {
             return AcceptEx_fn(sListenSocket, sAcceptSocket, lpOutputBuffer,
                                dwReceiveDataLength, dwLocalAddressLength,
-                               dwRemoteAddressLength,
-                               lpdwBytesReceived, overlapped);
+                               dwRemoteAddressLength, lpdwBytesReceived,
+                               overlapped);
         }
 
         void overlapped_suspended() {}

@@ -261,6 +261,10 @@ namespace sk::cio::win32::net {
             co_return make_unexpected(
                 win32::win32_to_generic_error(ret.error()));
 
+        // 0 bytes = client went away
+        if (bytes_read == 0)
+            co_return make_unexpected(cio::error::end_of_file);
+
         buffer.commit(bytes_read);
         co_return bytes_read;
     }
@@ -338,6 +342,10 @@ namespace sk::cio::win32::net {
         if (!ret)
             return make_unexpected(
                 win32::win32_to_generic_error(win32::get_last_error()));
+
+        // 0 bytes = client went away
+        if (bytes_read == 0)
+            co_return make_unexpected(cio::error::end_of_file);
 
         buffer.commit(bytes_read);
         return bytes_read;
