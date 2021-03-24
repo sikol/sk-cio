@@ -74,10 +74,10 @@ if(WIN32)
         win32/async_api.cxx
 
         include/sk/cio/win32/filechannel/detail/filechannel_base.hxx
-        include/sk/cio/win32/filechannel/detail/idafilechannel_base.hxx
-        include/sk/cio/win32/filechannel/detail/iseqfilechannel_base.hxx
-        include/sk/cio/win32/filechannel/detail/oseqfilechannel_base.hxx
-        include/sk/cio/win32/filechannel/detail/odafilechannel_base.hxx
+        
+        
+        
+        
         include/sk/cio/win32/filechannel/idafilechannel.hxx
         include/sk/cio/win32/filechannel/odafilechannel.hxx
         include/sk/cio/win32/filechannel/iseqfilechannel.hxx

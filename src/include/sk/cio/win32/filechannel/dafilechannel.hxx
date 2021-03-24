@@ -38,10 +38,8 @@
 #include <sk/cio/error.hxx>
 #include <sk/cio/task.hxx>
 #include <sk/cio/types.hxx>
-#include <sk/cio/win32/filechannel/detail/filechannel_base.hxx>
-#include <sk/cio/win32/filechannel/detail/idafilechannel_base.hxx>
-#include <sk/cio/win32/filechannel/detail/odafilechannel_base.hxx>
 #include <sk/cio/win32/error.hxx>
+#include <sk/cio/win32/filechannel/detail/filechannel_base.hxx>
 #include <sk/cio/win32/handle.hxx>
 #include <sk/cio/win32/iocp_reactor.hxx>
 
@@ -53,11 +51,7 @@ namespace sk::cio::win32 {
      */
 
     // clang-format off
-    struct dafilechannel final 
-            : detail::filechannel_base<dafilechannel>
-            , detail::idafilechannel_base<dafilechannel>
-            , detail::odafilechannel_base<dafilechannel> {
-
+    struct dafilechannel final : detail::filechannel_base {
         /*
          * Create an dafilechannel which is closed.
          */
@@ -82,6 +76,47 @@ namespace sk::cio::win32 {
                   fileflags_t = fileflags::none) 
             -> expected<void, std::error_code>;
 
+        /*
+         * Read data.
+         */
+        [[nodiscard]]
+        auto async_read_some_at(io_offset_t loc,
+                                std::byte* buffer,
+                                io_size_t nobjs)
+            -> task<expected<io_size_t, std::error_code>> {
+
+            return _async_read_some_at(loc, buffer, nobjs);
+        }
+
+        [[nodiscard]]
+        auto read_some_at(io_offset_t loc,
+                          std::byte* buffer,
+                          io_size_t nobjs)
+            -> expected<io_size_t, std::error_code> {
+
+            return _read_some_at(loc, buffer, nobjs);
+        }
+
+        /*
+         * Write data.
+         */
+        [[nodiscard]]
+        auto async_write_some_at(io_offset_t loc,
+                                 std::byte const* buffer,
+                                 io_size_t nobjs)
+            -> task<expected<io_size_t, std::error_code>> {
+
+            return _async_write_some_at(loc, buffer, nobjs);
+        }
+
+        [[nodiscard]]
+        auto write_some_at(io_offset_t loc,
+                           std::byte const* buffer,
+                           io_size_t nobjs)
+            -> expected<io_size_t, std::error_code> {
+
+            return _write_some_at(loc, buffer, nobjs);
+        }
     };
     // clang-format on
 

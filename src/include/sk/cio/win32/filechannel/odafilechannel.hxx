@@ -41,7 +41,6 @@
 #include <sk/cio/task.hxx>
 #include <sk/cio/types.hxx>
 #include <sk/cio/win32/filechannel/detail/filechannel_base.hxx>
-#include <sk/cio/win32/filechannel/detail/odafilechannel_base.hxx>
 #include <sk/cio/win32/error.hxx>
 #include <sk/cio/win32/handle.hxx>
 #include <sk/cio/win32/iocp_reactor.hxx>
@@ -54,9 +53,7 @@ namespace sk::cio::win32 {
      */
 
     // clang-format off
-    struct odafilechannel final 
-            : detail::filechannel_base<odafilechannel>
-            , detail::odafilechannel_base<odafilechannel> {
+    struct odafilechannel final : detail::filechannel_base {
 
         /*
          * Create an odafilechannel which is closed.
@@ -82,6 +79,24 @@ namespace sk::cio::win32 {
         odafilechannel &operator=(odafilechannel &&) noexcept = default;
         ~odafilechannel() = default;
 
+        /*
+         * Write data.
+         */
+        [[nodiscard]]
+        auto async_write_some_at(io_offset_t loc,
+            std::byte const *buffer,
+            io_size_t n)
+            -> task<expected<io_size_t, std::error_code>> {
+            return _async_write_some_at(loc, buffer, n);
+        }
+
+        [[nodiscard]]
+        auto write_some_at(io_offset_t loc,
+                           std::byte const *buffer,
+                           io_size_t n)
+            -> expected<io_size_t, std::error_code> {
+            return _write_some_at(loc, buffer, n);
+        }
     };
     // clang-format on
 

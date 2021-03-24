@@ -39,9 +39,8 @@
 #include <sk/cio/error.hxx>
 #include <sk/cio/task.hxx>
 #include <sk/cio/types.hxx>
-#include <sk/cio/win32/filechannel/detail/filechannel_base.hxx>
-#include <sk/cio/win32/filechannel/detail/iseqfilechannel_base.hxx>
 #include <sk/cio/win32/error.hxx>
+#include <sk/cio/win32/filechannel/detail/filechannel_base.hxx>
 #include <sk/cio/win32/handle.hxx>
 #include <sk/cio/win32/iocp_reactor.hxx>
 
@@ -54,9 +53,7 @@ namespace sk::cio::win32 {
      * iseqfilechannel: a sequential-access channel to a file.
      * Although this is a sequential channel, it also supports seeking.
      */
-    struct iseqfilechannel final 
-            : detail::filechannel_base<iseqfilechannel>
-            , detail::iseqfilechannel_base<iseqfilechannel> {
+    struct iseqfilechannel final : detail::filechannel_base {
         /*
          * Create an iseqfilechannel which is closed.
          */
@@ -80,6 +77,20 @@ namespace sk::cio::win32 {
         iseqfilechannel &operator=(iseqfilechannel const &) = delete;
         iseqfilechannel &operator=(iseqfilechannel &&) noexcept = default;
         ~iseqfilechannel() = default;
+
+        /*
+         * Read data.
+         */
+        [[nodiscard]]
+        auto async_read_some(std::byte *buffer, io_size_t nobjs)
+        -> task<expected<io_size_t, std::error_code>>;
+
+        [[nodiscard]]
+        auto read_some(std::byte *buffer, io_size_t nobjs)
+        -> expected<io_size_t, std::error_code>;
+
+    private:
+        io_offset_t _read_position = 0;
     };
 
     // clang-format on
@@ -112,6 +123,34 @@ namespace sk::cio::win32 {
 
         flags |= fileflags::read;
         return this->_open(path, flags);
+    }
+
+    /*************************************************************************
+     * iseqfilechannel::async_read_some()
+     */
+
+    inline auto iseqfilechannel::async_read_some(std::byte *buffer,
+                                                 io_size_t nobjs)
+        -> task<expected<io_size_t, std::error_code>> {
+
+        auto ret = co_await _async_read_some_at(_read_position, buffer, nobjs);
+        if (ret)
+            _read_position += *ret;
+        co_return ret;
+    }
+
+    /*************************************************************************
+     * iseqfilechannel::read_some()
+     */
+
+    inline auto iseqfilechannel::read_some(std::byte *buffer, io_size_t nobjs)
+        -> expected<io_size_t, std::error_code> {
+        SK_CHECK(is_open(), "attempt to read on a closed channel");
+
+        auto ret = _read_some_at(_read_position, buffer, nobjs);
+        if (ret)
+            _read_position += *ret;
+        return ret;
     }
 
 } // namespace sk::cio::win32

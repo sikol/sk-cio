@@ -29,19 +29,18 @@
 #ifndef SK_CIO_WIN32_CHANNEL_OSEQFILECHANNEL_HXX_INCLUDED
 #define SK_CIO_WIN32_CHANNEL_OSEQFILECHANNEL_HXX_INCLUDED
 
+#include <cstddef>
 #include <filesystem>
 #include <system_error>
-#include <cstddef>
 
 #include <sk/buffer/buffer.hxx>
 #include <sk/cio/channel/concepts.hxx>
-#include <sk/cio/filechannel/filechannel.hxx>
 #include <sk/cio/error.hxx>
+#include <sk/cio/filechannel/filechannel.hxx>
 #include <sk/cio/task.hxx>
 #include <sk/cio/types.hxx>
-#include <sk/cio/win32/filechannel/detail/filechannel_base.hxx>
-#include <sk/cio/win32/filechannel/detail/oseqfilechannel_base.hxx>
 #include <sk/cio/win32/error.hxx>
+#include <sk/cio/win32/filechannel/detail/filechannel_base.hxx>
 #include <sk/cio/win32/handle.hxx>
 #include <sk/cio/win32/iocp_reactor.hxx>
 
@@ -53,9 +52,7 @@ namespace sk::cio::win32 {
      */
 
     // clang-format off
-    struct oseqfilechannel final 
-        : detail::filechannel_base<oseqfilechannel>
-        , detail::oseqfilechannel_base<oseqfilechannel> {
+    struct oseqfilechannel final : detail::filechannel_base {
 
         /*
          * Create an oseqfilechannel which is closed.
@@ -75,11 +72,25 @@ namespace sk::cio::win32 {
                   fileflags_t = fileflags::none) 
             -> expected<void, std::error_code>;
 
+        /*
+         * Write data.
+         */
+        [[nodiscard]]
+        auto async_write_some(std::byte const *buffer, io_size_t)
+            -> task<expected<io_size_t, std::error_code>>;
+
+        [[nodiscard]]
+        auto write_some(std::byte const *buffer, io_size_t)
+            -> expected<io_size_t, std::error_code>;
+
         oseqfilechannel(oseqfilechannel const &) = delete;
         oseqfilechannel(oseqfilechannel &&) noexcept = default;
         oseqfilechannel &operator=(oseqfilechannel const &) = delete;
         oseqfilechannel &operator=(oseqfilechannel &&) noexcept = default;
         ~oseqfilechannel() = default;
+
+    private:
+        io_offset_t _write_position = 0;
     };
 
     // clang-format on
@@ -96,6 +107,11 @@ namespace sk::cio::win32 {
         if (flags & fileflags::read)
             co_return make_unexpected(cio::error::filechannel_invalid_flags);
 
+        if (flags & fileflags::append)
+            _write_position = at_end;
+        else
+            _write_position = 0;
+
         flags |= fileflags::write;
         co_return co_await this->_async_open(path, flags);
     }
@@ -110,8 +126,42 @@ namespace sk::cio::win32 {
         if (flags & fileflags::read)
             return make_unexpected(cio::error::filechannel_invalid_flags);
 
+        if (flags & fileflags::append)
+            _write_position = at_end;
+        else
+            _write_position = 0;
+
         flags |= fileflags::write;
         return this->_open(path, flags);
+    }
+
+    /*************************************************************************
+     * oseqfilechannel::async_write_some()
+     */
+
+    inline auto oseqfilechannel::async_write_some(std::byte const *buffer,
+                                                  io_size_t nobjs)
+        -> task<expected<io_size_t, std::error_code>> {
+
+        auto ret =
+            co_await _async_write_some_at(_write_position, buffer, nobjs);
+        if (_write_position != at_end && ret)
+            _write_position += *ret;
+        co_return ret;
+    }
+
+    /*************************************************************************
+     * oseqfilechannel::write_some()
+     */
+
+    inline auto oseqfilechannel::write_some(std::byte const *buffer,
+                                            io_size_t nobjs)
+        -> expected<io_size_t, std::error_code> {
+
+        auto ret = _write_some_at(_write_position, buffer, nobjs);
+        if (_write_position != at_end && ret)
+            _write_position += *ret;
+        return ret;
     }
 
 } // namespace sk::cio::win32

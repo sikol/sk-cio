@@ -40,8 +40,6 @@
 #include <sk/cio/task.hxx>
 #include <sk/cio/types.hxx>
 #include <sk/cio/win32/filechannel/detail/filechannel_base.hxx>
-#include <sk/cio/win32/filechannel/detail/iseqfilechannel_base.hxx>
-#include <sk/cio/win32/filechannel/detail/oseqfilechannel_base.hxx>
 #include <sk/cio/win32/error.hxx>
 #include <sk/cio/win32/handle.hxx>
 #include <sk/cio/win32/iocp_reactor.hxx>
@@ -54,10 +52,7 @@ namespace sk::cio::win32 {
      */
 
     // clang-format off
-    struct seqfilechannel final 
-            : detail::filechannel_base<seqfilechannel>
-            , detail::iseqfilechannel_base<seqfilechannel>
-            , detail::oseqfilechannel_base<seqfilechannel> {
+    struct seqfilechannel final : detail::filechannel_base {
 
         /*
          * Create a seqfilechannel which is closed.
@@ -77,11 +72,37 @@ namespace sk::cio::win32 {
                   fileflags_t = fileflags::none) 
             -> expected<void, std::error_code>;
 
+        /*
+         * Read data.
+         */
+        [[nodiscard]]
+        auto async_read_some(std::byte *buffer, io_size_t nobjs)
+        -> task<expected<io_size_t, std::error_code>>;
+
+        [[nodiscard]]
+        auto read_some(std::byte *buffer, io_size_t nobjs)
+        -> expected<io_size_t, std::error_code>;
+
+        /*
+         * Write data.
+         */
+        [[nodiscard]]
+        auto async_write_some(std::byte const *buffer, io_size_t)
+            -> task<expected<io_size_t, std::error_code>>;
+
+        [[nodiscard]]
+        auto write_some(std::byte const *buffer, io_size_t)
+            -> expected<io_size_t, std::error_code>;
+
         seqfilechannel(seqfilechannel const &) = delete;
         seqfilechannel(seqfilechannel &&) noexcept = default;
         seqfilechannel &operator=(seqfilechannel const &) = delete;
         seqfilechannel &operator=(seqfilechannel &&) noexcept = default;
         ~seqfilechannel() = default;
+
+    private:
+        io_offset_t _read_position = 0;
+        io_offset_t _write_position = 0;
     };
 
     // clang-format on
@@ -95,6 +116,13 @@ namespace sk::cio::win32 {
                                            fileflags_t flags)
         -> task<expected<void, std::error_code>> {
 
+        if (flags & fileflags::append)
+            _write_position = at_end;
+        else
+            _write_position = 0;
+
+        _read_position = 0;
+
         flags |= fileflags::read | fileflags::write;
         co_return co_await this->_async_open(path, flags);
     }
@@ -106,8 +134,68 @@ namespace sk::cio::win32 {
                                      fileflags_t flags)
         -> expected<void, std::error_code> {
 
+        if (flags & fileflags::append)
+            _write_position = at_end;
+        else
+            _write_position = 0;
+
+        _read_position = 0;
+
         flags |= fileflags::read | fileflags::write;
         return this->_open(path, flags);
+    }
+
+    /*************************************************************************
+     * seqfilechannel::async_read_some()
+     */
+
+    inline auto seqfilechannel::async_read_some(std::byte *buffer,
+                                                io_size_t nobjs)
+        -> task<expected<io_size_t, std::error_code>> {
+
+        auto ret = co_await _async_read_some_at(_read_position, buffer, nobjs);
+        if (ret)
+            _read_position += *ret;
+        co_return ret;
+    }
+
+    /*************************************************************************
+     * seqfilechannel::read_some()
+     */
+
+    inline auto seqfilechannel::read_some(std::byte *buffer, io_size_t nobjs)
+        -> expected<io_size_t, std::error_code> {
+        auto ret = _read_some_at(_read_position, buffer, nobjs);
+        if (ret)
+            _read_position += *ret;
+        return ret;
+    }
+
+    /*************************************************************************
+     * seqfilechannel::async_read_some()
+     */
+
+    inline auto seqfilechannel::async_write_some(std::byte const *buffer,
+                                                 io_size_t nobjs)
+        -> task<expected<io_size_t, std::error_code>> {
+
+        auto ret = co_await _async_write_some_at(_write_position, buffer, nobjs);
+        if (_write_position != at_end && ret)
+            _write_position += *ret;
+        co_return ret;
+    }
+
+    /*************************************************************************
+     * seqfilechannel::read_some()
+     */
+
+    inline auto seqfilechannel::write_some(std::byte const *buffer, io_size_t nobjs)
+        -> expected<io_size_t, std::error_code> {
+
+        auto ret = _write_some_at(_write_position, buffer, nobjs);
+        if (_write_position != at_end && ret)
+            _write_position += *ret;
+        return ret;
     }
 
 } // namespace sk::cio::win32
