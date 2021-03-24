@@ -36,7 +36,7 @@
 
 using namespace sk::cio;
 
-dtask handle_client(net::tcpchannel client) {
+task<void> handle_client(net::tcpchannel client) {
     std::cerr << "handle_client() : start\n";
     for (;;) {
         std::cerr << "handle_client() : in loop\n";
@@ -88,9 +88,7 @@ task<void> run(std::string const &addr, std::string const &port) {
             co_return;
         }
 
-        co_await handle_client(std::move(*client));
-
-        //detach_task(client_task);
+        co_detach(handle_client(std::move(*client)));
     }
 }
 

@@ -66,9 +66,8 @@ target_sources(sk-cio PRIVATE
     include/sk/cio/reactor.hxx
     include/sk/cio/async_invoke.hxx
     include/sk/cio/expected.hxx
-    include/sk/cio/detach_task.hxx
+    include/sk/cio/co_detach.hxx
     include/sk/cio/workq.hxx
-    include/sk/cio/dtask.hxx
 
     include/sk/cio.hxx
     )

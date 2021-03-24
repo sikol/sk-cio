@@ -38,30 +38,42 @@ namespace sk::cio {
      * detach_task: run the given task, discard the result and delete it once
      * it's finished.
      */
-#if 0
-    template<typename T>
-    struct co_detach {
-        std::coroutine_handle<> taskp;
+
+    struct _get_this_coro {
+        std::coroutine_handle<> coro;
 
         bool await_ready() {
             return false;
         }
 
-        bool await_suspend(std::coroutine_handle<>) {
-            reactor_handle::get_global_reactor().post([=] { taskp.resume(); });
+        bool await_suspend(std::coroutine_handle<> h) {
+//            std::cerr << "co_detach: await_suspend\n";
+            coro = h;
             return false;
         }
 
-        void await_resume() {}
+        std::coroutine_handle<> await_resume() {
+            return coro;
+        }
     };
-#endif
-    #if 0
-    inline auto detach_task(task<void> &t) -> void {
-        std::coroutine_handle<> h_ = std::exchange(coro_handle, {});
-        reactor_handle::get_global_reactor().post([=] { h_.resume(); });
-        return false;
+
+    template<typename T>
+    auto _internal_detach(task<T> &&t) -> task<void> {
+        auto task = std::move(t);
+        auto this_coro = co_await _get_this_coro();
+        //std::cerr << "_internal_detach: start\n";
+        co_await task;
+        //std::cerr << "_internal_detach: done\n";
+        //this_coro.destroy();
     }
-    #endif
+
+    template<typename T>
+    auto co_detach(task<T> &&t) -> void {
+        auto detached_task = _internal_detach(std::move(t));
+        auto coro_handle = std::exchange(detached_task.coro_handle, {});
+        coro_handle.promise().previous = {};
+        coro_handle.resume();
+    }
 
 } // namespace sk::cio
 

@@ -29,12 +29,12 @@
 #ifndef SK_CIO_HXX_INCLUDED
 #define SK_CIO_HXX_INCLUDED
 
-#include <sk/cio/task.hxx>
-#include <sk/cio/dtask.hxx>
+#include <sk/cio/async_invoke.hxx>
+#include <sk/cio/co_detach.hxx>
 #include <sk/cio/error.hxx>
 #include <sk/cio/expected.hxx>
-#include <sk/cio/async_invoke.hxx>
 #include <sk/cio/read.hxx>
+#include <sk/cio/task.hxx>
 #include <sk/cio/write.hxx>
 
 #include <sk/cio/filechannel.hxx>
