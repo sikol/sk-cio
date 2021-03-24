@@ -35,12 +35,12 @@
 
 #include <sk/buffer/buffer.hxx>
 #include <sk/cio/channel/concepts.hxx>
-#include <sk/cio/channel/filechannel.hxx>
+#include <sk/cio/filechannel/filechannel.hxx>
 #include <sk/cio/error.hxx>
 #include <sk/cio/task.hxx>
 #include <sk/cio/types.hxx>
-#include <sk/cio/win32/channel/detail/filechannel_base.hxx>
-#include <sk/cio/win32/channel/detail/oseqfilechannel_base.hxx>
+#include <sk/cio/win32/filechannel/detail/filechannel_base.hxx>
+#include <sk/cio/win32/filechannel/detail/oseqfilechannel_base.hxx>
 #include <sk/cio/win32/error.hxx>
 #include <sk/cio/win32/handle.hxx>
 #include <sk/cio/win32/iocp_reactor.hxx>

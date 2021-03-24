@@ -34,7 +34,7 @@
 
 #include <sk/buffer/buffer.hxx>
 #include <sk/cio/channel/concepts.hxx>
-#include <sk/cio/channel/filechannel.hxx>
+#include <sk/cio/filechannel/filechannel.hxx>
 #include <sk/cio/detail/config.hxx>
 #include <sk/cio/error.hxx>
 #include <sk/cio/task.hxx>

@@ -26,22 +26,20 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_WIN32_CHANNEL_ODAFILECHANNEL_HXX_INCLUDED
-#define SK_CIO_WIN32_CHANNEL_ODAFILECHANNEL_HXX_INCLUDED
+#ifndef SK_CIO_WIN32_CHANNEL_IDAFILECHANNEL_HXX_INCLUDED
+#define SK_CIO_WIN32_CHANNEL_IDAFILECHANNEL_HXX_INCLUDED
 
-#include <cstddef>
 #include <filesystem>
 #include <system_error>
 
+#include <sk/cio/detail/config.hxx>
 #include <sk/buffer/buffer.hxx>
 #include <sk/cio/channel/concepts.hxx>
-#include <sk/cio/channel/filechannel.hxx>
-#include <sk/cio/detail/config.hxx>
 #include <sk/cio/error.hxx>
 #include <sk/cio/task.hxx>
 #include <sk/cio/types.hxx>
-#include <sk/cio/win32/channel/detail/filechannel_base.hxx>
-#include <sk/cio/win32/channel/detail/odafilechannel_base.hxx>
+#include <sk/cio/win32/filechannel/detail/filechannel_base.hxx>
+#include <sk/cio/win32/filechannel/detail/idafilechannel_base.hxx>
 #include <sk/cio/win32/error.hxx>
 #include <sk/cio/win32/handle.hxx>
 #include <sk/cio/win32/iocp_reactor.hxx>
@@ -50,23 +48,28 @@ namespace sk::cio::win32 {
 
     /*************************************************************************
      *
-     * odafilechannel: a direct access channel that writes to a file.
+     * idafilechannel: a direct access channel that reads from a file.
      */
 
     // clang-format off
-    struct odafilechannel final 
-            : detail::filechannel_base<odafilechannel>
-            , detail::odafilechannel_base<odafilechannel> {
+    struct idafilechannel final 
+            : detail::filechannel_base<idafilechannel>
+            , detail::idafilechannel_base<idafilechannel> {
 
         /*
-         * Create an odafilechannel which is closed.
+         * Create an idafilechannel which is closed.
          */
-        odafilechannel() = default;
+        idafilechannel() = default;
+
+        idafilechannel(idafilechannel const &) = delete;
+        idafilechannel(idafilechannel &&) noexcept = default;
+        idafilechannel &operator=(idafilechannel const &) = delete;
+        idafilechannel &operator=(idafilechannel &&) noexcept = default;
 
         /*
          * Open a file.
          */
-        [[nodiscard]]
+        [[nodiscard]] 
         auto async_open(std::filesystem::path const &,
                         fileflags_t = fileflags::none) 
             -> task<expected<void, std::error_code>>;
@@ -75,46 +78,39 @@ namespace sk::cio::win32 {
         auto open(std::filesystem::path const &,
                   fileflags_t = fileflags::none) 
             -> expected<void, std::error_code>;
-
-        odafilechannel(odafilechannel const &) = delete;
-        odafilechannel(odafilechannel &&) noexcept = default;
-        odafilechannel &operator=(odafilechannel const &) = delete;
-        odafilechannel &operator=(odafilechannel &&) noexcept = default;
-        ~odafilechannel() = default;
-
     };
     // clang-format on
 
-    static_assert(odachannel<odafilechannel>);
+    static_assert(idachannel<idafilechannel>);
 
     /*************************************************************************
-     * odafilechannel::async_open()
+     * idafilechannel::async_open()
      */
-    inline auto odafilechannel::async_open(std::filesystem::path const &path,
+    inline auto idafilechannel::async_open(std::filesystem::path const &path,
                                            fileflags_t flags)
         -> task<expected<void, std::error_code>> {
 
-        if (flags & fileflags::read)
+        if (flags & fileflags::write)
             co_return make_unexpected(cio::error::filechannel_invalid_flags);
 
-        flags |= fileflags::write;
+        flags |= fileflags::read;
         co_return co_await this->_async_open(path, flags);
     }
 
     /*************************************************************************
-     * odafilechannel::open()
+     * idafilechannel::open()
      */
-    inline auto odafilechannel::open(std::filesystem::path const &path,
+    inline auto idafilechannel::open(std::filesystem::path const &path,
                                      fileflags_t flags)
         -> expected<void, std::error_code> {
 
-        if (flags & fileflags::read)
+        if (flags & fileflags::write)
             return make_unexpected(cio::error::filechannel_invalid_flags);
 
-        flags |= fileflags::write;
+        flags |= fileflags::read;
         return this->_open(path, flags);
     }
 
 } // namespace sk::cio::win32
 
-#endif // SK_CIO_WIN32_CHANNEL_ODAFILECHANNEL_HXX_INCLUDED
+#endif // SK_CIO_WIN32_CHANNEL_IDAFILECHANNEL_HXX_INCLUDED

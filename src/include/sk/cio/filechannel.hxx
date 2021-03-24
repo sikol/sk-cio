@@ -26,39 +26,11 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_CHANNEL_FILECHANNEL_HXX_INCLUDED
-#define SK_CIO_CHANNEL_FILECHANNEL_HXX_INCLUDED
+#ifndef SK_CIO_FILECHANNEL_HXX_INCLUDED
+#define SK_CIO_FILECHANNEL_HXX_INCLUDED
 
-#include <cstdint>
-
-namespace sk::cio {
-
-    using fileflags_t = std::uint32_t;
-
-    namespace fileflags {
-        // No flags
-        inline constexpr fileflags_t none = 0x0;
-
-        // Open the file for writing.
-        inline constexpr fileflags_t write = 0x1;
-
-        // Open the file for reading.
-        inline constexpr fileflags_t read = 0x2;
-
-        // When opening a file for writing, truncate it.
-        inline constexpr fileflags_t trunc = 0x4;
-
-        // When opening a file for writing, seek to the end.
-        inline constexpr fileflags_t append = 0x8;
-
-        // When opening a file for writing, allowing creating a new file.
-        inline constexpr fileflags_t create_new = 0x10;
-
-        // When opening a file, allowing opening an existing file.
-        // This can be specified for input files, but it's implied anyway.
-        inline constexpr fileflags_t open_existing = 0x20;
-    };
-
-} // namespace sk::cio
+#include <sk/cio/filechannel/filechannel.hxx>
+#include <sk/cio/filechannel/dafilechannel.hxx>
+#include <sk/cio/filechannel/seqfilechannel.hxx>
 
 #endif // SK_CIO_CHANNEL_FILECHANNEL_HXX_INCLUDED

@@ -31,7 +31,7 @@
 
 #include <catch.hpp>
 
-#include <sk/cio/channel/seqfilechannel.hxx>
+#include <sk/cio/filechannel/seqfilechannel.hxx>
 
 using namespace sk::cio;
 

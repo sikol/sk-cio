@@ -26,26 +26,24 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_CHANNEL_DAFILECHANNEL_HXX_INCLUDED
-#define SK_CIO_CHANNEL_DAFILECHANNEL_HXX_INCLUDED
+#ifndef SK_CIO_HXX_INCLUDED
+#define SK_CIO_HXX_INCLUDED
 
-#ifdef _WIN32
-#    include <sk/cio/win32/channel/idafilechannel.hxx>
-#    include <sk/cio/win32/channel/odafilechannel.hxx>
-#    include <sk/cio/win32/channel/dafilechannel.hxx>
+#include <sk/cio/task.hxx>
+#include <sk/cio/dtask.hxx>
+#include <sk/cio/error.hxx>
+#include <sk/cio/expected.hxx>
+#include <sk/cio/async_invoke.hxx>
 
-namespace sk::cio {
+#include <sk/cio/channel/read.hxx>
+#include <sk/cio/channel/write.hxx>
 
-    using win32::idafilechannel;
-    using win32::odafilechannel;
-    using win32::dafilechannel;
+#include <sk/cio/filechannel.hxx>
 
-} // namespace sk::cio
+#include <sk/cio/net/address.hxx>
+#include <sk/cio/net/tcpchannel.hxx>
+#include <sk/cio/net/tcpserverchannel.hxx>
 
-#else
+#include <sk/buffer/fixed_buffer.hxx>
 
-#    error dafilechannel is not supported on this platform
-
-#endif
-
-#endif // SK_CIO_CHANNEL_DAFILECHANNEL_HXX_INCLUDED
+#endif // SK_CIO_HXX_INCLUDED

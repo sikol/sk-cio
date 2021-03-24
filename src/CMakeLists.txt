@@ -35,23 +35,37 @@ target_sources(sk-cio PRIVATE
     reactor.cxx
     net/resolve.cxx
     
-    include/sk/cio/channel/filechannel.hxx
-    include/sk/cio/channel/dafilechannel.hxx
-    include/sk/cio/channel/seqfilechannel.hxx
-    include/sk/cio/channel/pmr_channel.hxx
+    include/sk/cio/channel/concepts.hxx
     include/sk/cio/channel/write.hxx
     include/sk/cio/channel/read.hxx
+    include/sk/cio/channel/charchannel.hxx
+    include/sk/cio/channel/pmr_channel.hxx
 
+    include/sk/cio/filechannel.hxx
+    include/sk/cio/filechannel/filechannel.hxx
+    include/sk/cio/filechannel/dafilechannel.hxx
+    include/sk/cio/filechannel/seqfilechannel.hxx
+
+    include/sk/cio/net/address.hxx
+    include/sk/cio/net/tcpchannel.hxx
+    include/sk/cio/net/tcpserverchannel.hxx
+
+    include/sk/cio/detail/config.hxx
+    include/sk/cio/detail/safeint.hxx
+
+    include/sk/cio/concepts.hxx
     include/sk/cio/error.hxx
     include/sk/cio/task.hxx
     include/sk/cio/types.hxx
     include/sk/cio/reactor.hxx
-    include/sk/cio/concepts.hxx
-    "include/sk/cio/async_invoke.hxx"
+    include/sk/cio/async_invoke.hxx
     include/sk/cio/expected.hxx
+    include/sk/cio/detach_task.hxx
+    include/sk/cio/workq.hxx
+    include/sk/cio/dtask.hxx
 
-    include/sk/cio/detail/config.hxx
- "include/sk/cio/net/tcpchannel.hxx" "include/sk/cio/channel/charchannel.hxx" "include/sk/cio/net/tcpserverchannel.hxx" "include/sk/cio/detach_task.hxx" "include/sk/cio/workq.hxx" "include/sk/cio/dtask.hxx" "include/sk/cio/detail/safeint.hxx")
+    include/sk/cio.hxx
+)
 
 if(WIN32)
     target_sources(sk-cio PRIVATE
@@ -59,24 +73,26 @@ if(WIN32)
         win32/iocp_reactor.cxx
         win32/async_api.cxx
 
-        include/sk/cio/win32/channel/detail/filechannel_base.hxx
-        include/sk/cio/win32/channel/detail/idafilechannel_base.hxx
-        include/sk/cio/win32/channel/detail/iseqfilechannel_base.hxx
-        include/sk/cio/win32/channel/detail/oseqfilechannel_base.hxx
-        include/sk/cio/win32/channel/detail/odafilechannel_base.hxx
-        include/sk/cio/win32/channel/idafilechannel.hxx
-        include/sk/cio/win32/channel/odafilechannel.hxx
-        include/sk/cio/win32/channel/iseqfilechannel.hxx
-        include/sk/cio/win32/channel/oseqfilechannel.hxx
+        include/sk/cio/win32/filechannel/detail/filechannel_base.hxx
+        include/sk/cio/win32/filechannel/detail/idafilechannel_base.hxx
+        include/sk/cio/win32/filechannel/detail/iseqfilechannel_base.hxx
+        include/sk/cio/win32/filechannel/detail/oseqfilechannel_base.hxx
+        include/sk/cio/win32/filechannel/detail/odafilechannel_base.hxx
+        include/sk/cio/win32/filechannel/idafilechannel.hxx
+        include/sk/cio/win32/filechannel/odafilechannel.hxx
+        include/sk/cio/win32/filechannel/iseqfilechannel.hxx
+        include/sk/cio/win32/filechannel/oseqfilechannel.hxx
+
+        include/sk/cio/win32/net/tcpchannel.hxx
+        include/sk/cio/win32/net/tcpserverchannel.hxx
+
         include/sk/cio/win32/error.hxx
         include/sk/cio/win32/handle.hxx
         include/sk/cio/win32/iocp_reactor.hxx
         include/sk/cio/win32/windows.hxx
-        "include/sk/cio/win32/async_invoke.hxx"
+        include/sk/cio/win32/async_invoke.hxx
         include/sk/cio/win32/async_api.hxx
-
-        include/sk/cio/net/address.hxx
-         "include/sk/cio/win32/net/tcpchannel.hxx" "include/sk/cio/win32/net/tcpserverchannel.hxx")
+    )
 endif()
 
 target_include_directories(sk-cio PUBLIC include)

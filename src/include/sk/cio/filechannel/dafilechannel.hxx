@@ -26,26 +26,26 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_CHANNEL_SEQFILECHANNEL_HXX_INCLUDED
-#define SK_CIO_CHANNEL_SEQFILECHANNEL_HXX_INCLUDED
+#ifndef SK_CIO_CHANNEL_DAFILECHANNEL_HXX_INCLUDED
+#define SK_CIO_CHANNEL_DAFILECHANNEL_HXX_INCLUDED
 
 #ifdef _WIN32
-#    include <sk/cio/win32/channel/iseqfilechannel.hxx>
-#    include <sk/cio/win32/channel/oseqfilechannel.hxx>
-#    include <sk/cio/win32/channel/seqfilechannel.hxx>
+#    include <sk/cio/win32/filechannel/idafilechannel.hxx>
+#    include <sk/cio/win32/filechannel/odafilechannel.hxx>
+#    include <sk/cio/win32/filechannel/dafilechannel.hxx>
 
 namespace sk::cio {
 
-    using win32::iseqfilechannel;
-    using win32::oseqfilechannel;
-    using win32::seqfilechannel;
+    using win32::idafilechannel;
+    using win32::odafilechannel;
+    using win32::dafilechannel;
 
 } // namespace sk::cio
 
 #else
 
-#    error seqfilechannel is not supported on this platform
+#    error dafilechannel is not supported on this platform
 
 #endif
 
-#endif // SK_CIO_CHANNEL_SEQFILECHANNEL_HXX_INCLUDED
+#endif // SK_CIO_CHANNEL_DAFILECHANNEL_HXX_INCLUDED

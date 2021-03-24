@@ -26,111 +26,112 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_WIN32_CHANNEL_OSEQFILECHANNEL_BASE_HXX_INCLUDED
-#define SK_CIO_WIN32_CHANNEL_OSEQFILECHANNEL_BASE_HXX_INCLUDED
+#ifndef SK_CIO_WIN32_CHANNEL_ISEQFILECHANNEL_BASE_HXX_INCLUDED
+#define SK_CIO_WIN32_CHANNEL_ISEQFILECHANNEL_BASE_HXX_INCLUDED
 
 #include <filesystem>
 #include <system_error>
 
 #include <sk/buffer/buffer.hxx>
 #include <sk/cio/channel/concepts.hxx>
-#include <sk/cio/channel/filechannel.hxx>
+#include <sk/cio/detail/config.hxx>
+#include <sk/cio/detail/safeint.hxx>
 #include <sk/cio/error.hxx>
 #include <sk/cio/task.hxx>
 #include <sk/cio/types.hxx>
-#include <sk/cio/win32/channel/detail/filechannel_base.hxx>
+#include <sk/cio/win32/filechannel/detail/filechannel_base.hxx>
 #include <sk/cio/win32/error.hxx>
 #include <sk/cio/win32/handle.hxx>
 #include <sk/cio/win32/iocp_reactor.hxx>
 
 namespace sk::cio::win32::detail {
 
+    // clang-format off
+
     /*************************************************************************
      *
-     * oseqfilechannel_base: a direct access channel that writes to a file.
+     * iseqfilechannel_base: a sequential-access channel to a file.
+     *
      */
-
-    // clang-format off
     template <typename T>
-    struct oseqfilechannel_base {
-        oseqfilechannel_base(oseqfilechannel_base const &) = delete;
-        oseqfilechannel_base(oseqfilechannel_base &&) noexcept = default;
-        oseqfilechannel_base &operator=(oseqfilechannel_base const &) = delete;
-        oseqfilechannel_base &operator=(oseqfilechannel_base &&) noexcept = default;
+    struct iseqfilechannel_base {
+        explicit iseqfilechannel_base(iseqfilechannel_base const &) = delete;
+        iseqfilechannel_base(iseqfilechannel_base &&) noexcept = default;
+        iseqfilechannel_base &operator=(iseqfilechannel_base const &) = delete;
+        iseqfilechannel_base &operator=(iseqfilechannel_base &&) noexcept = default;
 
         /*
-         * Write data.
+         * Read data.
          */
         [[nodiscard]]
-        auto async_write_some(std::byte const *buffer, io_size_t)
+        auto async_read_some(std::byte *buffer, io_size_t n)
             -> task<expected<io_size_t, std::error_code>>;
 
         [[nodiscard]]
-        auto write_some(std::byte const *buffer, io_size_t)
+        auto read_some(std::byte *buffer, io_size_t n)
             -> expected<io_size_t, std::error_code>;
 
     protected:
-        oseqfilechannel_base() = default;
-        ~oseqfilechannel_base() = default;
+        iseqfilechannel_base() = default;
+        ~iseqfilechannel_base() = default;
 
     private:
-        io_offset_t _write_position;
+        io_offset_t _read_position{0};
     };
 
     // clang-format on
 
     /*************************************************************************
-     * oseqfilechannel_base::async_write_some()
+     * iseqfilechannel_base::async_read_some()
      */
 
     template <typename T>
-    auto oseqfilechannel_base<T>::async_write_some(std::byte const *buffer,
-                                                   io_size_t nobjs)
+    auto iseqfilechannel_base<T>::async_read_some(std::byte *buffer,
+                                                  io_size_t nobjs)
         -> task<expected<io_size_t, std::error_code>> {
 
         SK_CHECK(static_cast<T *>(this)->is_open(),
-                 "attempt to write on a closed channel");
+                 "attempt to read on a closed channel");
 
-        if (!cio::detail::can_add(_write_position, nobjs))
-            return make_unexpected(std::errc::value_too_large);
+        if (!cio::detail::can_add(_read_position, nobjs))
+            co_return make_unexpected(
+                std::make_error_code(std::errc::value_too_large));
 
-        DWORD bytes_written = 0;
         auto dwbytes = cio::detail::int_cast<DWORD>(nobjs);
 
-        auto ret = co_await win32::AsyncWriteFile(
-            static_cast<T *>(this)->native_handle.handle_value, buffer,
-            dwbytes, &bytes_written, _write_position);
+        DWORD bytes_read = 0;
+        auto ret = co_await win32::AsyncReadFile(
+            static_cast<T *>(this)->native_handle.native_handle(), buffer,
+            dwbytes, &bytes_read, _read_position);
 
-        if (ret)
-            co_return make_unexpected(win32::win32_to_generic_error(ret));
+        if (!ret)
+            co_return make_unexpected(
+                win32::win32_to_generic_error(ret.error()));
 
-        if (_write_position != at_end)
-            _write_position += bytes_written;
-        co_return bytes_written;
+        _read_position += bytes_read;
+        co_return bytes_read;
     }
 
     /*************************************************************************
-     * oseqfilechannel_base::write_some()
+     * iseqfilechannel_base::read_some()
      */
 
     template <typename T>
-    auto oseqfilechannel_base<T>::write_some(std::byte const *buffer, io_size_t nobjs)
-        -> expected<io_size_t, std::error_code> 
-    {
-
+    auto iseqfilechannel_base<T>::read_some(std::byte *buffer, io_size_t nobjs)
+        -> expected<io_size_t, std::error_code> {
         SK_CHECK(static_cast<T *>(this)->is_open(),
-                 "attempt to write on a closed channel");
+                 "attempt to read on a closed channel");
 
-        if (!cio::detail::can_add(_write_position, nobjs))
-            return make_unexpected(std::errc::value_too_large);
+        if (!cio::detail::can_add(_read_position, nobjs))
+            return make_unexpected(
+                std::make_error_code(std::errc::value_too_large));
 
-        DWORD bytes_written = 0;
         auto dwbytes = cio::detail::int_cast<DWORD>(nobjs);
 
         OVERLAPPED overlapped;
         std::memset(&overlapped, 0, sizeof(overlapped));
-        overlapped.Offset = static_cast<DWORD>(_write_position & 0xFFFFFFFFUL);
-        overlapped.OffsetHigh = static_cast<DWORD>(_write_position >> 32);
+        overlapped.Offset = static_cast<DWORD>(_read_position & 0xFFFFFFFFUL);
+        overlapped.OffsetHigh = static_cast<DWORD>(_read_position >> 32);
 
         // Create an event for the OVERLAPPED.  We don't actually use the event
         // but it has to be present.
@@ -147,24 +148,24 @@ namespace sk::cio::win32::detail {
         overlapped.hEvent = reinterpret_cast<HANDLE>(
             reinterpret_cast<std::uintptr_t>(event_handle) | 0x1);
 
+        DWORD bytes_read;
         auto ret =
-            ::WriteFile(static_cast<T *>(this)->native_handle.handle_value,
-                        buffer, dwbytes, &bytes_written, &overlapped);
+            ::ReadFile(static_cast<T *>(this)->native_handle.native_handle(),
+                       buffer, dwbytes, &bytes_read, &overlapped);
 
         if (!ret && (::GetLastError() == ERROR_IO_PENDING))
             ret = ::GetOverlappedResult(
-                static_cast<T *>(this)->native_handle.handle_value, &overlapped,
-                &bytes_written, TRUE);
+                static_cast<T *>(this)->native_handle.native_handle(),
+                &overlapped, &bytes_read, TRUE);
 
         if (!ret)
             return make_unexpected(
                 win32::win32_to_generic_error(win32::get_last_error()));
 
-        if (_write_position != at_end)
-            _write_position += bytes_written;
-        return bytes_written;
+        _read_position += bytes_read;
+        return bytes_read;
     }
 
 } // namespace sk::cio::win32::detail
 
-#endif // SK_CIO_WIN32_CHANNEL_OSEQFILECHANNEL_BASE_HXX_INCLUDED
+#endif // SK_CIO_WIN32_CHANNEL_ISEQFILECHANNEL_BASE_HXX_INCLUDED

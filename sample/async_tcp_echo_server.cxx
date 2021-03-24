@@ -32,15 +32,7 @@
 
 #include <fmt/core.h>
 
-#include <sk/cio/dtask.hxx>
-#include <sk/cio/detach_task.hxx>
-#include <sk/cio/net/address.hxx>
-#include <sk/cio/net/tcpserverchannel.hxx>
-#include <sk/cio/net/tcpchannel.hxx>
-#include <sk/cio/reactor.hxx>
-#include <sk/cio/channel/read.hxx>
-#include <sk/cio/channel/write.hxx>
-#include <sk/buffer/fixed_buffer.hxx>
+#include <sk/cio.hxx>
 
 using namespace sk::cio;
 

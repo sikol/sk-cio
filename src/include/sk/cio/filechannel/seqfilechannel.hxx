@@ -26,59 +26,26 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <cstdio>
-#include <iostream>
-#include <ranges>
+#ifndef SK_CIO_CHANNEL_SEQFILECHANNEL_HXX_INCLUDED
+#define SK_CIO_CHANNEL_SEQFILECHANNEL_HXX_INCLUDED
 
-#include <fmt/core.h>
+#ifdef _WIN32
+#    include <sk/cio/win32/filechannel/iseqfilechannel.hxx>
+#    include <sk/cio/win32/filechannel/oseqfilechannel.hxx>
+#    include <sk/cio/win32/filechannel/seqfilechannel.hxx>
 
-#include <sk/cio.hxx>
+namespace sk::cio {
 
-using namespace sk::cio;
+    using win32::iseqfilechannel;
+    using win32::oseqfilechannel;
+    using win32::seqfilechannel;
 
-task<void> print_file(std::string const &name) {
-    iseqfilechannel chnl;
+} // namespace sk::cio
 
-    auto err = co_await chnl.async_open(name);
-    if (!err) {
-        std::cerr << name << ": " << err.error().message() << "\n";
-        co_return;
-    }
+#else
 
-    for (;;) {
-        sk::fixed_buffer<std::byte, 1024> buffer;
-        auto nbytes = co_await async_read_some(chnl, buffer, unlimited);
+#    error seqfilechannel is not supported on this platform
 
-        if (!nbytes) {
-            if (nbytes.error() != sk::cio::error::end_of_file)
-                std::cerr << name << ": " << nbytes.error().message() << "\n";
-            break;
-        }
+#endif
 
-        for (auto &&range : buffer.readable_ranges())
-            std::cout.write(
-                reinterpret_cast<char const *>(std::ranges::data(range)),
-                std::ranges::size(range));
-
-        buffer.discard(*nbytes);
-    }
-
-    co_await chnl.async_close();
-}
-
-int main(int argc, char **argv) {
-    using namespace std::chrono_literals;
-
-    if (argc < 2) {
-        fmt::print(stderr, "usage: {} <file> [file...]", argv[0]);
-        return 1;
-    }
-
-    sk::cio::reactor_handle reactor;
-
-    for (auto &&file : std::span(argv + 1, argv + argc)) {
-        print_file(file).wait();
-    }
-
-    return 0;
-}
+#endif // SK_CIO_CHANNEL_SEQFILECHANNEL_HXX_INCLUDED
