@@ -34,7 +34,7 @@
 #include <stdexcept>
 #include <string>
 
-#include <sk/cio/filechannel/dafilechannel.hxx>
+#include <sk/cio/filechannel/idafilechannel.hxx>
 #include <sk/cio/read.hxx>
 #include <sk/cio/task.hxx>
 

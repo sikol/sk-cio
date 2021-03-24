@@ -67,6 +67,14 @@ namespace sk::cio {
         }
 
         [[nodiscard]]
+        auto open(char *begin, char *end)
+        -> expected<void, std::error_code>
+        {
+            return open(reinterpret_cast<std::byte *>(begin),
+                        reinterpret_cast<std::byte *>(end));
+        }
+
+        [[nodiscard]]
         auto open(signed char *begin, signed char *end)
             -> expected<void, std::error_code>
         {
@@ -92,6 +100,13 @@ namespace sk::cio {
                     std::make_error_code(std::errc::bad_address));
 
             return open(begin, begin + n);
+        }
+
+        [[nodiscard]]
+        auto open(char *begin, std::size_t n)
+        -> expected<void, std::error_code>
+        {
+            return open(reinterpret_cast<std::byte *>(begin), n);
         }
 
         [[nodiscard]]

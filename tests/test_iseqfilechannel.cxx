@@ -35,7 +35,7 @@
 #include <string>
 
 #include <sk/cio/read.hxx>
-#include <sk/cio/filechannel/seqfilechannel.hxx>
+#include <sk/cio/filechannel/iseqfilechannel.hxx>
 #include <sk/cio/task.hxx>
 
 using namespace sk::cio;

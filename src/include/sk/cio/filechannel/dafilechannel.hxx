@@ -30,14 +30,10 @@
 #define SK_CIO_CHANNEL_DAFILECHANNEL_HXX_INCLUDED
 
 #ifdef _WIN32
-#    include <sk/cio/win32/filechannel/idafilechannel.hxx>
-#    include <sk/cio/win32/filechannel/odafilechannel.hxx>
 #    include <sk/cio/win32/filechannel/dafilechannel.hxx>
 
 namespace sk::cio {
 
-    using win32::idafilechannel;
-    using win32::odafilechannel;
     using win32::dafilechannel;
 
 } // namespace sk::cio

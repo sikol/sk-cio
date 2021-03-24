@@ -1,4 +1,4 @@
-sk-cio: Coro-based exception-free async I/O library 
+sk-cio: Coro-based exception-free async I/O library
 ===================================================
 
 sk-cio (Channel I/O) is an I/O library for C++.  It provides a unified interface
@@ -14,6 +14,7 @@ both a synchronous API and a coroutine-based asynchronous API.
    concepts.rst
    io_functions.rst
    filechannel.rst
+   memchannel.rst
 
 Supported compilers
 -------------------

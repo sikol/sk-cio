@@ -30,7 +30,11 @@
 #define SK_CIO_FILECHANNEL_HXX_INCLUDED
 
 #include <sk/cio/filechannel/filechannel.hxx>
+#include <sk/cio/filechannel/idafilechannel.hxx>
+#include <sk/cio/filechannel/odafilechannel.hxx>
 #include <sk/cio/filechannel/dafilechannel.hxx>
+#include <sk/cio/filechannel/iseqfilechannel.hxx>
+#include <sk/cio/filechannel/oseqfilechannel.hxx>
 #include <sk/cio/filechannel/seqfilechannel.hxx>
 
 #endif // SK_CIO_CHANNEL_FILECHANNEL_HXX_INCLUDED

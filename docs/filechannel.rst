@@ -11,21 +11,35 @@ six file channel types:
 * ``odafilechannel``: Direct access output (write) file channel
 * ``dafilechannel``: Direct access bidirectional file channel
 
+The ``value_type`` of a filechannel is ``std::byte``.
+
+Include files
+-------------
+
+* For ``iseqfilechannel``, include ``<sk/cio/filechannel/iseqfilechannel.hxx>``.
+* For ``oseqfilechannel``, include ``<sk/cio/filechannel/oseqfilechannel.hxx>``.
+* For ``seqfilechannel``, include ``<sk/cio/filechannel/seqfilechannel.hxx>``.
+* For ``idafilechannel``, include ``<sk/cio/filechannel/idafilechannel.hxx>``.
+* For ``odafilechannel``, include ``<sk/cio/filechannel/odafilechannel.hxx>``.
+* For ``dafilechannel``, include ``<sk/cio/filechannel/dafilechannel.hxx>``.
+
+To include all types, include ``<sk/ci/filechannel.hxx>`` or ``<sk/cio.hxx>``.
+
 Opening files
 -------------
 
-Before a file channel can be used, it must be opened to associated the
+Before a file channel can be used, it must be opened to associate the
 channel with a file.  Use the ``open()`` or ``async_open()`` functions
 to do this:
 
 .. code-block:: c++
 
     auto async_open(std::filesystem::path const &,
-                    fileflags_t = fileflags::none) 
+                    fileflags_t = fileflags::none)
         -> task<expected<void, std::error_code>>;
 
     auto open(std::filesystem::path const &,
-                fileflags_t = fileflags::none) 
+                fileflags_t = fileflags::none)
         -> expected<void, std::error_code>;
 
 ``path`` is the filename of the file to be opened.
