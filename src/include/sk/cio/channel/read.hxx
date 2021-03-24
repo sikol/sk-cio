@@ -72,7 +72,7 @@ namespace sk::cio {
 
         auto ranges = buffer.writable_ranges();
         if (std::ranges::size(ranges) == 0)
-            return make_unexpected(error::no_space_in_buffer);
+            return 0u;
         
         auto &first_range = *std::ranges::begin(ranges);
         channel_value_t<Channel> *buf_data = std::ranges::data(first_range);
@@ -93,7 +93,7 @@ namespace sk::cio {
 
         auto ranges = buffer.writable_ranges();
         if (std::ranges::size(ranges) == 0)
-            co_return make_unexpected(error::no_space_in_buffer);
+            co_return 0u;
         
         auto first_range = *std::ranges::begin(ranges);
         channel_value_t<Channel> *buf_data = std::ranges::data(first_range);
@@ -158,8 +158,8 @@ namespace sk::cio {
                                   sk::buffer_value_t<Buffer>> {
 
         auto ranges = buffer.writable_ranges();
-        if (std::ranges::size(ranges) == 0)
-            return make_unexpected(error::no_space_in_buffer);
+        if (std::ranges::size(ranges) == 0u)
+            return 0u;
         
         auto &first_range = *std::ranges::begin(ranges);
         channel_value_t<Channel> *buf_data = std::ranges::data(first_range);
@@ -180,8 +180,8 @@ namespace sk::cio {
                                   sk::buffer_value_t<Buffer>> {
 
         auto ranges = buffer.writable_ranges();
-        if (std::ranges::size(ranges) == 0)
-            co_return make_unexpected(error::no_space_in_buffer);
+        if (std::ranges::size(ranges) == 0u)
+            co_return 0u;
         
         auto &first_range = *std::ranges::begin(ranges);
         channel_value_t<Channel> *buf_data = std::ranges::data(first_range);

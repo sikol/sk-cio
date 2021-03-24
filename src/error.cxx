@@ -44,11 +44,11 @@ namespace sk::cio {
             case error::end_of_file:
                 return "end of file";
 
-            case error::no_space_in_buffer:
-                return "no space in buffer";
+//            case error::no_space_in_buffer:
+//                return "no space in buffer";
 
-            case error::no_data_in_buffer:
-                return "no data in buffer";
+//            case error::no_data_in_buffer:
+//                return "no data in buffer";
 
             case error::filechannel_invalid_flags:
                 return "invalid filechannel flags";

@@ -48,10 +48,10 @@ namespace sk::cio {
         end_of_file = 1,
 
         // The buffer passed to a read operation has no space to read into.
-        no_space_in_buffer = 2,
+        //unused no_space_in_buffer = 2,
 
         // The buffer passed to a write operation has no data in it.
-        no_data_in_buffer = 3,
+        //unused no_data_in_buffer = 3,
 
         // The flags passed to filechannel's open() were not valid.
         filechannel_invalid_flags = 4,

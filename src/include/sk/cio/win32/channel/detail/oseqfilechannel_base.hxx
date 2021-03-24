@@ -90,7 +90,6 @@ namespace sk::cio::win32::detail {
 
         SK_CHECK(static_cast<T *>(this)->is_open(),
                  "attempt to write on a closed channel");
-        SK_CHECK(nobjs > 0, "attempt to write empty buffer");
 
         if (!cio::detail::can_add(_write_position, nobjs))
             return make_unexpected(std::errc::value_too_large);
@@ -121,7 +120,6 @@ namespace sk::cio::win32::detail {
 
         SK_CHECK(static_cast<T *>(this)->is_open(),
                  "attempt to write on a closed channel");
-        SK_CHECK(nobjs > 0, "attempt to write empty buffer");
 
         if (!cio::detail::can_add(_write_position, nobjs))
             return make_unexpected(std::errc::value_too_large);

@@ -31,6 +31,7 @@
 
 #include <cstddef>
 
+#include <sk/cio/detail/safeint.hxx>
 #include <sk/cio/async_invoke.hxx>
 #include <sk/cio/channel/concepts.hxx>
 #include <sk/cio/expected.hxx>
@@ -160,11 +161,7 @@ namespace sk::cio::win32::net {
     inline auto tcpchannel::async_connect(cio::net::address const &addr)
         -> task<expected<void, std::error_code>> {
 
-#ifdef SK_CIO_CHECKED
-        if (is_open())
-            throw cio::detail::checked_error(
-                "attempt to re-connect a connected tcpchannel");
-#endif
+        SK_CHECK(is_open(), "attempt to connect on a closed channel");
 
         auto sock = ::WSASocketW(addr.address_family(), SOCK_STREAM,
                                  IPPROTO_TCP, nullptr, 0, WSA_FLAG_OVERLAPPED);
@@ -191,11 +188,7 @@ namespace sk::cio::win32::net {
     inline auto tcpchannel::connect(cio::net::address const &addr)
         -> expected<void, std::error_code> {
 
-#ifdef SK_CIO_CHECKED
-        if (is_open())
-            throw cio::detail::checked_error(
-                "attempt to re-connect a connected tcpchannel");
-#endif
+        SK_CHECK(is_open(), "attempt to connect on a closed channel");
 
         auto sock = ::WSASocketW(addr.address_family(), SOCK_STREAM,
                                  IPPROTO_TCP, nullptr, 0, WSA_FLAG_OVERLAPPED);
@@ -225,28 +218,11 @@ namespace sk::cio::win32::net {
         -> task<expected<io_size_t, std::error_code>> 
     {
         // clang-format on
-#ifdef SK_CIO_CHECKED
-        if (!is_open())
-            throw cio::detail::checked_error(
-                "attempt to read from a closed channel");
-#endif
+        SK_CHECK(is_open(), "attempt to read on a closed channel");
 
-        if (nobjs == 0)
-            co_return make_unexpected(cio::error::no_space_in_buffer);
+        auto dwbytes = cio::detail::int_cast<DWORD>(nobjs);
 
         DWORD bytes_read = 0;
-
-        // The maximum I/O size we can support.
-        auto max_objs =
-            static_cast<std::size_t>(std::numeric_limits<DWORD>::max());
-
-        // Can't read more than max_objs.
-        if (nobjs > max_objs)
-            nobjs = max_objs;
-
-        // The number of bytes we'll read.
-        DWORD dwbytes = static_cast<DWORD>(nobjs);
-
         auto ret = co_await win32::AsyncReadFile(
             reinterpret_cast<HANDLE>(_native_handle.native_socket()), buffer,
             dwbytes, &bytes_read, 0);
@@ -272,27 +248,10 @@ namespace sk::cio::win32::net {
     {
         // clang-format on
 
-#ifdef SK_CIO_CHECKED
-        if (!is_open())
-            throw cio::detail::checked_error(
-                "attempt to read from a closed channel");
-#endif
+        SK_CHECK(is_open(), "attempt to read on a closed channel");
 
         DWORD bytes_read = 0;
-
-        if (nobjs == 0)
-            return make_unexpected(cio::error::no_space_in_buffer);
-
-        // The maximum I/O size we can support.
-        auto max_objs =
-            static_cast<std::size_t>(std::numeric_limits<DWORD>::max());
-
-        // Can't read more than max_objs.
-        if (nobjs > max_objs)
-            nobjs = max_objs;
-
-        // The number of bytes we'll read.
-        DWORD dwbytes = static_cast<DWORD>(nobjs);
+        auto dwbytes = cio::detail::int_cast<DWORD>(nobjs);
 
         OVERLAPPED overlapped;
         std::memset(&overlapped, 0, sizeof(overlapped));
@@ -319,7 +278,7 @@ namespace sk::cio::win32::net {
         if (!ret && (::GetLastError() == ERROR_IO_PENDING))
             ret = ::GetOverlappedResult(
                 reinterpret_cast<HANDLE>(_native_handle.native_socket()),
-                                        &overlapped, &bytes_read, TRUE);
+                &overlapped, &bytes_read, TRUE);
 
         if (!ret)
             return make_unexpected(
@@ -342,34 +301,18 @@ namespace sk::cio::win32::net {
         -> task<expected<io_size_t, std::error_code>> 
     {
         // clang-format on
-#ifdef SK_CIO_CHECKED
-        if (!this->is_open())
-            throw cio::detail::checked_error(
-                "attempt to write to a closed channel");
-#endif
+        SK_CHECK(is_open(), "attempt to write on a closed channel");
 
         DWORD bytes_written = 0;
-
-        if (nobjs == 0)
-            co_return make_unexpected(cio::error::no_data_in_buffer);
-
-        // The maximum I/O size we can support.
-        static auto max_objs =
-            static_cast<std::size_t>(std::numeric_limits<DWORD>::max());
-
-        // Can't write more than max_objs.
-        if (nobjs > max_objs)
-            nobjs = max_objs;
-
-        // The number of bytes we'll write.
-        DWORD dwbytes = static_cast<DWORD>(nobjs);
+        auto dwbytes = cio::detail::int_cast<DWORD>(nobjs);
 
         auto ret = co_await win32::AsyncWriteFile(
             reinterpret_cast<HANDLE>(_native_handle.native_socket()), buffer,
             dwbytes, &bytes_written, 0);
 
         if (!ret)
-            co_return make_unexpected(win32::win32_to_generic_error(ret.error()));
+            co_return make_unexpected(
+                win32::win32_to_generic_error(ret.error()));
 
         co_return bytes_written;
     }
@@ -383,27 +326,9 @@ namespace sk::cio::win32::net {
         -> expected<io_size_t, std::error_code> 
     {
         // clang-format on
-#ifdef SK_CIO_CHECKED
-        if (!this->is_open())
-            throw cio::detail::checked_error(
-                "attempt to write to a closed channel");
-#endif
+        SK_CHECK(is_open(), "attempt to write on a closed channel");
 
-        if (nobjs == 0)
-            return make_unexpected(cio::error::no_data_in_buffer);
-
-        DWORD bytes_written = 0;
-
-        // The maximum I/O size we can support.
-        static auto max_objs =
-            static_cast<std::size_t>(std::numeric_limits<DWORD>::max());
-
-        // Can't write more than max_objs.
-        if (nobjs > max_objs)
-            nobjs = max_objs;
-
-        // The number of bytes we'll write.
-        DWORD dwbytes = static_cast<DWORD>(nobjs);
+        auto dwbytes = cio::detail::int_cast<DWORD>(nobjs);
 
         OVERLAPPED overlapped;
         std::memset(&overlapped, 0, sizeof(overlapped));
@@ -423,6 +348,7 @@ namespace sk::cio::win32::net {
         overlapped.hEvent = reinterpret_cast<HANDLE>(
             reinterpret_cast<std::uintptr_t>(event_handle) | 0x1);
 
+        DWORD bytes_written = 0;
         auto ret = ::WriteFile(
             reinterpret_cast<HANDLE>(_native_handle.native_socket()), buffer,
             dwbytes, &bytes_written, &overlapped);
@@ -432,7 +358,7 @@ namespace sk::cio::win32::net {
                 reinterpret_cast<HANDLE>(_native_handle.native_socket()),
                 &overlapped, &bytes_written, TRUE);
 
-        if (!ret) 
+        if (!ret)
             return make_unexpected(
                 win32::win32_to_generic_error(win32::get_last_error()));
 

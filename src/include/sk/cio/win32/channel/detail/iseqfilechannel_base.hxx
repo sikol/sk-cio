@@ -92,15 +92,12 @@ namespace sk::cio::win32::detail {
 
         SK_CHECK(static_cast<T *>(this)->is_open(),
                  "attempt to read on a closed channel");
-        SK_CHECK(nobjs > 0, "attempt to read to empty buffer");
 
         if (!cio::detail::can_add(_read_position, nobjs))
             co_return make_unexpected(
                 std::make_error_code(std::errc::value_too_large));
 
         auto dwbytes = cio::detail::int_cast<DWORD>(nobjs);
-        if (dwbytes == 0)
-            co_return make_unexpected(cio::error::no_space_in_buffer);
 
         DWORD bytes_read = 0;
         auto ret = co_await win32::AsyncReadFile(
@@ -124,7 +121,6 @@ namespace sk::cio::win32::detail {
         -> expected<io_size_t, std::error_code> {
         SK_CHECK(static_cast<T *>(this)->is_open(),
                  "attempt to read on a closed channel");
-        SK_CHECK(nobjs > 0, "attempt to read to empty buffer");
 
         if (!cio::detail::can_add(_read_position, nobjs))
             return make_unexpected(

@@ -87,7 +87,6 @@ namespace sk::cio::win32::detail {
 
         SK_CHECK(static_cast<T *>(this)->is_open(),
                  "attempt to write on a closed channel");
-        SK_CHECK(nobjs > 0, "attempt to write empty buffer");
 
         auto dwbytes = cio::detail::int_cast<DWORD>(nobjs);
         DWORD bytes_written = 0;
@@ -114,7 +113,6 @@ namespace sk::cio::win32::detail {
 
         SK_CHECK(static_cast<T *>(this)->is_open(),
                  "attempt to write on a closed channel");
-        SK_CHECK(nobjs > 0, "attempt to write empty buffer");
 
         auto dwbytes = cio::detail::int_cast<DWORD>(nobjs);
 

@@ -88,7 +88,6 @@ namespace sk::cio::win32::detail {
     {
         SK_CHECK(static_cast<T *>(this)->is_open(),
                  "attempt to read on a closed channel");
-        SK_CHECK(nobjs > 0, "attempt to read to empty buffer");
 
         auto dwbytes = cio::detail::int_cast<DWORD>(nobjs);
 
@@ -115,7 +114,6 @@ namespace sk::cio::win32::detail {
     {
         SK_CHECK(static_cast<T *>(this)->is_open(),
                  "attempt to read on a closed channel");
-        SK_CHECK(nobjs > 0, "attempt to read to empty buffer");
 
         auto dwbytes = cio::detail::int_cast<DWORD>(nobjs);
 
