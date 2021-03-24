@@ -42,6 +42,7 @@
 #include <sk/cio/win32/error.hxx>
 #include <sk/cio/win32/handle.hxx>
 #include <sk/cio/win32/iocp_reactor.hxx>
+#include <sk/cio/detail/safeint.hxx>
 
 namespace sk::cio::win32::detail {
 
@@ -62,21 +63,13 @@ namespace sk::cio::win32::detail {
          * Read data.
          */
 
-        template <sk::writable_buffer Buffer>
         [[nodiscard]] 
-        auto async_read_some_at(io_size_t, 
-                                io_offset_t, 
-                                Buffer &buffer)
-            -> task<expected<io_size_t, std::error_code>>
-            requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>;
+        auto async_read_some_at(io_offset_t, std::byte *, io_size_t)
+            -> task<expected<io_size_t, std::error_code>>;
 
-        template <sk::writable_buffer Buffer>
         [[nodiscard]]
-        auto read_some_at(io_size_t,
-                          io_offset_t,
-                          Buffer &buffer)
-            -> expected<io_size_t, std::error_code>
-            requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>;
+        auto read_some_at(io_offset_t, std::byte *, io_size_t)
+            -> expected<io_size_t, std::error_code>;
 
     protected:
         idafilechannel_base() = default;
@@ -87,57 +80,26 @@ namespace sk::cio::win32::detail {
      * idafilechannel::async_read_some_at()
      */
 
-    // clang-format off
     template <typename T>
-    template <sk::writable_buffer Buffer>
-    auto idafilechannel_base<T>::async_read_some_at(io_size_t nobjs,
-                                                    io_offset_t loc,
-                                                    Buffer &buffer)
+    auto idafilechannel_base<T>::async_read_some_at(io_offset_t loc, 
+                                                    std::byte *buffer,
+                                                    io_size_t nobjs)
         -> task<expected<io_size_t, std::error_code>> 
-        requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>
     {
-        // clang-format on
+        SK_CHECK(static_cast<T *>(this)->is_open(),
+                 "attempt to read on a closed channel");
+        SK_CHECK(nobjs > 0, "attempt to read to empty buffer");
 
-#ifdef SK_CIO_CHECKED
-        if (!static_cast<T *>(this)->is_open())
-            throw cio::detail::checked_error(
-                "attempt to read from a closed channel");
-#endif
+        auto dwbytes = cio::detail::int_cast<DWORD>(nobjs);
 
         DWORD bytes_read = 0;
-
-        auto ranges = buffer.writable_ranges();
-
-        if (std::ranges::size(ranges) == 0)
-            co_return make_unexpected(cio::error::no_space_in_buffer);
-
-        auto first_range = *std::ranges::begin(ranges);
-        auto buf_data = std::ranges::data(first_range);
-        auto buf_size = std::ranges::size(first_range);
-
-        // The maximum I/O size we can support.
-        auto max_objs =
-            static_cast<std::size_t>(std::numeric_limits<DWORD>::max());
-
-        // Can't read more than max_objs.
-        if (nobjs > max_objs)
-            nobjs = max_objs;
-
-        // Can't read more than we have buffer space for.
-        if (nobjs > buf_size)
-            nobjs = buf_size;
-
-        // The number of bytes we'll read.
-        DWORD dwbytes = static_cast<DWORD>(nobjs);
-
         auto ret = co_await win32::AsyncReadFile(
-            static_cast<T *>(this)->native_handle.native_handle(), buf_data,
+            static_cast<T *>(this)->native_handle.native_handle(), buffer,
             dwbytes, &bytes_read, loc);
 
         if (!ret)
             co_return make_unexpected(win32::win32_to_generic_error(ret.error()));
 
-        buffer.commit(bytes_read);
         co_return bytes_read;
     }
 
@@ -145,48 +107,17 @@ namespace sk::cio::win32::detail {
      * idafilechannel_base::read_some_at()
      */
 
-    // clang-format off
     template <typename T>
-    template <sk::writable_buffer Buffer>
-    auto idafilechannel_base<T>::read_some_at(io_size_t nobjs,
-                                              io_offset_t loc,
-                                              Buffer &buffer)
+    auto idafilechannel_base<T>::read_some_at(io_offset_t loc,
+                                              std::byte *buffer,
+                                              io_size_t nobjs)
         -> expected<io_size_t, std::error_code> 
-        requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>
     {
-        // clang-format on
+        SK_CHECK(static_cast<T *>(this)->is_open(),
+                 "attempt to read on a closed channel");
+        SK_CHECK(nobjs > 0, "attempt to read to empty buffer");
 
-#ifdef SK_CIO_CHECKED
-        if (!static_cast<T *>(this)->is_open())
-            throw cio::detail::checked_error(
-                "attempt to read from a closed channel");
-#endif
-
-        DWORD bytes_read = 0;
-
-        auto ranges = buffer.writable_ranges();
-
-        if (std::ranges::size(ranges) == 0)
-            return make_unexpected(cio::error::no_space_in_buffer);
-
-        auto first_range = *std::ranges::begin(ranges);
-        auto buf_data = std::ranges::data(first_range);
-        auto buf_size = std::ranges::size(first_range);
-
-        // The maximum I/O size we can support.
-        auto max_objs =
-            static_cast<std::size_t>(std::numeric_limits<DWORD>::max());
-
-        // Can't read more than max_objs.
-        if (nobjs > max_objs)
-            nobjs = max_objs;
-
-        // Can't read more than we have buffer space for.
-        if (nobjs > buf_size)
-            nobjs = buf_size;
-
-        // The number of bytes we'll read.
-        DWORD dwbytes = static_cast<DWORD>(nobjs);
+        auto dwbytes = cio::detail::int_cast<DWORD>(nobjs);
 
         OVERLAPPED overlapped;
         std::memset(&overlapped, 0, sizeof(overlapped));
@@ -208,21 +139,20 @@ namespace sk::cio::win32::detail {
         overlapped.hEvent = reinterpret_cast<HANDLE>(
             reinterpret_cast<std::uintptr_t>(event_handle) | 0x1);
 
+        DWORD bytes_read = 0;
         auto ret =
             ::ReadFile(static_cast<T *>(this)->native_handle.native_handle(),
-                       buf_data, dwbytes, &bytes_read, &overlapped);
+                       buffer, dwbytes, &bytes_read, &overlapped);
 
         if (!ret && (::GetLastError() == ERROR_IO_PENDING))
             ret = ::GetOverlappedResult(
                 static_cast<T *>(this)->native_handle.native_handle(),
                 &overlapped, &bytes_read, TRUE);
 
-        if (!ret) {
+        if (!ret)
             return make_unexpected(
                 win32::win32_to_generic_error(win32::get_last_error()));
-        }
 
-        buffer.commit(bytes_read);
         return bytes_read;
     }
 

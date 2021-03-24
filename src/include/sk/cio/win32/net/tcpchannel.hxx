@@ -73,48 +73,40 @@ namespace sk::cio::win32::net {
         /*
          * Read data.
          */
-        template <sk::writable_buffer Buffer>
         [[nodiscard]]
-        auto async_read_some(io_size_t n, Buffer &buffer)
-            -> task<expected<io_size_t, std::error_code>> 
-            requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>;
+        auto async_read_some(value_type *buffer, io_size_t n)
+            -> task<expected<io_size_t, std::error_code>>;
 
-        template <sk::writable_buffer Buffer>
         [[nodiscard]]
-        auto read_some(io_size_t n, Buffer &buffer)
-            -> expected<io_size_t, std::error_code> 
-            requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>;
+        auto read_some(value_type *buffer, io_size_t n)
+            -> expected<io_size_t, std::error_code>;
 
         /*
          * Write data.
          */
-        template <sk::readable_buffer Buffer>
         [[nodiscard]]
-        auto async_write_some(io_size_t, Buffer &buffer)
-            -> task<expected<io_size_t, std::error_code>>
-            requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>;
+        auto async_write_some(value_type const *buffer, io_size_t)
+            -> task<expected<io_size_t, std::error_code>>;
 
-        template <sk::readable_buffer Buffer>
         [[nodiscard]]
-        auto write_some(io_size_t, Buffer &buffer)
-            -> expected<io_size_t, std::error_code>
-            requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>;
+        auto write_some(value_type const *buffer, io_size_t)
+            -> expected<io_size_t, std::error_code>;
 
         /*
          * Close the socket.
          */
         [[nodiscard]] 
-        auto async_close() 
-             -> task<expected<void, std::error_code>>;
+        auto async_close() -> task<expected<void, std::error_code>>;
 
         [[nodiscard]] 
-        auto close() 
-             -> expected<void, std::error_code>;
+        auto close() -> expected<void, std::error_code>;
 
     private:
         native_handle_type _native_handle;
     };
     // clang-format on
+
+    static_assert(seqchannel<tcpchannel>);
 
     /*************************************************************************
      * tcpchannel::tcpchannel()
@@ -229,11 +221,8 @@ namespace sk::cio::win32::net {
      */
 
     // clang-format off
-    template <sk::writable_buffer Buffer>
-    inline auto tcpchannel::async_read_some(io_size_t nobjs,
-                                            Buffer &buffer)
+    inline auto tcpchannel::async_read_some(value_type *buffer, io_size_t nobjs)
         -> task<expected<io_size_t, std::error_code>> 
-        requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>
     {
         // clang-format on
 #ifdef SK_CIO_CHECKED
@@ -242,16 +231,10 @@ namespace sk::cio::win32::net {
                 "attempt to read from a closed channel");
 #endif
 
-        DWORD bytes_read = 0;
-
-        auto ranges = buffer.writable_ranges();
-
-        if (std::ranges::size(ranges) == 0)
+        if (nobjs == 0)
             co_return make_unexpected(cio::error::no_space_in_buffer);
 
-        auto first_range = *std::ranges::begin(ranges);
-        auto buf_data = std::ranges::data(first_range);
-        auto buf_size = std::ranges::size(first_range);
+        DWORD bytes_read = 0;
 
         // The maximum I/O size we can support.
         auto max_objs =
@@ -261,15 +244,11 @@ namespace sk::cio::win32::net {
         if (nobjs > max_objs)
             nobjs = max_objs;
 
-        // Can't read more than we have buffer space for.
-        if (nobjs > buf_size)
-            nobjs = buf_size;
-
         // The number of bytes we'll read.
         DWORD dwbytes = static_cast<DWORD>(nobjs);
 
         auto ret = co_await win32::AsyncReadFile(
-            reinterpret_cast<HANDLE>(_native_handle.native_socket()), buf_data,
+            reinterpret_cast<HANDLE>(_native_handle.native_socket()), buffer,
             dwbytes, &bytes_read, 0);
 
         if (!ret)
@@ -280,7 +259,6 @@ namespace sk::cio::win32::net {
         if (bytes_read == 0)
             co_return make_unexpected(cio::error::end_of_file);
 
-        buffer.commit(bytes_read);
         co_return bytes_read;
     }
 
@@ -289,10 +267,8 @@ namespace sk::cio::win32::net {
      */
 
     // clang-format off
-    template <sk::writable_buffer Buffer>
-    inline auto tcpchannel::read_some(io_size_t nobjs, Buffer &buffer)
+    inline auto tcpchannel::read_some(value_type *buffer, io_size_t nobjs)
         -> expected<io_size_t, std::error_code> 
-        requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>
     {
         // clang-format on
 
@@ -304,14 +280,8 @@ namespace sk::cio::win32::net {
 
         DWORD bytes_read = 0;
 
-        auto ranges = buffer.writable_ranges();
-
-        if (std::ranges::size(ranges) == 0)
+        if (nobjs == 0)
             return make_unexpected(cio::error::no_space_in_buffer);
-
-        auto first_range = *std::ranges::begin(ranges);
-        auto buf_data = std::ranges::data(first_range);
-        auto buf_size = std::ranges::size(first_range);
 
         // The maximum I/O size we can support.
         auto max_objs =
@@ -320,10 +290,6 @@ namespace sk::cio::win32::net {
         // Can't read more than max_objs.
         if (nobjs > max_objs)
             nobjs = max_objs;
-
-        // Can't read more than we have buffer space for.
-        if (nobjs > buf_size)
-            nobjs = buf_size;
 
         // The number of bytes we'll read.
         DWORD dwbytes = static_cast<DWORD>(nobjs);
@@ -348,10 +314,11 @@ namespace sk::cio::win32::net {
 
         auto ret =
             ::ReadFile(reinterpret_cast<HANDLE>(_native_handle.native_socket()),
-                       buf_data, dwbytes, &bytes_read, &overlapped);
+                       buffer, dwbytes, &bytes_read, &overlapped);
 
         if (!ret && (::GetLastError() == ERROR_IO_PENDING))
-            ret = ::GetOverlappedResult(_native_handle.native_socket(),
+            ret = ::GetOverlappedResult(
+                reinterpret_cast<HANDLE>(_native_handle.native_socket()),
                                         &overlapped, &bytes_read, TRUE);
 
         if (!ret)
@@ -360,9 +327,8 @@ namespace sk::cio::win32::net {
 
         // 0 bytes = client went away
         if (bytes_read == 0)
-            co_return make_unexpected(cio::error::end_of_file);
+            return make_unexpected(cio::error::end_of_file);
 
-        buffer.commit(bytes_read);
         return bytes_read;
     }
 
@@ -371,11 +337,9 @@ namespace sk::cio::win32::net {
      */
 
     // clang-format off
-    template <sk::readable_buffer Buffer>
-    auto tcpchannel::async_write_some(io_size_t nobjs,
-                                      Buffer &buffer)
+    inline auto tcpchannel::async_write_some(value_type const *buffer, 
+                                             io_size_t nobjs)
         -> task<expected<io_size_t, std::error_code>> 
-        requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>
     {
         // clang-format on
 #ifdef SK_CIO_CHECKED
@@ -386,14 +350,8 @@ namespace sk::cio::win32::net {
 
         DWORD bytes_written = 0;
 
-        auto ranges = buffer.readable_ranges();
-
-        if (std::ranges::size(ranges) == 0)
+        if (nobjs == 0)
             co_return make_unexpected(cio::error::no_data_in_buffer);
-
-        auto first_range = *std::ranges::begin(ranges);
-        auto buf_data = std::ranges::data(first_range);
-        auto buf_size = std::ranges::size(first_range);
 
         // The maximum I/O size we can support.
         static auto max_objs =
@@ -403,21 +361,16 @@ namespace sk::cio::win32::net {
         if (nobjs > max_objs)
             nobjs = max_objs;
 
-        // Can't write more than we have buffer space for.
-        if (nobjs > buf_size)
-            nobjs = buf_size;
-
         // The number of bytes we'll write.
         DWORD dwbytes = static_cast<DWORD>(nobjs);
 
         auto ret = co_await win32::AsyncWriteFile(
-            reinterpret_cast<HANDLE>(_native_handle.native_socket()), buf_data,
+            reinterpret_cast<HANDLE>(_native_handle.native_socket()), buffer,
             dwbytes, &bytes_written, 0);
 
         if (!ret)
             co_return make_unexpected(win32::win32_to_generic_error(ret.error()));
 
-        buffer.discard(bytes_written);
         co_return bytes_written;
     }
 
@@ -426,11 +379,8 @@ namespace sk::cio::win32::net {
      */
 
     // clang-format off
-    template <sk::readable_buffer Buffer>
-    auto tcpchannel::write_some(io_size_t nobjs,
-                                Buffer &buffer)
+    inline auto tcpchannel::write_some(value_type const *buffer, io_size_t nobjs)
         -> expected<io_size_t, std::error_code> 
-        requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>
     {
         // clang-format on
 #ifdef SK_CIO_CHECKED
@@ -439,16 +389,10 @@ namespace sk::cio::win32::net {
                 "attempt to write to a closed channel");
 #endif
 
-        DWORD bytes_written = 0;
-
-        auto ranges = buffer.readable_ranges();
-
-        if (std::ranges::size(ranges) == 0)
+        if (nobjs == 0)
             return make_unexpected(cio::error::no_data_in_buffer);
 
-        auto first_range = *std::ranges::begin(ranges);
-        auto buf_data = std::ranges::data(first_range);
-        auto buf_size = std::ranges::size(first_range);
+        DWORD bytes_written = 0;
 
         // The maximum I/O size we can support.
         static auto max_objs =
@@ -457,10 +401,6 @@ namespace sk::cio::win32::net {
         // Can't write more than max_objs.
         if (nobjs > max_objs)
             nobjs = max_objs;
-
-        // Can't write more than we have buffer space for.
-        if (nobjs > buf_size)
-            nobjs = buf_size;
 
         // The number of bytes we'll write.
         DWORD dwbytes = static_cast<DWORD>(nobjs);
@@ -484,7 +424,7 @@ namespace sk::cio::win32::net {
             reinterpret_cast<std::uintptr_t>(event_handle) | 0x1);
 
         auto ret = ::WriteFile(
-            reinterpret_cast<HANDLE>(_native_handle.native_socket()), buf_data,
+            reinterpret_cast<HANDLE>(_native_handle.native_socket()), buffer,
             dwbytes, &bytes_written, &overlapped);
 
         if (!ret && (::GetLastError() == ERROR_IO_PENDING))
@@ -492,12 +432,10 @@ namespace sk::cio::win32::net {
                 reinterpret_cast<HANDLE>(_native_handle.native_socket()),
                 &overlapped, &bytes_written, TRUE);
 
-        if (!ret) {
+        if (!ret) 
             return make_unexpected(
                 win32::win32_to_generic_error(win32::get_last_error()));
-        }
 
-        buffer.discard(bytes_written);
         return bytes_written;
     }
 

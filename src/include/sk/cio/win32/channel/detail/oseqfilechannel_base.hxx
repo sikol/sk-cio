@@ -61,17 +61,13 @@ namespace sk::cio::win32::detail {
         /*
          * Write data.
          */
-        template <sk::readable_buffer Buffer>
         [[nodiscard]]
-        auto async_write_some(io_size_t, Buffer &buffer)
-            -> task<expected<io_size_t, std::error_code>>
-            requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>;
+        auto async_write_some(std::byte const *buffer, io_size_t)
+            -> task<expected<io_size_t, std::error_code>>;
 
-        template <sk::readable_buffer Buffer>
         [[nodiscard]]
-        auto write_some(io_size_t, Buffer &buffer)
-            -> expected<io_size_t, std::error_code>
-            requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>;
+        auto write_some(std::byte const *buffer, io_size_t)
+            -> expected<io_size_t, std::error_code>;
 
     protected:
         oseqfilechannel_base() = default;
@@ -87,55 +83,28 @@ namespace sk::cio::win32::detail {
      * oseqfilechannel_base::async_write_some()
      */
 
-    // clang-format off
-    template<typename T>
-    template <sk::readable_buffer Buffer>
-    auto oseqfilechannel_base<T>::async_write_some(io_size_t nobjs,
-                                                  Buffer &buffer)
-        -> task<expected<io_size_t, std::error_code>> 
-        requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>
-    {
-        // clang-format on
-#ifdef SK_CIO_CHECKED
-        if (!this->is_open())
-            throw cio::detail::checked_error(
-                "attempt to write to a closed channel");
-#endif
+    template <typename T>
+    auto oseqfilechannel_base<T>::async_write_some(std::byte const *buffer,
+                                                   io_size_t nobjs)
+        -> task<expected<io_size_t, std::error_code>> {
+
+        SK_CHECK(static_cast<T *>(this)->is_open(),
+                 "attempt to write on a closed channel");
+        SK_CHECK(nobjs > 0, "attempt to write empty buffer");
+
+        if (!cio::detail::can_add(_write_position, nobjs))
+            return make_unexpected(std::errc::value_too_large);
 
         DWORD bytes_written = 0;
-
-        auto ranges = buffer.readable_ranges();
-
-        if (std::ranges::size(ranges) == 0)
-            co_return make_unexpected(cio::error::no_data_in_buffer);
-
-        auto first_range = *std::ranges::begin(ranges);
-        auto buf_data = std::ranges::data(first_range);
-        auto buf_size = std::ranges::size(first_range);
-
-        // The maximum I/O size we can support.
-        static auto max_objs =
-            static_cast<std::size_t>(std::numeric_limits<DWORD>::max());
-
-        // Can't write more than max_objs.
-        if (nobjs > max_objs)
-            nobjs = max_objs;
-
-        // Can't write more than we have buffer space for.
-        if (nobjs > buf_size)
-            nobjs = buf_size;
-
-        // The number of bytes we'll write.
-        DWORD dwbytes = static_cast<DWORD>(nobjs);
+        auto dwbytes = cio::detail::int_cast<DWORD>(nobjs);
 
         auto ret = co_await win32::AsyncWriteFile(
-            static_cast<T *>(this)->native_handle.handle_value, buf_data,
+            static_cast<T *>(this)->native_handle.handle_value, buffer,
             dwbytes, &bytes_written, _write_position);
 
         if (ret)
             co_return make_unexpected(win32::win32_to_generic_error(ret));
 
-        buffer.discard(bytes_written);
         if (_write_position != at_end)
             _write_position += bytes_written;
         co_return bytes_written;
@@ -145,46 +114,20 @@ namespace sk::cio::win32::detail {
      * oseqfilechannel_base::write_some()
      */
 
-    // clang-format off
     template <typename T>
-    template <sk::readable_buffer Buffer>
-    auto oseqfilechannel_base<T>::write_some(io_size_t nobjs,
-                                             Buffer &buffer)
+    auto oseqfilechannel_base<T>::write_some(std::byte const *buffer, io_size_t nobjs)
         -> expected<io_size_t, std::error_code> 
-        requires std::same_as<sk::buffer_value_t<Buffer>, std::byte>
     {
-        // clang-format on
-#ifdef SK_CIO_CHECKED
-        if (!this->is_open())
-            throw cio::detail::checked_error(
-                "attempt to write to a closed channel");
-#endif
+
+        SK_CHECK(static_cast<T *>(this)->is_open(),
+                 "attempt to write on a closed channel");
+        SK_CHECK(nobjs > 0, "attempt to write empty buffer");
+
+        if (!cio::detail::can_add(_write_position, nobjs))
+            return make_unexpected(std::errc::value_too_large);
 
         DWORD bytes_written = 0;
-
-        auto ranges = buffer.readable_ranges();
-
-        if (std::ranges::size(ranges) == 0)
-            return make_unexpected(cio::error::no_data_in_buffer);
-
-        auto first_range = *std::ranges::begin(ranges);
-        auto buf_data = std::ranges::data(first_range);
-        auto buf_size = std::ranges::size(first_range);
-
-        // The maximum I/O size we can support.
-        static auto max_objs =
-            static_cast<std::size_t>(std::numeric_limits<DWORD>::max());
-
-        // Can't write more than max_objs.
-        if (nobjs > max_objs)
-            nobjs = max_objs;
-
-        // Can't write more than we have buffer space for.
-        if (nobjs > buf_size)
-            nobjs = buf_size;
-
-        // The number of bytes we'll write.
-        DWORD dwbytes = static_cast<DWORD>(nobjs);
+        auto dwbytes = cio::detail::int_cast<DWORD>(nobjs);
 
         OVERLAPPED overlapped;
         std::memset(&overlapped, 0, sizeof(overlapped));
@@ -208,19 +151,17 @@ namespace sk::cio::win32::detail {
 
         auto ret =
             ::WriteFile(static_cast<T *>(this)->native_handle.handle_value,
-                        buf_data, dwbytes, &bytes_written, &overlapped);
+                        buffer, dwbytes, &bytes_written, &overlapped);
 
         if (!ret && (::GetLastError() == ERROR_IO_PENDING))
             ret = ::GetOverlappedResult(
                 static_cast<T *>(this)->native_handle.handle_value, &overlapped,
                 &bytes_written, TRUE);
 
-        if (!ret) {
+        if (!ret)
             return make_unexpected(
                 win32::win32_to_generic_error(win32::get_last_error()));
-        }
 
-        buffer.discard(bytes_written);
         if (_write_position != at_end)
             _write_position += bytes_written;
         return bytes_written;

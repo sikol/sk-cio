@@ -58,7 +58,7 @@ TEST_CASE("odafilechannel::write()") {
             reinterpret_cast<std::byte *>(test_string.data()),
             reinterpret_cast<std::byte *>(test_string.data() + test_string.size()));
 
-        auto ret = write_some_at(chnl, unlimited, at_end, data);
+        auto ret = write_some_at(chnl, at_end, data, unlimited);
         if (!ret) {
             INFO(ret.error().message());
             REQUIRE(false);

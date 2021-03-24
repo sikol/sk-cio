@@ -61,7 +61,7 @@ TEST_CASE("iseqfilechannel::read()") {
 
     for (int i = 0; i < 3; ++i) {
         std::vector<std::byte> buf(15);
-        auto nbytes = read_some(chnl, unlimited, buf);
+        auto nbytes = read_some(chnl, buf, unlimited);
         if (!nbytes) {
             INFO(nbytes.error().message());
             REQUIRE(false);
@@ -76,7 +76,7 @@ TEST_CASE("iseqfilechannel::read()") {
     }
 
     std::vector<std::byte> buf(15);
-    auto nbytes = read_some(chnl, unlimited, buf);
+    auto nbytes = read_some(chnl, buf, unlimited);
     REQUIRE(!nbytes);
     REQUIRE(nbytes.error() == error::end_of_file);
 }
@@ -102,7 +102,7 @@ TEST_CASE("iseqfilechannel::async_read()") {
 
     for (int i = 0; i < 3; ++i) {
         std::vector<std::byte> buf(15);
-        auto nbytes = async_read_some(chnl, unlimited, buf).wait();
+        auto nbytes = async_read_some(chnl, buf, unlimited).wait();
         if (!nbytes) {
             INFO(nbytes.error().message());
             REQUIRE(false);
@@ -117,7 +117,7 @@ TEST_CASE("iseqfilechannel::async_read()") {
     }
 
     std::vector<std::byte> buf(15);
-    auto nbytes = async_read_some(chnl, unlimited, buf).wait();
+    auto nbytes = async_read_some(chnl, buf, unlimited).wait();
     REQUIRE(!nbytes);
     REQUIRE(nbytes.error() == error::end_of_file);
 }

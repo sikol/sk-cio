@@ -104,14 +104,14 @@ namespace sk::cio {
         channel_base<Channel> &&
         requires(Channel &channel,
                  io_size_t nobjects,
-                 sk::pmr_readable_buffer<typename Channel::value_type> &buf) {
+                 typename Channel::value_type const *buf) {
 
             // Write data to the channel synchronously.
-            { channel.write_some(nobjects, buf) } 
+            { channel.write_some(buf, nobjects) } 
                 -> std::same_as<expected<io_size_t, std::error_code>>;
 
             // Write data to the channel asynchronously.
-            { channel.async_write_some(nobjects, buf) } 
+            { channel.async_write_some(buf, nobjects) } 
                 -> std::same_as<task<expected<io_size_t, std::error_code>>>;
         };
 
@@ -123,14 +123,14 @@ namespace sk::cio {
         channel_base<Channel> &&
         requires(Channel &channel,
                  io_size_t nobjects,
-                 sk::pmr_writable_buffer<typename Channel::value_type> &buf) {
+                 typename Channel::value_type *buf) {
 
             // Read from the channel synchronously.
-            { channel.read_some(nobjects, buf) }
+            { channel.read_some(buf, nobjects) }
                 -> std::same_as<expected<io_size_t, std::error_code>>;
 
             // Read from the channel asynchronously.
-            { channel.async_read_some(nobjects, buf) }
+            { channel.async_read_some(buf, nobjects) }
                 -> std::same_as<task<expected<io_size_t, std::error_code>>>;
         };
 
@@ -160,14 +160,14 @@ namespace sk::cio {
         requires(Channel &channel,
                  io_size_t nobjects,
                  io_offset_t offset,
-                 sk::pmr_readable_buffer<typename Channel::value_type> &buf) {
+                 typename Channel::value_type const *buf) {
 
             // Write data to the channel synchronously.
-            { channel.write_some_at(nobjects, offset, buf) } 
+            { channel.write_some_at(offset, buf, nobjects) } 
                 -> std::same_as<expected<io_size_t, std::error_code>>;
 
             // Write data to the channel asynchronously.
-            { channel.async_write_some_at(nobjects, offset, buf) }
+            { channel.async_write_some_at(offset, buf, nobjects) }
                 -> std::same_as<task<expected<io_size_t, std::error_code>>>;
         };
 
@@ -179,14 +179,14 @@ namespace sk::cio {
         channel_base<Channel> &&
         requires(Channel &channel,
                  io_size_t nobjects, io_offset_t offset,
-                 sk::pmr_writable_buffer<typename Channel::value_type> &buf) {
+                 typename Channel::value_type *buf) {
 
             // Read from the channel synchronously.
-            { channel.read_some_at(nobjects, offset, buf) }
+            { channel.read_some_at(offset, buf, nobjects) }
                 -> std::same_as<expected<io_size_t, std::error_code>>;
 
             // Read from the channel asynchronously.
-            { channel.async_read_some_at(nobjects, offset, buf) }
+            { channel.async_read_some_at(offset, buf, nobjects) }
                 -> std::same_as<task<expected<io_size_t, std::error_code>>>;
         };
 

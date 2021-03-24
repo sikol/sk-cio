@@ -61,7 +61,7 @@ TEST_CASE("idafilechannel::read()") {
 
     for (int i = 3; i >= 0; --i) {
         std::vector<std::byte> buf(15 - i);
-        auto nbytes = read_some_at(chnl, 15 - i, i, buf);
+        auto nbytes = read_some_at(chnl, i, buf, 15 - i);
         if (!nbytes) {
             INFO(nbytes.error().message());
             REQUIRE(false);
@@ -75,7 +75,7 @@ TEST_CASE("idafilechannel::read()") {
     }
 
     std::vector<std::byte> buf(15);
-    auto nbytes = read_some_at(chnl, unlimited, 50, buf);
+    auto nbytes = read_some_at(chnl, 50, buf, unlimited);
     REQUIRE(!nbytes);
     REQUIRE(nbytes.error() == error::end_of_file);
 }
@@ -101,7 +101,7 @@ TEST_CASE("idafilechannel::async_read()") {
 
     for (int i = 3; i >= 0; --i) {
         std::vector<std::byte> buf(15 - i);
-        auto nbytes = async_read_some_at(chnl, 15 - i, i, buf).wait();
+        auto nbytes = async_read_some_at(chnl, i, buf, 15 - i).wait();
         if (!nbytes) {
             INFO(nbytes.error().message());
             REQUIRE(false);
@@ -116,7 +116,7 @@ TEST_CASE("idafilechannel::async_read()") {
     }
 
     std::vector<std::byte> buf(15);
-    auto nbytes = async_read_some_at(chnl, unlimited, 50, buf).wait();
+    auto nbytes = async_read_some_at(chnl, 50, buf, unlimited).wait();
     REQUIRE(!nbytes);
     REQUIRE(nbytes.error() == error::end_of_file);
 }

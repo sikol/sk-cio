@@ -39,7 +39,22 @@ namespace sk::cio::detail {
         checked_error(std::string e) : std::logic_error(std::move(e)) {}
     };
 
-} // namespace sk::cio
+    inline void checked_failure(char const *what) {
+        throw checked_error(what);
+    }
+
+#    define SK_CHECK(expr, msg)                                                \
+        do {                                                                   \
+            if (!(expr))                                                       \
+                sk::cio::detail::checked_failure(msg);                         \
+        } while (0)
+
+} // namespace sk::cio::detail
+
+#else
+
+#    define SK_CHECK(expr, msg) (void)0
+
 #endif
 
 #endif // SK_CIO_DETAIL_CONFIG_HXX_INCLUDED

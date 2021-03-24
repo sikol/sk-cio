@@ -26,64 +26,50 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <cstdio>
-#include <iostream>
-#include <ranges>
+#ifndef SK_CIO_DETAIL_SAFEINT_HXX
+#define SK_CIO_DETAIL_SAFEINT_HXX
 
-#include <fmt/core.h>
+#include <algorithm>
+#include <concepts>
+#include <limits>
 
-#include <sk/buffer/fixed_buffer.hxx>
-#include <sk/cio/channel/seqfilechannel.hxx>
-#include <sk/cio/channel/read.hxx>
-#include <sk/cio/error.hxx>
-#include <sk/cio/reactor.hxx>
-#include <sk/cio/task.hxx>
+namespace sk::cio::detail {
 
-using namespace sk::cio;
+    template <std::unsigned_integral To, std::unsigned_integral From>
+    To int_cast(From v) {
+        if (v > std::numeric_limits<To>::max())
+            v = std::numeric_limits<To>::max();
 
-task<void> print_file(std::string const &name) {
-    iseqfilechannel chnl;
-
-    auto err = co_await chnl.async_open(name);
-    if (!err) {
-        std::cerr << name << ": " << err.error().message() << "\n";
-        co_return;
+        return static_cast<To>(v);
     }
 
-    for (;;) {
-        sk::fixed_buffer<std::byte, 1024> buffer;
-        auto nbytes = co_await async_read_some(chnl, buffer, unlimited);
-
-        if (!nbytes) {
-            if (nbytes.error() != sk::cio::error::end_of_file)
-                std::cerr << name << ": " << nbytes.error().message() << "\n";
-            break;
-        }
-
-        for (auto &&range : buffer.readable_ranges())
-            std::cout.write(
-                reinterpret_cast<char const *>(std::ranges::data(range)),
-                std::ranges::size(range));
-
-        buffer.discard(*nbytes);
+    template <std::unsigned_integral R, std::unsigned_integral T,
+              std::unsigned_integral U>
+    R clamped_max(T a, U b) {
+        auto a_ = int_cast<R>(a);
+        auto b_ = int_cast<R>(b);
+        return std::max(a_, b_);
     }
 
-    co_await chnl.async_close();
-}
-
-int main(int argc, char **argv) {
-    using namespace std::chrono_literals;
-
-    if (argc < 2) {
-        fmt::print(stderr, "usage: {} <file> [file...]", argv[0]);
-        return 1;
+    template <std::unsigned_integral T, std::unsigned_integral U>
+    bool can_add(T a, U b) requires std::same_as<T, U> {
+        T could_add = std::numeric_limits<T>::max() - a;
+        return b <= could_add;
     }
 
-    sk::cio::reactor_handle reactor;
+    // clang-format off
+    template <std::unsigned_integral T, std::unsigned_integral U,
+              std::unsigned_integral R>
+    bool safe_add(T a, U b, R *r)
+        requires std::same_as<T, U> && std::same_as<T, R> {
+        // clang-format on
 
-    for (auto &&file : std::span(argv + 1, argv + argc)) {
-        print_file(file).wait();
+        if (!can_add(a, b))
+            return false;
+        *r = a + b;
+        return true;
     }
 
-    return 0;
-}
+} // namespace sk::cio::detail
+
+#endif // SK_CIO_DETAIL_SAFEINT_HXX

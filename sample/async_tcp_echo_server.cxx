@@ -51,9 +51,10 @@ dtask handle_client(net::tcpchannel client) {
         sk::fixed_buffer<std::byte, 1024> buf;
 
         std::cerr << "handle_client() : wait to read\n";
-        auto ret = co_await async_read_some(client, unlimited, buf);
+        auto ret = co_await async_read_some(client, buf, unlimited);
         if (!ret) {
             fmt::print(stderr, "read err: {}\n", ret.error().message());
+            co_await client.async_close();
             co_return;
         }
 
@@ -64,7 +65,12 @@ dtask handle_client(net::tcpchannel client) {
                 std::ranges::size(range));
         }
 
-        co_await async_write_some(client, unlimited, buf);
+        auto wret = co_await async_write_all(client, buf, unlimited);
+        if (wret.second) {
+            fmt::print(stderr, "write err: {}\n", wret.second.message());
+            co_await client.async_close();
+            co_return;
+        }
         std::cerr << "handle_client() : end loop\n";
     }
 
