@@ -26,8 +26,8 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_CHANNEL_READ_HXX_INCLUDED
-#define SK_CIO_CHANNEL_READ_HXX_INCLUDED
+#ifndef SK_CIO_READ_HXX_INCLUDED
+#define SK_CIO_READ_HXX_INCLUDED
 
 #include <sk/cio/channel/concepts.hxx>
 #include <sk/cio/error.hxx>
@@ -220,4 +220,4 @@ namespace sk::cio {
 
 } // namespace sk::cio
 
-#endif // SK_CIO_CHANNEL_READ_HXX_INCLUDED
+#endif // SK_CIO_READ_HXX_INCLUDED

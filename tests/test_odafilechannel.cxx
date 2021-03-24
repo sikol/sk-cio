@@ -35,7 +35,7 @@
 #include <string>
 
 #include <sk/cio/filechannel/dafilechannel.hxx>
-#include <sk/cio/channel/write.hxx>
+#include <sk/cio/write.hxx>
 #include <sk/cio/task.hxx>
 
 using namespace sk::cio;

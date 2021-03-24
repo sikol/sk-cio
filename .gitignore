@@ -2,3 +2,5 @@
 /out
 *~
 /docs/_build
+/_build
+/.idea

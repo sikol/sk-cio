@@ -26,24 +26,11 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_HXX_INCLUDED
-#define SK_CIO_HXX_INCLUDED
+#ifndef SK_CIO_MEMCHANNEL_HXX_INCLUDED
+#define SK_CIO_MEMCHANNEL_HXX_INCLUDED
 
-#include <sk/cio/task.hxx>
-#include <sk/cio/dtask.hxx>
-#include <sk/cio/error.hxx>
-#include <sk/cio/expected.hxx>
-#include <sk/cio/async_invoke.hxx>
-#include <sk/cio/read.hxx>
-#include <sk/cio/write.hxx>
+#include <sk/cio/memchannel/imemchannel.hxx>
+#include <sk/cio/memchannel/omemchannel.hxx>
+#include <sk/cio/memchannel/memchannel.hxx>
 
-#include <sk/cio/filechannel.hxx>
-#include <sk/cio/memchannel.hxx>
-
-#include <sk/cio/net/address.hxx>
-#include <sk/cio/net/tcpchannel.hxx>
-#include <sk/cio/net/tcpserverchannel.hxx>
-
-#include <sk/buffer/fixed_buffer.hxx>
-
-#endif // SK_CIO_HXX_INCLUDED
+#endif // SK_CIO_MEMCHANNEL_HXX_INCLUDED

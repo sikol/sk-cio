@@ -6,4 +6,9 @@ NamespaceIndentation: All
 AllowShortFunctionsOnASingleLine: Empty
 IndentPPDirectives: AfterHash
 AlwaysBreakTemplateDeclarations: Yes
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+BinPackParameters: false
+BinPackArguments: false
 ---
