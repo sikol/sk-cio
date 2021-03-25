@@ -74,7 +74,7 @@ jobs:
               -DCMAKE_C_COMPILER=gcc-10                                       \
               -DCMAKE_C_FLAGS="-m64 -g3"                                      \
               -DCMAKE_CXX_COMPILER=g++-10                                     \
-              -DCMAKE_CXX_FLAGS="-m64 -std=c++20 -g3"                         \
+              -DCMAKE_CXX_FLAGS="-m64 -std=c++20 -g3 -fcoroutines"            \
               -DCMAKE_BUILD_TYPE=$BUILD_TYPE                                  \
               -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake   \
               -DVCPKG_FEATURE_FLAGS=registries                                \

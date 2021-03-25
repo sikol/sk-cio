@@ -36,6 +36,7 @@
 #include <iostream>
 #include <system_error>
 #include <thread>
+#include <cstring>
 
 #include <sk/cio/concepts.hxx>
 #include <sk/cio/posix/fd.hxx>
@@ -55,6 +56,7 @@ namespace sk::cio::posix {
     struct fd_state {
         fd_state(int fd_) : fd(fd_), read_waiter(nullptr), write_waiter(nullptr)
         {
+            std::memset(&event, 0, sizeof(event));
             event.data.fd = fd;
             event.events = EPOLLET | EPOLLONESHOT;
         }

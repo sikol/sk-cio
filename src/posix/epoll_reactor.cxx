@@ -48,6 +48,7 @@ namespace sk::cio::posix {
         epoll_fd.assign(epoll_fd_);
 
         struct epoll_event shutdown_ev;
+        std::memset(&shutdown_ev, 0, sizeof(shutdown_ev));
         shutdown_ev.data.fd = shutdown_pipe[0];
         shutdown_ev.events = EPOLLET | EPOLLONESHOT | EPOLLIN;
         ::epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, shutdown_pipe[0], &shutdown_ev);
