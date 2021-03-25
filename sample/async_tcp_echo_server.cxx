@@ -37,12 +37,9 @@
 using namespace sk::cio;
 
 task<void> handle_client(net::tcpchannel client) {
-    std::cerr << "handle_client() : start\n";
     for (;;) {
-        std::cerr << "handle_client() : in loop\n";
         sk::fixed_buffer<std::byte, 1024> buf;
 
-        std::cerr << "handle_client() : wait to read\n";
         auto ret = co_await async_read_some(client, buf, unlimited);
         if (!ret) {
             fmt::print(stderr, "read err: {}\n", ret.error().message());
@@ -50,7 +47,6 @@ task<void> handle_client(net::tcpchannel client) {
             co_return;
         }
 
-        std::cerr << "handle_client() : read done\n";
         for (auto &&range : buf.readable_ranges()) {
             std::cout.write(
                 reinterpret_cast<char const *>(std::ranges::data(range)),
@@ -59,11 +55,9 @@ task<void> handle_client(net::tcpchannel client) {
 
         auto wret = co_await async_write_all(client, buf, unlimited);
         if (wret.second) {
-            fmt::print(stderr, "write err: {}\n", wret.second.message());
             co_await client.async_close();
             co_return;
         }
-        std::cerr << "handle_client() : end loop\n";
     }
 
     fmt::print(stderr, "handle_client() : return\n");

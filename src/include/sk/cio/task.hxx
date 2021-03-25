@@ -46,18 +46,15 @@ namespace sk::cio {
 
         bool await_ready() noexcept
         {
-            std::cerr << "task_final_awaiter await_ready\n";
             return false;
         }
 
         void await_resume() noexcept {
-            std::cerr << "task_final_awaiter await_resume\n";
         }
 
         std::coroutine_handle<>
         await_suspend(std::coroutine_handle<P> h) noexcept
         {
-            std::cerr << "task_final_awaiter await_suspend destroy_self=" << destroy_self << "\n";
             if (destroy_self) {
                 h.destroy();
                 return std::noop_coroutine();
@@ -76,19 +73,16 @@ namespace sk::cio {
     struct task_promise {
         auto get_return_object()
         {
-            std::cerr << "task_promise get_return_object\n";
             return std::coroutine_handle<task_promise<T>>::from_promise(*this);
         }
 
         std::suspend_always initial_suspend()
         {
-            std::cerr << "task_promise initial_suspend\n";
             return {};
         }
 
         task_final_awaiter<task_promise<T>> final_suspend() noexcept
         {
-            std::cerr << "task_promise<void> final_suspend destroy_self=" << destroy_self << "\n";
             return {destroy_self};
         }
 
@@ -100,14 +94,12 @@ namespace sk::cio {
         void return_value(T const &value) noexcept(
             std::is_nothrow_copy_constructible_v<T>)
         {
-            std::cerr << "task_promise return_value\n";
             result = value;
         }
 
         void return_value(T &&value) noexcept(
             std::is_nothrow_move_constructible_v<T>)
         {
-            std::cerr << "task_promise return_value\n";
             result = std::move(value);
         }
 
@@ -120,20 +112,17 @@ namespace sk::cio {
     struct task_promise<void> {
         auto get_return_object()
         {
-            std::cerr << "task_promise<void> get_return_object\n";
             return std::coroutine_handle<task_promise<void>>::from_promise(
                 *this);
         }
 
         std::suspend_always initial_suspend()
         {
-            std::cerr << "task_promise<void> initial_suspend\n";
             return {};
         }
 
         task_final_awaiter<task_promise<void>> final_suspend() noexcept
         {
-            std::cerr << "task_promise<void> final_suspend destroy_self=" << destroy_self << "\n";
             return {destroy_self};
         }
 
@@ -144,7 +133,6 @@ namespace sk::cio {
 
         void return_void() noexcept
         {
-            std::cerr << "task_promise<void> return_void\n";
         }
 
         std::coroutine_handle<> previous;

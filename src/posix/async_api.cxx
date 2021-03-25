@@ -159,19 +159,14 @@ namespace sk::cio::posix {
         -> task<expected<int, std::error_code>>
     {
         do {
-            std::cerr << "async_fd_accept " << fd << '\n';
             auto ret = ::accept(fd, addr, addrlen);
-            std::cerr << "async_fd_accept ret=" << ret
-                      << " errno=" << std::strerror(errno) << '\n';
             if (ret != -1)
                 co_return ret;
 
             if (errno != EWOULDBLOCK)
                 co_return make_unexpected(get_errno());
 
-            std::cerr << "async_fd_accept wait for readable\n";
             co_await co_fd_is_readable(fd);
-            std::cerr << "async_fd_accept is readable\n";
         } while (true);
     }
 
