@@ -26,6 +26,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include <chrono>
 #include <fstream>
 #include <iostream>
 
@@ -34,9 +35,11 @@
 #include <sk/cio.hxx>
 
 using namespace sk::cio;
+using namespace std::literals::chrono_literals;
 
 constexpr int nthreads = 25;
 constexpr int nops = 500;
+constexpr auto run_for = 20s;
 
 task<int> stress_task(idafilechannel &chnl)
 {
@@ -44,17 +47,25 @@ task<int> stress_task(idafilechannel &chnl)
     std::default_random_engine eng(r());
     std::uniform_int_distribution<io_offset_t> rnd(0, 9);
 
-    for (int i = 0; i < nops; ++i) {
-        std::byte b;
-        auto offs = rnd(eng);
-        auto ret = co_await async_read_some_at(chnl, offs, &b, 1);
+    auto start = std::chrono::steady_clock::now();
 
-        if (!ret)
-            co_return 1;
+    for (;;) {
+        for (int i = 0; i < nops; ++i) {
+            std::byte b;
+            auto offs = rnd(eng);
+            auto ret = co_await async_read_some_at(chnl, offs, &b, 1);
 
-        auto expected_byte = std::byte('0' + offs);
-        if (b != expected_byte)
-            co_return 1;
+            if (!ret)
+                co_return 1;
+
+            auto expected_byte = std::byte('0' + offs);
+            if (b != expected_byte)
+                co_return 1;
+        }
+
+        auto now = std::chrono::steady_clock::now();
+        if ((now - start) >= run_for)
+            break;
     }
 
     co_return 0;
@@ -88,8 +99,8 @@ TEST_CASE("idafilechannel stress test")
     int errors = 0;
 
     for (auto &&future : futures) {
-            auto ret = future.get();
-            errors += ret;
+        auto ret = future.get();
+        errors += ret;
     }
 
     REQUIRE(errors == 0);
