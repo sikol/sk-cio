@@ -26,22 +26,121 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_CHANNEL_DAFILECHANNEL_HXX_INCLUDED
-#define SK_CIO_CHANNEL_DAFILECHANNEL_HXX_INCLUDED
+#ifndef SK_CIO_FILECHANNEL_DAFILECHANNEL_HXX_INCLUDED
+#define SK_CIO_FILECHANNEL_DAFILECHANNEL_HXX_INCLUDED
 
-#ifdef _WIN32
-#    include <sk/cio/win32/filechannel/dafilechannel.hxx>
+#include <filesystem>
+#include <system_error>
+
+#include <sk/buffer/buffer.hxx>
+#include <sk/cio/channel/concepts.hxx>
+#include <sk/cio/detail/config.hxx>
+#include <sk/cio/error.hxx>
+#include <sk/cio/task.hxx>
+#include <sk/cio/types.hxx>
+#include <sk/cio/filechannel/detail/filechannel_base.hxx>
 
 namespace sk::cio {
 
-    using win32::dafilechannel;
+    /*************************************************************************
+     *
+     * dafilechannel: a direct access channel that reads and writes a file.
+     */
 
-} // namespace sk::cio
+    // clang-format off
+    struct dafilechannel final : detail::dafilechannel_base {
+        /*
+         * Create an dafilechannel which is closed.
+         */
+        dafilechannel() = default;
 
-#else
+        dafilechannel(dafilechannel const &) = delete;
+        dafilechannel(dafilechannel &&) noexcept = default;
+        dafilechannel &operator=(dafilechannel const &) = delete;
+        dafilechannel &operator=(dafilechannel &&) noexcept = default;
+        ~dafilechannel() = default;
 
-#    error dafilechannel is not supported on this platform
+        /*
+         * Open a file.
+         */
+        [[nodiscard]]
+        auto async_open(std::filesystem::path const &,
+                        fileflags_t = fileflags::none)
+        -> task<expected<void, std::error_code>>;
 
-#endif
+        [[nodiscard]]
+        auto open(std::filesystem::path const &,
+                  fileflags_t = fileflags::none)
+        -> expected<void, std::error_code>;
 
-#endif // SK_CIO_CHANNEL_DAFILECHANNEL_HXX_INCLUDED
+        /*
+         * Read data.
+         */
+        [[nodiscard]]
+        auto async_read_some_at(io_offset_t loc,
+                                std::byte* buffer,
+                                io_size_t nobjs)
+        -> task<expected<io_size_t, std::error_code>> {
+
+            return _async_read_some_at(loc, buffer, nobjs);
+        }
+
+        [[nodiscard]]
+        auto read_some_at(io_offset_t loc,
+                          std::byte* buffer,
+                          io_size_t nobjs)
+        -> expected<io_size_t, std::error_code> {
+
+            return _read_some_at(loc, buffer, nobjs);
+        }
+
+        /*
+         * Write data.
+         */
+        [[nodiscard]]
+        auto async_write_some_at(io_offset_t loc,
+                                 std::byte const* buffer,
+                                 io_size_t nobjs)
+        -> task<expected<io_size_t, std::error_code>> {
+
+            return _async_write_some_at(loc, buffer, nobjs);
+        }
+
+        [[nodiscard]]
+        auto write_some_at(io_offset_t loc,
+                           std::byte const* buffer,
+                           io_size_t nobjs)
+        -> expected<io_size_t, std::error_code> {
+
+            return _write_some_at(loc, buffer, nobjs);
+        }
+    };
+    // clang-format on
+
+    static_assert(dachannel<dafilechannel>);
+
+    /*************************************************************************
+     * dafilechannel::async_open()
+     */
+    inline auto dafilechannel::async_open(std::filesystem::path const &path,
+                                          fileflags_t flags)
+    -> task<expected<void, std::error_code>> {
+
+        flags |= fileflags::read | fileflags::write;
+        co_return co_await this->_async_open(path, flags);
+    }
+
+    /*************************************************************************
+     * dafilechannel::open()
+     */
+    inline auto dafilechannel::open(std::filesystem::path const &path,
+                                    fileflags_t flags)
+    -> expected<void, std::error_code> {
+
+        flags |= fileflags::read | fileflags::write;
+        return this->_open(path, flags);
+    }
+
+} // namespace sk::cio::win32
+
+#endif // SK_CIO_FILECHANNEL_DAFILECHANNEL_HXX_INCLUDED

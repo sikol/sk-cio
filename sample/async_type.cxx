@@ -77,7 +77,7 @@ int main(int argc, char **argv) {
     sk::cio::reactor_handle reactor;
 
     for (auto &&file : std::span(argv + 1, argv + argc)) {
-        print_file(file).wait();
+        wait(print_file(file));
     }
 
     return 0;

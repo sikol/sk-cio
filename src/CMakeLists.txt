@@ -28,7 +28,11 @@ cmake_minimum_required(VERSION 3.12)
 
 enable_testing()
 
+find_package(Threads REQUIRED)
+
 add_library(sk-cio)
+
+targeT_link_libraries(sk-cio PUBLIC Threads::Threads)
 
 target_sources(sk-cio PRIVATE
     error.cxx
@@ -42,8 +46,13 @@ target_sources(sk-cio PRIVATE
     include/sk/cio/channel/pmr_channel.hxx
 
     include/sk/cio/filechannel.hxx
+    include/sk/cio/filechannel/detail/filechannel_base.hxx
     include/sk/cio/filechannel/filechannel.hxx
+    include/sk/cio/filechannel/idafilechannel.hxx
+    include/sk/cio/filechannel/odafilechannel.hxx
     include/sk/cio/filechannel/dafilechannel.hxx
+    include/sk/cio/filechannel/iseqfilechannel.hxx
+    include/sk/cio/filechannel/oseqfilechannel.hxx
     include/sk/cio/filechannel/seqfilechannel.hxx
 
     include/sk/cio/memchannel/detail/memchannel_base.hxx
@@ -79,13 +88,6 @@ if (WIN32)
         win32/async_api.cxx
 
         include/sk/cio/win32/filechannel/detail/filechannel_base.hxx
-
-
-        include/sk/cio/win32/filechannel/idafilechannel.hxx
-        include/sk/cio/win32/filechannel/odafilechannel.hxx
-        include/sk/cio/win32/filechannel/iseqfilechannel.hxx
-        include/sk/cio/win32/filechannel/oseqfilechannel.hxx
-
         include/sk/cio/win32/net/tcpchannel.hxx
         include/sk/cio/win32/net/tcpserverchannel.hxx
 
@@ -93,8 +95,23 @@ if (WIN32)
         include/sk/cio/win32/handle.hxx
         include/sk/cio/win32/iocp_reactor.hxx
         include/sk/cio/win32/windows.hxx
-        include/sk/cio/win32/async_invoke.hxx
         include/sk/cio/win32/async_api.hxx
+        )
+endif ()
+
+if (UNIX)
+    target_sources(sk-cio PRIVATE
+        posix/epoll_reactor.cxx
+        posix/async_api.cxx
+
+        include/sk/cio/posix/filechannel/detail/dafilechannel_base.hxx
+        include/sk/cio/posix/net/tcpchannel.hxx
+        include/sk/cio/posix/net/tcpserverchannel.hxx
+
+        include/sk/cio/posix/async_api.hxx
+        include/sk/cio/posix/epoll_reactor.hxx
+        include/sk/cio/posix/error.hxx
+        include/sk/cio/posix/fd.hxx
         )
 endif ()
 

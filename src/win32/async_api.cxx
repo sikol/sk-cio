@@ -26,10 +26,10 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include <sk/cio/async_invoke.hxx>
 #include <sk/cio/reactor.hxx>
 #include <sk/cio/task.hxx>
 #include <sk/cio/win32/async_api.hxx>
-#include <sk/cio/win32/async_invoke.hxx>
 #include <sk/cio/win32/iocp_reactor.hxx>
 #include <sk/cio/win32/windows.hxx>
 
@@ -54,17 +54,22 @@ namespace sk::cio::win32 {
         iocp_coro_state *overlapped;
 
         co_overlapped_awaiter(iocp_coro_state *overlapped_)
-            : overlapped(overlapped_) {}
+            : overlapped(overlapped_)
+        {
+        }
 
-        bool await_ready() {
+        bool await_ready()
+        {
             return false;
         }
 
-        DWORD get_last_error() {
+        DWORD get_last_error()
+        {
             return ::GetLastError();
         }
 
-        bool await_suspend(std::coroutine_handle<> coro_handle_) {
+        bool await_suspend(std::coroutine_handle<> coro_handle_)
+        {
             // Lock the overlapped so our coro isn't resumed by the
             // iocp_reactor until we're finished.
             std::lock_guard lock(overlapped->mutex);
@@ -84,7 +89,8 @@ namespace sk::cio::win32 {
             return true;
         }
 
-        expected<void, std::error_code> await_resume() {
+        expected<void, std::error_code> await_resume()
+        {
             if (overlapped->was_pending)
                 static_cast<Impl *>(this)->overlapped_suspended();
 
@@ -100,19 +106,25 @@ namespace sk::cio::win32 {
      * AsyncCreateFileW()
      */
 
-    auto AsyncCreateFileW(LPCWSTR lpFileName, DWORD dwDesiredAccess,
+    auto AsyncCreateFileW(LPCWSTR lpFileName,
+                          DWORD dwDesiredAccess,
                           DWORD dwShareMode,
                           LPSECURITY_ATTRIBUTES lpSecurityAttributes,
                           DWORD dwCreationDisposition,
-                          DWORD dwFlagsAndAttributes, HANDLE hTemplateFile)
-        -> task<expected<HANDLE, std::error_code>> {
+                          DWORD dwFlagsAndAttributes,
+                          HANDLE hTemplateFile)
+        -> task<expected<HANDLE, std::error_code>>
+    {
 
         co_return co_await async_invoke(
             [&]() -> expected<HANDLE, std::error_code> {
-                auto handle =
-                    ::CreateFileW(lpFileName, dwDesiredAccess, dwShareMode,
-                                  lpSecurityAttributes, dwCreationDisposition,
-                                  dwFlagsAndAttributes, hTemplateFile);
+                auto handle = ::CreateFileW(lpFileName,
+                                            dwDesiredAccess,
+                                            dwShareMode,
+                                            lpSecurityAttributes,
+                                            dwCreationDisposition,
+                                            dwFlagsAndAttributes,
+                                            hTemplateFile);
 
                 if (handle != INVALID_HANDLE_VALUE) {
                     reactor_handle::get_global_reactor().associate_handle(
@@ -126,18 +138,24 @@ namespace sk::cio::win32 {
     /*************************************************************************
      * AsyncCreateFileA()
      */
-    auto AsyncCreateFileA(LPCSTR lpFileName, DWORD dwDesiredAccess,
+    auto AsyncCreateFileA(LPCSTR lpFileName,
+                          DWORD dwDesiredAccess,
                           DWORD dwShareMode,
                           LPSECURITY_ATTRIBUTES lpSecurityAttributes,
                           DWORD dwCreationDisposition,
-                          DWORD dwFlagsAndAttributes, HANDLE hTemplateFile)
-        -> task<expected<HANDLE, std::error_code>> {
+                          DWORD dwFlagsAndAttributes,
+                          HANDLE hTemplateFile)
+        -> task<expected<HANDLE, std::error_code>>
+    {
         co_return co_await async_invoke(
             [&]() -> expected<HANDLE, std::error_code> {
-                auto handle =
-                    ::CreateFileA(lpFileName, dwDesiredAccess, dwShareMode,
-                                  lpSecurityAttributes, dwCreationDisposition,
-                                  dwFlagsAndAttributes, hTemplateFile);
+                auto handle = ::CreateFileA(lpFileName,
+                                            dwDesiredAccess,
+                                            dwShareMode,
+                                            lpSecurityAttributes,
+                                            dwCreationDisposition,
+                                            dwFlagsAndAttributes,
+                                            hTemplateFile);
 
                 if (handle != INVALID_HANDLE_VALUE) {
                     reactor_handle::get_global_reactor().associate_handle(
@@ -157,34 +175,45 @@ namespace sk::cio::win32 {
         DWORD nbytes;
         LPDWORD nbytes_read;
 
-        co_ReadFile_awaiter(HANDLE handle_, LPVOID buffer_, DWORD nbytes_,
-                            LPDWORD nbytes_read_, iocp_coro_state *overlapped_)
+        co_ReadFile_awaiter(HANDLE handle_,
+                            LPVOID buffer_,
+                            DWORD nbytes_,
+                            LPDWORD nbytes_read_,
+                            iocp_coro_state *overlapped_)
             : co_overlapped_awaiter<co_ReadFile_awaiter>(overlapped_),
               handle(handle_), buffer(buffer_), nbytes(nbytes_),
-              nbytes_read(nbytes_read_) {}
+              nbytes_read(nbytes_read_)
+        {
+        }
 
-        BOOL overlapped_begin() {
+        BOOL overlapped_begin()
+        {
             return ::ReadFile(handle, buffer, nbytes, nbytes_read, overlapped);
         }
 
-        void overlapped_suspended() {
+        void overlapped_suspended()
+        {
             *nbytes_read = overlapped->bytes_transferred;
         }
     };
 
-    auto AsyncReadFile(HANDLE hFile, LPVOID lpBuffer,
-                       DWORD nNumberOfBytesToRead, LPDWORD lpNumberOfBytesRead,
-                       DWORD64 Offset)
-        -> task<expected<void, std::error_code>> {
+    auto AsyncReadFile(HANDLE hFile,
+                       LPVOID lpBuffer,
+                       DWORD nNumberOfBytesToRead,
+                       LPDWORD lpNumberOfBytesRead,
+                       DWORD64 Offset) -> task<expected<void, std::error_code>>
+    {
 
         iocp_coro_state overlapped;
         memset(&overlapped, 0, sizeof(OVERLAPPED));
         overlapped.Offset = static_cast<DWORD>(Offset & 0xFFFFFFFFUL);
         overlapped.OffsetHigh = static_cast<DWORD>(Offset >> 32);
 
-        co_return co_await co_ReadFile_awaiter(
-            hFile, lpBuffer, nNumberOfBytesToRead, lpNumberOfBytesRead,
-            &overlapped);
+        co_return co_await co_ReadFile_awaiter(hFile,
+                                               lpBuffer,
+                                               nNumberOfBytesToRead,
+                                               lpNumberOfBytesRead,
+                                               &overlapped);
     }
 
     /*************************************************************************
@@ -196,36 +225,46 @@ namespace sk::cio::win32 {
         DWORD nbytes;
         LPDWORD nbytes_written;
 
-        co_WriteFile_awaiter(HANDLE handle_, LPCVOID buffer_, DWORD nbytes_,
+        co_WriteFile_awaiter(HANDLE handle_,
+                             LPCVOID buffer_,
+                             DWORD nbytes_,
                              LPDWORD nbytes_written_,
                              iocp_coro_state *overlapped_)
             : co_overlapped_awaiter<co_WriteFile_awaiter>(overlapped_),
               handle(handle_), buffer(buffer_), nbytes(nbytes_),
-              nbytes_written(nbytes_written_) {}
-
-        BOOL overlapped_begin() {
-            return ::WriteFile(handle, buffer, nbytes, nbytes_written,
-                               overlapped);
+              nbytes_written(nbytes_written_)
+        {
         }
 
-        void overlapped_suspended() {
+        BOOL overlapped_begin()
+        {
+            return ::WriteFile(
+                handle, buffer, nbytes, nbytes_written, overlapped);
+        }
+
+        void overlapped_suspended()
+        {
             *nbytes_written = overlapped->bytes_transferred;
         }
     };
 
-    auto AsyncWriteFile(HANDLE hFile, LPCVOID lpBuffer,
+    auto AsyncWriteFile(HANDLE hFile,
+                        LPCVOID lpBuffer,
                         DWORD nNumberOfBytesToWrite,
-                        LPDWORD lpNumberOfBytesWritten, DWORD64 Offset)
-        -> task<expected<void, std::error_code>> {
+                        LPDWORD lpNumberOfBytesWritten,
+                        DWORD64 Offset) -> task<expected<void, std::error_code>>
+    {
 
         iocp_coro_state overlapped;
         memset(&overlapped, 0, sizeof(OVERLAPPED));
         overlapped.Offset = static_cast<DWORD>(Offset & 0xFFFFFFFFUL);
         overlapped.OffsetHigh = static_cast<DWORD>(Offset >> 32);
 
-        co_return co_await co_WriteFile_awaiter(
-            hFile, lpBuffer, nNumberOfBytesToWrite, lpNumberOfBytesWritten,
-            &overlapped);
+        co_return co_await co_WriteFile_awaiter(hFile,
+                                                lpBuffer,
+                                                nNumberOfBytesToWrite,
+                                                lpNumberOfBytesWritten,
+                                                &overlapped);
     }
 
     /*************************************************************************
@@ -240,43 +279,66 @@ namespace sk::cio::win32 {
         DWORD send_buffer_size;
         LPDWORD bytes_sent;
 
-        co_ConnectEx_awaiter(LPFN_CONNECTEX ConnectEx_fn_, SOCKET sock_,
-                             sockaddr const *addr_, int addrlen_,
-                             PVOID send_buffer_, DWORD send_buffer_size_,
-                             LPDWORD bytes_sent_, iocp_coro_state *overlapped_)
+        co_ConnectEx_awaiter(LPFN_CONNECTEX ConnectEx_fn_,
+                             SOCKET sock_,
+                             sockaddr const *addr_,
+                             int addrlen_,
+                             PVOID send_buffer_,
+                             DWORD send_buffer_size_,
+                             LPDWORD bytes_sent_,
+                             iocp_coro_state *overlapped_)
             : co_overlapped_awaiter<co_ConnectEx_awaiter>(overlapped_),
               ConnectEx_fn(ConnectEx_fn_), sock(sock_), addr(addr_),
               addrlen(addrlen_), send_buffer(send_buffer_),
-              send_buffer_size(send_buffer_size_), bytes_sent(bytes_sent_) {}
+              send_buffer_size(send_buffer_size_), bytes_sent(bytes_sent_)
+        {
+        }
 
-        DWORD get_last_error() {
+        DWORD get_last_error()
+        {
             return ::WSAGetLastError();
         }
 
-        BOOL overlapped_begin() {
-            return ConnectEx_fn(sock, addr, addrlen, send_buffer,
-                                send_buffer_size, bytes_sent, overlapped);
+        BOOL overlapped_begin()
+        {
+            return ConnectEx_fn(sock,
+                                addr,
+                                addrlen,
+                                send_buffer,
+                                send_buffer_size,
+                                bytes_sent,
+                                overlapped);
         }
 
-        void overlapped_suspended() {
+        void overlapped_suspended()
+        {
             if (bytes_sent)
                 *bytes_sent = overlapped->bytes_transferred;
         }
     };
 
-    auto AsyncConnectEx(SOCKET sock, sockaddr const *name, int namelen,
-                        PVOID lpSendBuffer, DWORD dwSendDataLength,
+    auto AsyncConnectEx(SOCKET sock,
+                        sockaddr const *name,
+                        int namelen,
+                        PVOID lpSendBuffer,
+                        DWORD dwSendDataLength,
                         LPDWORD lpdwBytesSent)
-        -> task<expected<void, std::error_code>> {
+        -> task<expected<void, std::error_code>>
+    {
 
         LPFN_CONNECTEX ConnectEx_fn;
         GUID guid = WSAID_CONNECTEX;
         DWORD n = 0;
 
-        auto ret =
-            ::WSAIoctl(sock, SIO_GET_EXTENSION_FUNCTION_POINTER, (void *)&guid,
-                       sizeof(guid), (void *)&ConnectEx_fn,
-                       sizeof(ConnectEx_fn), &n, NULL, NULL);
+        auto ret = ::WSAIoctl(sock,
+                              SIO_GET_EXTENSION_FUNCTION_POINTER,
+                              (void *)&guid,
+                              sizeof(guid),
+                              (void *)&ConnectEx_fn,
+                              sizeof(ConnectEx_fn),
+                              &n,
+                              NULL,
+                              NULL);
 
         if (ret)
             co_return make_unexpected(cio::error::winsock_no_connectex);
@@ -284,9 +346,14 @@ namespace sk::cio::win32 {
         iocp_coro_state overlapped;
         std::memset(&overlapped, 0, sizeof(OVERLAPPED));
 
-        co_return co_await co_ConnectEx_awaiter(
-            ConnectEx_fn, sock, name, namelen, lpSendBuffer, dwSendDataLength,
-            lpdwBytesSent, &overlapped);
+        co_return co_await co_ConnectEx_awaiter(ConnectEx_fn,
+                                                sock,
+                                                name,
+                                                namelen,
+                                                lpSendBuffer,
+                                                dwSendDataLength,
+                                                lpdwBytesSent,
+                                                &overlapped);
     }
 
     /*************************************************************************
@@ -302,8 +369,10 @@ namespace sk::cio::win32 {
         DWORD dwRemoteAddressLength;
         LPDWORD lpdwBytesReceived;
 
-        co_AcceptEx_awaiter(LPFN_ACCEPTEX AcceptEx_fn_, SOCKET sListenSocket_,
-                            SOCKET sAcceptSocket_, PVOID lpOutputBuffer_,
+        co_AcceptEx_awaiter(LPFN_ACCEPTEX AcceptEx_fn_,
+                            SOCKET sListenSocket_,
+                            SOCKET sAcceptSocket_,
+                            PVOID lpOutputBuffer_,
                             DWORD dwReceiveDataLength_,
                             DWORD dwLocalAddressLength_,
                             DWORD dwRemoteAddressLength_,
@@ -315,35 +384,53 @@ namespace sk::cio::win32 {
               dwReceiveDataLength(dwReceiveDataLength_),
               dwLocalAddressLength(dwLocalAddressLength_),
               dwRemoteAddressLength(dwRemoteAddressLength_),
-              lpdwBytesReceived(lpdwBytesReceived_) {}
+              lpdwBytesReceived(lpdwBytesReceived_)
+        {
+        }
 
-        DWORD get_last_error() {
+        DWORD get_last_error()
+        {
             return ::WSAGetLastError();
         }
 
-        BOOL overlapped_begin() {
-            return AcceptEx_fn(sListenSocket, sAcceptSocket, lpOutputBuffer,
-                               dwReceiveDataLength, dwLocalAddressLength,
-                               dwRemoteAddressLength, lpdwBytesReceived,
+        BOOL overlapped_begin()
+        {
+            return AcceptEx_fn(sListenSocket,
+                               sAcceptSocket,
+                               lpOutputBuffer,
+                               dwReceiveDataLength,
+                               dwLocalAddressLength,
+                               dwRemoteAddressLength,
+                               lpdwBytesReceived,
                                overlapped);
         }
 
         void overlapped_suspended() {}
     };
 
-    auto AsyncAcceptEx(SOCKET sListenSocket, SOCKET sAcceptSocket,
-                       PVOID lpOutputBuffer, DWORD dwReceiveDataLength,
-                       DWORD dwLocalAddressLength, DWORD dwRemoteAddressLength,
+    auto AsyncAcceptEx(SOCKET sListenSocket,
+                       SOCKET sAcceptSocket,
+                       PVOID lpOutputBuffer,
+                       DWORD dwReceiveDataLength,
+                       DWORD dwLocalAddressLength,
+                       DWORD dwRemoteAddressLength,
                        LPDWORD lpdwBytesReceived)
-        -> task<expected<void, std::error_code>> {
+        -> task<expected<void, std::error_code>>
+    {
 
         LPFN_ACCEPTEX AcceptEx_fn;
         GUID guid = WSAID_ACCEPTEX;
         DWORD n = 0;
 
-        auto ret = ::WSAIoctl(sListenSocket, SIO_GET_EXTENSION_FUNCTION_POINTER,
-                              (void *)&guid, sizeof(guid), (void *)&AcceptEx_fn,
-                              sizeof(AcceptEx_fn), &n, NULL, NULL);
+        auto ret = ::WSAIoctl(sListenSocket,
+                              SIO_GET_EXTENSION_FUNCTION_POINTER,
+                              (void *)&guid,
+                              sizeof(guid),
+                              (void *)&AcceptEx_fn,
+                              sizeof(AcceptEx_fn),
+                              &n,
+                              NULL,
+                              NULL);
 
         if (ret)
             co_return make_unexpected(cio::error::winsock_no_acceptex);
@@ -351,10 +438,15 @@ namespace sk::cio::win32 {
         iocp_coro_state overlapped;
         std::memset(&overlapped, 0, sizeof(OVERLAPPED));
 
-        co_return co_await co_AcceptEx_awaiter(
-            AcceptEx_fn, sListenSocket, sAcceptSocket, lpOutputBuffer,
-            dwReceiveDataLength, dwLocalAddressLength, dwRemoteAddressLength,
-            lpdwBytesReceived, &overlapped);
+        co_return co_await co_AcceptEx_awaiter(AcceptEx_fn,
+                                               sListenSocket,
+                                               sAcceptSocket,
+                                               lpOutputBuffer,
+                                               dwReceiveDataLength,
+                                               dwLocalAddressLength,
+                                               dwRemoteAddressLength,
+                                               lpdwBytesReceived,
+                                               &overlapped);
     }
 
 } // namespace sk::cio::win32

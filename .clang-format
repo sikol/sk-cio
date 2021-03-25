@@ -11,4 +11,13 @@ BraceWrapping:
   AfterFunction: true
 BinPackParameters: false
 BinPackArguments: false
+IncludeCategories:
+  - Regex:      '^<sys/types.h>$'
+    Priority:   1
+  - Regex:      '^<sys/'
+    Priority:   2
+  - Regex:      '^<sk/'
+    Priority:   4
+  - Regex:      '.*'
+    Priority:   3
 ---

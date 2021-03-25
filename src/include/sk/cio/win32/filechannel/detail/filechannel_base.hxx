@@ -46,14 +46,13 @@
 #include <sk/cio/win32/handle.hxx>
 
 namespace sk::cio::win32::detail {
+
     /*************************************************************************
      *
-     * dafilechannel_base: base class for direct access file channels.
+     * filechannel_base: base class for file channels.
      *
      */
-
-    // clang-format off
-    struct filechannel_base 
+    struct filechannel_base
     {
         using value_type = std::byte;
         using native_handle_type = win32::unique_handle;
@@ -68,17 +67,17 @@ namespace sk::cio::win32::detail {
          */
         auto is_open() const -> bool;
 
-        [[nodiscard]] 
-        auto async_close() 
+        [[nodiscard]]
+        auto async_close()
              -> task<expected<void, std::error_code>>;
 
-        [[nodiscard]] 
-        auto close() 
+        [[nodiscard]]
+        auto close()
              -> expected<void, std::error_code>;
 
     protected:
 
-        [[nodiscard]] 
+        [[nodiscard]]
         auto _async_open(std::filesystem::path const &,
                          fileflags_t)
             -> task<expected<void, std::error_code>>;
@@ -88,24 +87,24 @@ namespace sk::cio::win32::detail {
                    fileflags_t)
             -> expected<void, std::error_code>;
 
-        [[nodiscard]] 
+        [[nodiscard]]
         auto _make_flags(fileflags_t flags,
                          DWORD &dwDesiredAccess,
                          DWORD &dwCreationDisposition,
-                         DWORD &dwShareMode) 
+                         DWORD &dwShareMode)
              -> bool;
 
         /*
          * Read data.
          */
         [[nodiscard]]
-        auto _async_read_some_at(io_offset_t loc, 
+        auto _async_read_some_at(io_offset_t loc,
                                  std::byte *buffer,
                                  io_size_t nobjs)
         -> task<expected<io_size_t, std::error_code>>;
 
         [[nodiscard]]
-        auto _read_some_at(io_offset_t loc, 
+        auto _read_some_at(io_offset_t loc,
                            std::byte *buffer,
                            io_size_t nobjs)
         -> expected<io_size_t, std::error_code>;
@@ -128,11 +127,8 @@ namespace sk::cio::win32::detail {
         filechannel_base() = default;
         ~filechannel_base() = default;
 
-    private:
         native_handle_type _native_handle;
-
     };
-    // clang-format on
 
     /*************************************************************************
      * filechannel_base::_make_flags()

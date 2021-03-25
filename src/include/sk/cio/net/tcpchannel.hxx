@@ -29,13 +29,21 @@
 #ifndef SK_CIO_NET_TCPCHANNEL_HXX_INCLUDED
 #define SK_CIO_NET_TCPCHANNEL_HXX_INCLUDED
 
-#ifdef _WIN32
+#include <sk/cio/detail/config.hxx>
+
+#if defined(SK_CIO_PLATFORM_WINDOWS)
 #    include <sk/cio/win32/net/tcpchannel.hxx>
 
 namespace sk::cio::net {
-
     using sk::cio::win32::net::tcpchannel;
+}
 
+#elif defined(SK_CIO_PLATFORM_POSIX)
+
+#    include <sk/cio/posix/net/tcpchannel.hxx>
+
+namespace sk::cio::net {
+    using sk::cio::posix::net::tcpchannel;
 }
 
 #else

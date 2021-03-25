@@ -29,19 +29,137 @@
 #ifndef SK_CIO_FILECHANNEL_SEQFILECHANNEL_HXX_INCLUDED
 #define SK_CIO_FILECHANNEL_SEQFILECHANNEL_HXX_INCLUDED
 
-#ifdef _WIN32
-#    include <sk/cio/win32/filechannel/seqfilechannel.hxx>
+#include <cstddef>
+#include <filesystem>
+#include <system_error>
 
-namespace sk::cio {
+#include <sk/buffer/buffer.hxx>
+#include <sk/cio/channel/concepts.hxx>
+#include <sk/cio/filechannel/filechannel.hxx>
+#include <sk/cio/error.hxx>
+#include <sk/cio/task.hxx>
+#include <sk/cio/types.hxx>
+#include <sk/cio/filechannel/detail/filechannel_base.hxx>
 
-    using win32::seqfilechannel;
+namespace sk::cio::win32 {
 
-} // namespace sk::cio
+    /*************************************************************************
+     *
+     * seqfilechannel: a direct access channel that writes to a file.
+     */
 
-#else
+    // clang-format off
+    struct seqfilechannel final : detail::seqfilechannel_base {
 
-#    error seqfilechannel is not supported on this platform
+        /*
+         * Create a seqfilechannel which is closed.
+         */
+        seqfilechannel() = default;
 
-#endif
+        /*
+         * Open a file.
+         */
+        [[nodiscard]]
+        auto async_open(std::filesystem::path const &,
+                        fileflags_t = fileflags::none)
+        -> task<expected<void, std::error_code>>;
+
+        [[nodiscard]]
+        auto open(std::filesystem::path const &,
+                  fileflags_t = fileflags::none)
+        -> expected<void, std::error_code>;
+
+        /*
+         * Read data.
+         */
+        [[nodiscard]]
+        auto async_read_some(std::byte *buffer, io_size_t nobjs)
+        -> task<expected<io_size_t, std::error_code>>;
+
+        [[nodiscard]]
+        auto read_some(std::byte *buffer, io_size_t nobjs)
+        -> expected<io_size_t, std::error_code>;
+
+        /*
+         * Write data.
+         */
+        [[nodiscard]]
+        auto async_write_some(std::byte const *buffer, io_size_t)
+        -> task<expected<io_size_t, std::error_code>>;
+
+        [[nodiscard]]
+        auto write_some(std::byte const *buffer, io_size_t)
+        -> expected<io_size_t, std::error_code>;
+
+        seqfilechannel(seqfilechannel const &) = delete;
+        seqfilechannel(seqfilechannel &&) noexcept = default;
+        seqfilechannel &operator=(seqfilechannel const &) = delete;
+        seqfilechannel &operator=(seqfilechannel &&) noexcept = default;
+        ~seqfilechannel() = default;
+    };
+
+    // clang-format on
+
+    static_assert(seqchannel<seqfilechannel>);
+
+    /*************************************************************************
+     * seqfilechannel::async_open()
+     */
+    inline auto seqfilechannel::async_open(std::filesystem::path const &path,
+                                           fileflags_t flags)
+    -> task<expected<void, std::error_code>> {
+        flags |= fileflags::read | fileflags::write;
+        co_return co_await this->_async_open(path, flags);
+    }
+
+    /*************************************************************************
+     * seqfilechannel::open()
+     */
+    inline auto seqfilechannel::open(std::filesystem::path const &path,
+                                     fileflags_t flags)
+    -> expected<void, std::error_code> {
+        flags |= fileflags::read | fileflags::write;
+        return this->_open(path, flags);
+    }
+
+    /*************************************************************************
+     * seqfilechannel::async_read_some()
+     */
+
+    inline auto seqfilechannel::async_read_some(std::byte *buffer,
+                                                io_size_t nobjs)
+    -> task<expected<io_size_t, std::error_code>> {
+        return this->_async_read_some(buffer, nobjs);
+    }
+
+    /*************************************************************************
+     * seqfilechannel::read_some()
+     */
+
+    inline auto seqfilechannel::read_some(std::byte *buffer, io_size_t nobjs)
+    -> expected<io_size_t, std::error_code> {
+        return this->_read_some(buffer, nobjs);
+    }
+
+    /*************************************************************************
+     * seqfilechannel::async_write_some()
+     */
+
+    inline auto seqfilechannel::async_write_some(std::byte const *buffer,
+                                                 io_size_t nobjs)
+    -> task<expected<io_size_t, std::error_code>> {
+        return this->_async_write_some(buffer, nobjs);
+    }
+
+    /*************************************************************************
+     * seqfilechannel::write_some()
+     */
+
+    inline auto seqfilechannel::write_some(std::byte const *buffer, io_size_t nobjs)
+    -> expected<io_size_t, std::error_code> {
+        return this->_write_some(buffer, nobjs);
+    }
+
+} // namespace sk::cio::win32
 
 #endif // SK_CIO_FILECHANNEL_SEQFILECHANNEL_HXX_INCLUDED

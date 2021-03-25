@@ -26,50 +26,33 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_REACTOR_HXX_INCLUDED
-#define SK_CIO_REACTOR_HXX_INCLUDED
+#ifndef SK_CIO_FILECHANNEL_FILECHANNEL_BASE_HXX_INCLUDED
+#define SK_CIO_FILECHANNEL_FILECHANNEL_BASE_HXX_INCLUDED
 
 #include <mutex>
 
-#if defined(_WIN32)
-#    include <sk/cio/win32/iocp_reactor.hxx>
+#if defined(SK_CIO_PLATFORM_WINDOWS)
+#    include <sk/cio/win32/filechannel/detail/seqfilechannel_base.hxx>
+#    include <sk/cio/win32/filechannel/detail/dafilechannel_base.hxx>
 
-namespace sk::cio {
-    using system_reactor_type = win32::iocp_reactor;
+namespace sk::cio::detail {
+    using dafilechannel_base = sk::cio::win32::detail::dafilechannel_base;
+    using seqfilechannel_base = sk::cio::win32::detail::seqfilechannel_base;
 }
 
-#elif defined(__linux__)
-#    include <sk/cio/posix/epoll_reactor.hxx>
+#elif defined(SK_CIO_PLATFORM_POSIX)
+#    include <sk/cio/posix/filechannel/detail/seqfilechannel_base.hxx>
+#    include <sk/cio/posix/filechannel/detail/dafilechannel_base.hxx>
 
-namespace sk::cio {
-    using system_reactor_type = posix::epoll_reactor;
+namespace sk::cio::detail {
+    using dafilechannel_base = sk::cio::posix::detail::dafilechannel_base;
+    using seqfilechannel_base = sk::cio::posix::detail::seqfilechannel_base;
 }
 
 #else
 
-#    error reactor is not supported on this platform
+#    error filechannel is not supported on this platform
 
 #endif
 
-namespace sk::cio {
-
-    struct reactor_handle {
-        reactor_handle();
-        ~reactor_handle();
-
-        reactor_handle(reactor_handle const &) = delete;
-        reactor_handle(reactor_handle &&) = delete;
-        reactor_handle &operator=(reactor_handle const &) = delete;
-        reactor_handle &operator=(reactor_handle &&) = delete;
-
-        // Fetch the global reactor handle.
-        static auto get_global_reactor() -> system_reactor_type &;
-
-    private:
-        static int refs;
-        static std::mutex mutex;
-    };
-
-} // namespace sk::cio
-
-#endif // SK_CIO_REACTOR_HXX_INCLUDED
+#endif // SK_CIO_FILECHANNEL_FILECHANNEL_BASE_HXX_INCLUDED

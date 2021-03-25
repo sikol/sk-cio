@@ -45,7 +45,7 @@ auto get_int() -> task<int> {
 
 TEST_CASE("task<int> works") {
     std::cerr << "\n\ntask<int> starting\n";
-    int i = get_int().wait();
+    int i = wait(get_int());
     REQUIRE(i == 42);
 }
 
@@ -58,6 +58,6 @@ auto set_int(int &i) -> task<void> {
 TEST_CASE("task<void> works") {
     int i = 0;
     std::cerr << "\n\ntask<void> starting\n";
-    set_int(i).wait();
+    wait(set_int(i));
     REQUIRE(i == 42);
 }

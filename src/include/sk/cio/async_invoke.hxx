@@ -29,19 +29,61 @@
 #ifndef SK_CIO_ASYNC_INVOKE_HXX_INCLUDED
 #define SK_CIO_ASYNC_INVOKE_HXX_INCLUDED
 
-#ifdef _WIN32
-#    include <sk/cio/win32/async_invoke.hxx>
+#include <sk/cio/reactor.hxx>
 
 namespace sk::cio {
 
-    using win32::async_invoke;
+    /*************************************************************************
+     *
+     * async_invoke: run a callable on another thread in a way that can be
+     * awaited.
+     */
+
+    template <typename Callable>
+    struct co_async_invoke_awaiter {
+        using result_type = std::invoke_result_t<Callable>;
+        Callable c;
+        std::future<result_type> future;
+        std::mutex mtx;
+        std::coroutine_handle<> coro_handle;
+
+        co_async_invoke_awaiter(Callable &&c_) : c(std::move(c_)) {}
+
+        bool await_ready()
+        {
+            return false;
+        }
+
+        bool await_suspend(std::coroutine_handle<> coro_handle_)
+        {
+            coro_handle = coro_handle_;
+            std::lock_guard lock(mtx);
+
+            future = std::async(std::launch::async, [&]() -> result_type {
+                auto ret = c();
+                reactor_handle::get_global_reactor().post([&] {
+                    std::unique_lock lock_(mtx);
+                    lock_.unlock();
+                    coro_handle.resume();
+                });
+                return std::move(ret);
+            });
+
+            return true;
+        }
+
+        result_type await_resume()
+        {
+            return std::move(future.get());
+        }
+    };
+
+    template <typename Callable>
+    auto async_invoke(Callable &&c) -> task<std::invoke_result_t<Callable>>
+    {
+        co_return co_await co_async_invoke_awaiter(std::move(c));
+    }
 
 } // namespace sk::cio
 
-#else
-
-#    error spawn is not supported on this platform
-
-#endif
-
-#endif // SK_CIO_SPAWN_HXX_INCLUDED
+#endif // SK_CIO_ASYNC_INVOKE_HXX_INCLUDED

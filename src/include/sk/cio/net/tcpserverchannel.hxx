@@ -29,18 +29,25 @@
 #ifndef SK_CIO_NET_TCPSERVERCHANNEL_HXX_INCLUDED
 #define SK_CIO_NET_TCPSERVERCHANNEL_HXX_INCLUDED
 
-#ifdef _WIN32
+#include <sk/cio/detail/config.hxx>
+
+#if defined(SK_CIO_PLATFORM_WINDOWS)
 #    include <sk/cio/win32/net/tcpserverchannel.hxx>
 
 namespace sk::cio::net {
-
     using sk::cio::win32::net::tcpserverchannel;
+}
 
+#elif defined(SK_CIO_PLATFORM_POSIX)
+#    include <sk/cio/posix/net/tcpserverchannel.hxx>
+
+namespace sk::cio::net {
+    using sk::cio::posix::net::tcpserverchannel;
 }
 
 #else
 
-#    error tcpchannel is not supported on this platform
+#    error tcpserverchannel is not supported on this platform
 
 #endif
 

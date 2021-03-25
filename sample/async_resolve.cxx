@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
     sk::cio::reactor_handle reactor;
 
     for (auto &&name : std::span(argv + 1, argv + argc)) {
-        resolve(name).wait();
+        wait(resolve(name));
     }
 
     return 0;

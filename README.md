@@ -2,15 +2,19 @@
 
 (WIP) Coro-based exception-free async I/O library.
 
-Windows only for now.
-
 * [Documentation](https://sk-cio.readthedocs.io/en/latest/index.html)
 
 Requires:
 
 * [sk-buffer](https://github.com/sikol/sk-buffer)
-* MSVC 19.28 (VS 16.9) or later.
-* Clang is not supported since clang-cl doesn't support standard coroutines (yet).
+  
+Tested compilers:
+* MSVC 19.28 (VS 16.9)
+* GCC 10.2.0
+  
+Unsupported compilers:
+
+* Clang 11.0 (missing C++20 coroutines)
 
 Example:
 

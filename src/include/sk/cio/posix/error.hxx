@@ -26,50 +26,21 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_REACTOR_HXX_INCLUDED
-#define SK_CIO_REACTOR_HXX_INCLUDED
+#ifndef SK_CIO_POSIX_ERROR_HXX_INCLUDED
+#define SK_CIO_POSIX_ERROR_HXX_INCLUDED
 
-#include <mutex>
+namespace sk::cio::posix {
 
-#if defined(_WIN32)
-#    include <sk/cio/win32/iocp_reactor.hxx>
+    inline auto make_error(int e) -> std::error_code
+    {
+        return {e, std::system_category()};
+    }
 
-namespace sk::cio {
-    using system_reactor_type = win32::iocp_reactor;
-}
+    inline auto get_errno() -> std::error_code
+    {
+        return make_error(errno);
+    }
 
-#elif defined(__linux__)
-#    include <sk/cio/posix/epoll_reactor.hxx>
+} // namespace sk::cio::posix
 
-namespace sk::cio {
-    using system_reactor_type = posix::epoll_reactor;
-}
-
-#else
-
-#    error reactor is not supported on this platform
-
-#endif
-
-namespace sk::cio {
-
-    struct reactor_handle {
-        reactor_handle();
-        ~reactor_handle();
-
-        reactor_handle(reactor_handle const &) = delete;
-        reactor_handle(reactor_handle &&) = delete;
-        reactor_handle &operator=(reactor_handle const &) = delete;
-        reactor_handle &operator=(reactor_handle &&) = delete;
-
-        // Fetch the global reactor handle.
-        static auto get_global_reactor() -> system_reactor_type &;
-
-    private:
-        static int refs;
-        static std::mutex mutex;
-    };
-
-} // namespace sk::cio
-
-#endif // SK_CIO_REACTOR_HXX_INCLUDED
+#endif // SK_CIO_POSIX_ERROR_HXX_INCLUDED

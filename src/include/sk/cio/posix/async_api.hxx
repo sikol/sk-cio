@@ -26,60 +26,42 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_WIN32_ASYNC_INVOKE_HXX_INCLUDED
-#define SK_CIO_WIN32_ASYNC_INVOKE_HXX_INCLUDED
+#ifndef SK_CIO_POSIX_ASYNC_API_HXX_INCLUDED
+#define SK_CIO_POSIX_ASYNC_API_HXX_INCLUDED
 
-#include <sk/cio/reactor.hxx>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <netinet/in.h>
 
-namespace sk::cio::win32 {
+#include <system_error>
+
+#include <sk/cio/expected.hxx>
+#include <sk/cio/task.hxx>
+
+namespace sk::cio::posix {
 
     /*************************************************************************
      *
-     * async_invoke: run a callable on another thread in a way that can be
-     * awaited.
+     * POSIX async API.
+     *
      */
 
-    template <typename Callable>
-    struct co_async_invoke_awaiter {
-        using result_type = std::invoke_result_t<Callable>;
-        Callable c;
-        std::future<result_type> future;
-        std::mutex mtx;
-        std::coroutine_handle<> coro_handle;
+    auto async_fd_open(char const *path, int flags, int mode = 0777)
+        -> task<expected<int, std::error_code>>;
 
-        co_async_invoke_awaiter(Callable &&c_) : c(std::move(c_)) {}
+    auto async_fd_recv(int fd, void *buf, std::size_t n, int flags)
+        -> task<expected<ssize_t, std::error_code>>;
 
-        bool await_ready() {
-            return false;
-        }
+    auto async_fd_send(int fd, void const *buf, std::size_t n, int flags)
+        -> task<expected<ssize_t, std::error_code>>;
 
-        bool await_suspend(std::coroutine_handle<> coro_handle_) {
-            coro_handle = coro_handle_;
-            std::lock_guard lock(mtx);
+    auto async_fd_connect(int, sockaddr const *, socklen_t)
+        -> task<expected<void, std::error_code>>;
 
-            future = std::async(std::launch::async, [&]() -> result_type {
-                auto ret = c();
-                reactor_handle::get_global_reactor().post([&] {
-                    std::unique_lock lock_(mtx);
-                    lock_.unlock();
-                    coro_handle.resume();
-                });
-                return std::move(ret);
-            });
+    auto async_fd_accept(int, sockaddr *addr, socklen_t *)
+        -> task<expected<int, std::error_code>>;
 
-            return true;
-        }
+} // namespace sk::cio::posix
 
-        result_type await_resume() {
-            return std::move(future.get());
-        }
-    };
-
-    template <typename Callable>
-    auto async_invoke(Callable &&c) -> task<std::invoke_result_t<Callable>> {
-        co_return co_await co_async_invoke_awaiter(std::move(c));
-    }
-
-} // namespace sk::cio::win32
-
-#endif // SK_CIO_WIN32_SPAWN_HXX_INCLUDED
+#endif // SK_CIO_POSIX_ASYNC_API_HXX_INCLUDED

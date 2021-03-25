@@ -34,8 +34,14 @@
 #include <stdexcept>
 #include <system_error>
 
-#ifdef _WIN32
+#include <sk/cio/detail/config.hxx>
+
+#if defined(SK_CIO_PLATFORM_WINDOWS)
 #    include <sk/cio/win32/windows.hxx>
+#elif defined(SK_CIO_PLATFORM_POSIX)
+#    include <sys/types.h>
+#    include <sys/socket.h>
+#    include <netdb.h>
 #endif
 
 #include <sk/cio/expected.hxx>
@@ -57,7 +63,8 @@ namespace sk::cio::net {
 namespace std {
 
     template <>
-    struct is_error_code_enum<sk::cio::net::resolver_error> : true_type {};
+    struct is_error_code_enum<sk::cio::net::resolver_error> : true_type {
+    };
 
 } // namespace std
 
@@ -87,21 +94,23 @@ namespace sk::cio::net {
         // For consistency, store it ourselves.
         socklen_t native_address_length;
 
-        int address_family() const {
+        int address_family() const
+        {
             return native_address.ss_family;
         }
 
         // Construct an address from a sockaddr.
         address(sockaddr_storage const *ss, socklen_t len)
-            : native_address_length(len) {
+            : native_address_length(len)
+        {
             if (len > sizeof(native_address))
                 throw std::domain_error("address is too large");
 
             std::memcpy(&native_address, ss, len);
         }
 
-        address(sockaddr const *ss, socklen_t len)
-            : native_address_length(len) {
+        address(sockaddr const *ss, socklen_t len) : native_address_length(len)
+        {
             if (len > sizeof(native_address))
                 throw std::domain_error("address is too large");
 
@@ -110,7 +119,7 @@ namespace sk::cio::net {
     };
 
     // Create an address from an address and service string.
-    // 
+    //
     // This does not attempt to resolve either argument, so they should
     // be literal strings.
     //

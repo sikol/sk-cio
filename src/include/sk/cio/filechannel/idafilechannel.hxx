@@ -29,19 +29,103 @@
 #ifndef SK_CIO_FILECHANNEL_IDAFILECHANNEL_HXX_INCLUDED
 #define SK_CIO_FILECHANNEL_IDAFILECHANNEL_HXX_INCLUDED
 
-#ifdef _WIN32
-#    include <sk/cio/win32/filechannel/idafilechannel.hxx>
+#include <filesystem>
+#include <system_error>
+
+#include <sk/cio/detail/config.hxx>
+#include <sk/buffer/buffer.hxx>
+#include <sk/cio/channel/concepts.hxx>
+#include <sk/cio/error.hxx>
+#include <sk/cio/task.hxx>
+#include <sk/cio/types.hxx>
+#include <sk/cio/filechannel/detail/filechannel_base.hxx>
 
 namespace sk::cio {
 
-    using win32::idafilechannel;
+    /*************************************************************************
+     *
+     * idafilechannel: a direct access channel that reads from a file.
+     */
 
-} // namespace sk::cio
+    // clang-format off
+    struct idafilechannel final : detail::dafilechannel_base {
 
-#else
+        /*
+         * Create an idafilechannel which is closed.
+         */
+        idafilechannel() = default;
 
-#    error idafilechannel is not supported on this platform
+        idafilechannel(idafilechannel const &) = delete;
+        idafilechannel(idafilechannel &&) noexcept = default;
+        idafilechannel &operator=(idafilechannel const &) = delete;
+        idafilechannel &operator=(idafilechannel &&) noexcept = default;
 
-#endif
+        /*
+         * Open a file.
+         */
+        [[nodiscard]]
+        auto async_open(std::filesystem::path const &,
+                        fileflags_t = fileflags::none)
+        -> task<expected<void, std::error_code>>;
+
+        [[nodiscard]]
+        auto open(std::filesystem::path const &,
+                  fileflags_t = fileflags::none)
+        -> expected<void, std::error_code>;
+
+        /*
+         * Read data.
+         */
+        [[nodiscard]]
+        auto async_read_some_at(io_offset_t loc,
+                                std::byte* buffer,
+                                io_size_t nobjs)
+        -> task<expected<io_size_t, std::error_code>> {
+
+            return _async_read_some_at(loc, buffer, nobjs);
+        }
+
+        [[nodiscard]]
+        auto read_some_at(io_offset_t loc,
+                          std::byte* buffer,
+                          io_size_t nobjs)
+        -> expected<io_size_t, std::error_code> {
+
+            return _read_some_at(loc, buffer, nobjs);
+        }
+    };
+    // clang-format on
+
+    static_assert(idachannel<idafilechannel>);
+
+    /*************************************************************************
+     * idafilechannel::async_open()
+     */
+    inline auto idafilechannel::async_open(std::filesystem::path const &path,
+                                           fileflags_t flags)
+    -> task<expected<void, std::error_code>> {
+
+        if (flags & fileflags::write)
+            co_return make_unexpected(cio::error::filechannel_invalid_flags);
+
+        flags |= fileflags::read;
+        co_return co_await this->_async_open(path, flags);
+    }
+
+    /*************************************************************************
+     * idafilechannel::open()
+     */
+    inline auto idafilechannel::open(std::filesystem::path const &path,
+                                     fileflags_t flags)
+    -> expected<void, std::error_code> {
+
+        if (flags & fileflags::write)
+            return make_unexpected(cio::error::filechannel_invalid_flags);
+
+        flags |= fileflags::read;
+        return this->_open(path, flags);
+    }
+
+} // namespace sk::cio::win32
 
 #endif // SK_CIO_FILECHANNEL_IDAFILECHANNEL_HXX_INCLUDED

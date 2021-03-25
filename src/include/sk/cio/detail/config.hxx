@@ -39,7 +39,8 @@ namespace sk::cio::detail {
         checked_error(std::string e) : std::logic_error(std::move(e)) {}
     };
 
-    inline void checked_failure(char const *what) {
+    inline void checked_failure(char const *what)
+    {
         throw checked_error(what);
     }
 
@@ -54,6 +55,21 @@ namespace sk::cio::detail {
 #else
 
 #    define SK_CHECK(expr, msg) (void)0
+
+#endif
+
+#if defined(_WIN32)
+
+#    define SK_CIO_PLATFORM_WINDOWS
+
+#elif defined(__linux__)
+
+#    define SK_CIO_PLATFORM_LINUX
+#    define SK_CIO_PLATFORM_POSIX
+
+#else
+
+#    error sk-cio not supported on this platform
 
 #endif
 

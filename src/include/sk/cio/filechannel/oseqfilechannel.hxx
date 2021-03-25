@@ -29,19 +29,120 @@
 #ifndef SK_CIO_FILECHANNEL_OSEQFILECHANNEL_HXX_INCLUDED
 #define SK_CIO_FILECHANNEL_OSEQFILECHANNEL_HXX_INCLUDED
 
-#ifdef _WIN32
-#    include <sk/cio/win32/filechannel/oseqfilechannel.hxx>
+#include <cstddef>
+#include <filesystem>
+#include <system_error>
+
+#include <sk/buffer/buffer.hxx>
+#include <sk/cio/channel/concepts.hxx>
+#include <sk/cio/error.hxx>
+#include <sk/cio/filechannel/detail/filechannel_base.hxx>
+#include <sk/cio/filechannel/filechannel.hxx>
+#include <sk/cio/task.hxx>
+#include <sk/cio/types.hxx>
 
 namespace sk::cio {
 
-    using win32::oseqfilechannel;
+    /*************************************************************************
+     *
+     * oseqfilechannel: a direct access channel that writes to a file.
+     */
+
+    // clang-format off
+    struct oseqfilechannel final : detail::seqfilechannel_base {
+
+        /*
+         * Create an oseqfilechannel which is closed.
+         */
+        oseqfilechannel() = default;
+
+        /*
+         * Open a file.
+         */
+        [[nodiscard]]
+        auto async_open(std::filesystem::path const &,
+                        fileflags_t = fileflags::none)
+        -> task<expected<void, std::error_code>>;
+
+        [[nodiscard]]
+        auto open(std::filesystem::path const &,
+                  fileflags_t = fileflags::none)
+        -> expected<void, std::error_code>;
+
+        /*
+         * Write data.
+         */
+        [[nodiscard]]
+        auto async_write_some(std::byte const *buffer, io_size_t)
+        -> task<expected<io_size_t, std::error_code>>;
+
+        [[nodiscard]]
+        auto write_some(std::byte const *buffer, io_size_t)
+        -> expected<io_size_t, std::error_code>;
+
+        oseqfilechannel(oseqfilechannel const &) = delete;
+        oseqfilechannel(oseqfilechannel &&) noexcept = default;
+        oseqfilechannel &operator=(oseqfilechannel const &) = delete;
+        oseqfilechannel &operator=(oseqfilechannel &&) noexcept = default;
+        ~oseqfilechannel() = default;
+    };
+
+    // clang-format on
+
+    static_assert(oseqchannel<oseqfilechannel>);
+
+    /*************************************************************************
+     * oseqfilechannel::async_open()
+     */
+    inline auto oseqfilechannel::async_open(std::filesystem::path const &path,
+                                            fileflags_t flags)
+        -> task<expected<void, std::error_code>>
+    {
+
+        if (flags & fileflags::read)
+            co_return make_unexpected(cio::error::filechannel_invalid_flags);
+
+        flags |= fileflags::write;
+        co_return co_await this->_async_open(path, flags);
+    }
+
+    /*************************************************************************
+     * oseqfilechannel::open()
+     */
+    inline auto oseqfilechannel::open(std::filesystem::path const &path,
+                                      fileflags_t flags)
+        -> expected<void, std::error_code>
+    {
+
+        if (flags & fileflags::read)
+            return make_unexpected(cio::error::filechannel_invalid_flags);
+
+        flags |= fileflags::write;
+        return this->_open(path, flags);
+    }
+
+    /*************************************************************************
+     * oseqfilechannel::async_write_some()
+     */
+
+    inline auto oseqfilechannel::async_write_some(std::byte const *buffer,
+                                                  io_size_t nobjs)
+        -> task<expected<io_size_t, std::error_code>>
+    {
+        return _async_write_some(buffer, nobjs);
+    }
+
+    /*************************************************************************
+     * oseqfilechannel::write_some()
+     */
+
+    inline auto oseqfilechannel::write_some(std::byte const *buffer,
+                                            io_size_t nobjs)
+        -> expected<io_size_t, std::error_code>
+    {
+        return _write_some(buffer, nobjs);
+    }
 
 } // namespace sk::cio
-
-#else
-
-#    error oseqfilechannel is not supported on this platform
-
-#endif
 
 #endif // SK_CIO_FILECHANNEL_OSEQFILECHANNEL_HXX_INCLUDED

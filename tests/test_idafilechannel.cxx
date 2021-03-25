@@ -93,7 +93,7 @@ TEST_CASE("idafilechannel::async_read()") {
     }
 
     idafilechannel chnl;
-    auto ret = chnl.async_open("test.txt").wait();
+    auto ret = wait(chnl.async_open("test.txt"));
     if (!ret) {
         INFO(ret.error().message());
         REQUIRE(false);
@@ -101,7 +101,7 @@ TEST_CASE("idafilechannel::async_read()") {
 
     for (int i = 3; i >= 0; --i) {
         std::vector<std::byte> buf(15 - i);
-        auto nbytes = async_read_some_at(chnl, i, buf, 15 - i).wait();
+        auto nbytes = wait(async_read_some_at(chnl, i, buf, 15 - i));
         if (!nbytes) {
             INFO(nbytes.error().message());
             REQUIRE(false);
@@ -116,7 +116,7 @@ TEST_CASE("idafilechannel::async_read()") {
     }
 
     std::vector<std::byte> buf(15);
-    auto nbytes = async_read_some_at(chnl, 50, buf, unlimited).wait();
+    auto nbytes = wait(async_read_some_at(chnl, 50, buf, unlimited));
     REQUIRE(!nbytes);
     REQUIRE(nbytes.error() == error::end_of_file);
 }

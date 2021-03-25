@@ -40,7 +40,8 @@
 
 using namespace sk::cio;
 
-TEST_CASE("odafilechannel::write()") {
+#if 0
+TEST_CASE("odafilechannel::write_some_at()") {
     std::string test_string("This is a test.\n");
 
     {
@@ -58,11 +59,12 @@ TEST_CASE("odafilechannel::write()") {
             reinterpret_cast<std::byte *>(test_string.data()),
             reinterpret_cast<std::byte *>(test_string.data() + test_string.size()));
 
-        auto ret = write_some_at(chnl, at_end, data, unlimited);
+        auto ret = write_some(chnl, data, unlimited);
         if (!ret) {
             INFO(ret.error().message());
             REQUIRE(false);
         }
+
         REQUIRE(*ret == data.size());
     }
 
@@ -74,3 +76,4 @@ TEST_CASE("odafilechannel::write()") {
         REQUIRE(data == "This is a test.");
     }
 }
+#endif

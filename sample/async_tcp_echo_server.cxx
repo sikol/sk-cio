@@ -102,6 +102,6 @@ int main(int argc, char **argv) {
     }
 
     sk::cio::reactor_handle reactor;
-    run(argv[1], argv[2]).wait();
+    wait(run(argv[1], argv[2]));
     return 0;
 }

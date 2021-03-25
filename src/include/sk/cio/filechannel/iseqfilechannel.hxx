@@ -29,19 +29,109 @@
 #ifndef SK_CIO_FILECHANNEL_ISEQFILECHANNEL_HXX_INCLUDED
 #define SK_CIO_FILECHANNEL_ISEQFILECHANNEL_HXX_INCLUDED
 
-#ifdef _WIN32
-#    include <sk/cio/win32/filechannel/iseqfilechannel.hxx>
+#include <cstddef>
+#include <filesystem>
+#include <system_error>
+
+#include <sk/buffer/buffer.hxx>
+#include <sk/cio/channel/concepts.hxx>
+#include <sk/cio/detail/config.hxx>
+#include <sk/cio/error.hxx>
+#include <sk/cio/filechannel/detail/filechannel_base.hxx>
+#include <sk/cio/task.hxx>
+#include <sk/cio/types.hxx>
 
 namespace sk::cio {
 
-    using win32::iseqfilechannel;
+    /*************************************************************************
+     *
+     * iseqfilechannel: a sequential-access channel to a file.
+     *
+     */
+    struct iseqfilechannel final : detail::seqfilechannel_base {
+        /*
+         * Create an iseqfilechannel which is closed.
+         */
+        iseqfilechannel() = default;
+
+        /*
+         * Open a file.
+         */
+        [[nodiscard]] auto async_open(std::filesystem::path const &,
+                                      fileflags_t = fileflags::none)
+            -> task<expected<void, std::error_code>>;
+
+        [[nodiscard]] auto open(std::filesystem::path const &,
+                                fileflags_t = fileflags::none)
+            -> expected<void, std::error_code>;
+
+        explicit iseqfilechannel(iseqfilechannel const &) = delete;
+        iseqfilechannel(iseqfilechannel &&) noexcept = default;
+        iseqfilechannel &operator=(iseqfilechannel const &) = delete;
+        iseqfilechannel &operator=(iseqfilechannel &&) noexcept = default;
+        ~iseqfilechannel() = default;
+
+        /*
+         * Read data.
+         */
+        [[nodiscard]] auto async_read_some(std::byte *buffer, io_size_t nobjs)
+            -> task<expected<io_size_t, std::error_code>>;
+
+        [[nodiscard]] auto read_some(std::byte *buffer, io_size_t nobjs)
+            -> expected<io_size_t, std::error_code>;
+    };
+
+    static_assert(iseqchannel<iseqfilechannel>);
+
+    /*************************************************************************
+     * iseqfilechannel::async_open()
+     */
+    inline auto iseqfilechannel::async_open(std::filesystem::path const &path,
+                                            fileflags_t flags)
+        -> task<expected<void, std::error_code>>
+    {
+
+        if (flags & fileflags::write)
+            co_return make_unexpected(cio::error::filechannel_invalid_flags);
+
+        flags |= fileflags::read;
+        co_return co_await this->_async_open(path, flags);
+    }
+
+    /*************************************************************************
+     * iseqfilechannel::open()
+     */
+    inline auto iseqfilechannel::open(std::filesystem::path const &path,
+                                      fileflags_t flags)
+        -> expected<void, std::error_code>
+    {
+
+        if (flags & fileflags::write)
+            return make_unexpected(cio::error::filechannel_invalid_flags);
+
+        flags |= fileflags::read;
+        return this->_open(path, flags);
+    }
+
+    /*************************************************************************
+     * iseqfilechannel::async_read_some()
+     */
+    inline auto iseqfilechannel::async_read_some(std::byte *buffer,
+                                                 io_size_t nobjs)
+        -> task<expected<io_size_t, std::error_code>>
+    {
+        return _async_read_some(buffer, nobjs);
+    }
+
+    /*************************************************************************
+     * iseqfilechannel::read_some()
+     */
+    inline auto iseqfilechannel::read_some(std::byte *buffer, io_size_t nobjs)
+        -> expected<io_size_t, std::error_code>
+    {
+        return _read_some(buffer, nobjs);
+    }
 
 } // namespace sk::cio
-
-#else
-
-#    error iseqfilechannel is not supported on this platform
-
-#endif
 
 #endif // SK_CIO_FILECHANNEL_ISEQFILECHANNEL_HXX_INCLUDED

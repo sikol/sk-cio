@@ -94,7 +94,7 @@ TEST_CASE("iseqfilechannel::async_read()") {
     }
 
     iseqfilechannel chnl;
-    auto ret = chnl.async_open("test.txt").wait();
+    auto ret = wait(chnl.async_open("test.txt"));
     if (!ret) {
         INFO(ret.error().message());
         REQUIRE(false);
@@ -102,7 +102,7 @@ TEST_CASE("iseqfilechannel::async_read()") {
 
     for (int i = 0; i < 3; ++i) {
         std::vector<std::byte> buf(15);
-        auto nbytes = async_read_some(chnl, buf, unlimited).wait();
+        auto nbytes = wait(async_read_some(chnl, buf, unlimited));
         if (!nbytes) {
             INFO(nbytes.error().message());
             REQUIRE(false);
@@ -117,7 +117,7 @@ TEST_CASE("iseqfilechannel::async_read()") {
     }
 
     std::vector<std::byte> buf(15);
-    auto nbytes = async_read_some(chnl, buf, unlimited).wait();
+    auto nbytes = wait(async_read_some(chnl, buf, unlimited));
     REQUIRE(!nbytes);
     REQUIRE(nbytes.error() == error::end_of_file);
 }
