@@ -37,6 +37,7 @@
 #include <sk/cio/read.hxx>
 #include <sk/cio/filechannel/iseqfilechannel.hxx>
 #include <sk/cio/task.hxx>
+#include <sk/cio/wait.hxx>
 
 using namespace sk::cio;
 

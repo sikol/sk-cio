@@ -37,6 +37,7 @@
 #include <sk/cio/filechannel/idafilechannel.hxx>
 #include <sk/cio/read.hxx>
 #include <sk/cio/task.hxx>
+#include <sk/cio/wait.hxx>
 
 using namespace sk::cio;
 

@@ -27,17 +27,19 @@
 cmake_minimum_required(VERSION 3.12)
 
 add_executable(test_cio
-        main.cxx
-        test_task.cxx
-        test_iseqfilechannel.cxx
-        test_idafilechannel.cxx
-        test_odafilechannel.cxx
-        test_iseqfilechannel_open.cxx
-        test_imemchannel.cxx
-        test_omemchannel.cxx
-        test_memchannel.cxx)
+    main.cxx
+    test_task.cxx
+    test_iseqfilechannel.cxx
+    test_idafilechannel.cxx
+    test_odafilechannel.cxx
+    test_iseqfilechannel_open.cxx
+    test_imemchannel.cxx
+    test_omemchannel.cxx
+    test_memchannel.cxx
+    stress_idafilechannel.cxx
+    )
 
 target_link_libraries(test_cio PRIVATE sk-cio Catch2::Catch2)
 
 add_test(NAME test_cio
-        COMMAND $<TARGET_FILE:test_cio>)
+    COMMAND $<TARGET_FILE:test_cio>)

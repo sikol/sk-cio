@@ -26,25 +26,71 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_HXX_INCLUDED
-#define SK_CIO_HXX_INCLUDED
+#include <fstream>
+#include <iostream>
 
-#include <sk/cio/async_invoke.hxx>
-#include <sk/cio/co_detach.hxx>
-#include <sk/cio/error.hxx>
-#include <sk/cio/expected.hxx>
-#include <sk/cio/task.hxx>
-#include <sk/cio/wait.hxx>
-#include <sk/cio/read.hxx>
-#include <sk/cio/write.hxx>
+#include <catch.hpp>
 
-#include <sk/cio/filechannel.hxx>
-#include <sk/cio/memchannel.hxx>
+#include <sk/cio.hxx>
 
-#include <sk/cio/net/address.hxx>
-#include <sk/cio/net/tcpchannel.hxx>
-#include <sk/cio/net/tcpserverchannel.hxx>
+using namespace sk::cio;
 
-#include <sk/buffer/fixed_buffer.hxx>
+constexpr int nthreads = 25;
+constexpr int nops = 500;
 
-#endif // SK_CIO_HXX_INCLUDED
+task<int> stress_task(idafilechannel &chnl)
+{
+    std::random_device r;
+    std::default_random_engine eng(r());
+    std::uniform_int_distribution<io_offset_t> rnd(0, 9);
+
+    for (int i = 0; i < nops; ++i) {
+        std::byte b;
+        auto offs = rnd(eng);
+        auto ret = co_await async_read_some_at(chnl, offs, &b, 1);
+
+        if (!ret)
+            co_return 1;
+
+        auto expected_byte = std::byte('0' + offs);
+        if (b != expected_byte)
+            co_return 1;
+    }
+
+    co_return 0;
+}
+
+TEST_CASE("idafilechannel stress test")
+{
+    // Create the test file
+    {
+        std::ignore = std::remove("__sk_cio_test.txt");
+        std::ofstream f("__sk_cio_test.txt");
+        f << "0123456789";
+        f.close();
+    }
+
+    idafilechannel chnl;
+    auto ret = chnl.open("__sk_cio_test.txt");
+    REQUIRE(ret);
+
+    std::vector<std::future<int>> futures;
+
+    std::cerr << "starting stress tasks\n";
+
+    for (int i = 0; i < nthreads; ++i)
+        futures.emplace_back(std::async(std::launch::async, [&]() -> int {
+            return wait(stress_task(chnl));
+        }));
+
+    std::cerr << "joining stress tasks\n";
+
+    int errors = 0;
+
+    for (auto &&future : futures) {
+            auto ret = future.get();
+            errors += ret;
+    }
+
+    REQUIRE(errors == 0);
+}

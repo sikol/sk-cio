@@ -7,11 +7,12 @@
 Requires:
 
 * [sk-buffer](https://github.com/sikol/sk-buffer)
-  
-Tested compilers:
-* MSVC 19.28 (VS 16.9)
-* GCC 10.2.0
-  
+ 
+Tested platforms:
+
+* Windows NT, MSVC 19.28 (VS 16.9)
+* Linux with epoll, GCC 10.2.0
+
 Unsupported compilers:
 
 * Clang 11.0 (missing C++20 coroutines)
@@ -20,3 +21,4 @@ Example:
 
 * [async_type](sample/async_type.cxx)
 * [async_resolve](sample/async_resolve.cxx)
+* [async_tcp_echo_server](sample/async_tcp_echo_server.cxx)

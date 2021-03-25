@@ -35,6 +35,7 @@
 #include <iostream>
 
 #include <sk/cio/task.hxx>
+#include <sk/cio/wait.hxx>
 
 using sk::cio::task;
 
