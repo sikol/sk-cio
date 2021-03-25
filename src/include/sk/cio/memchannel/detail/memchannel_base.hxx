@@ -48,7 +48,7 @@ namespace sk::cio::detail {
         memchannel_base(memchannel_base const &) = delete;
         memchannel_base &operator=(memchannel_base const &) = delete;
 
-        auto is_open() const -> bool {
+        [[nodiscard]] auto is_open() const -> bool {
             return _begin != nullptr;
         }
 

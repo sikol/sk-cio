@@ -40,43 +40,56 @@
 
 namespace sk::cio {
 
-    template <typename Task, typename T>
+    template <typename P>
+    struct task_final_awaiter {
+        bool destroy_self{false};
+
+        bool await_ready() noexcept
+        {
+            std::cerr << "task_final_awaiter await_ready\n";
+            return false;
+        }
+
+        void await_resume() noexcept {
+            std::cerr << "task_final_awaiter await_resume\n";
+        }
+
+        std::coroutine_handle<>
+        await_suspend(std::coroutine_handle<P> h) noexcept
+        {
+            std::cerr << "task_final_awaiter await_suspend destroy_self=" << destroy_self << "\n";
+            if (destroy_self) {
+                h.destroy();
+                return std::noop_coroutine();
+            }
+
+            auto previous = h.promise().previous;
+            if (previous) {
+                return previous;
+            } else {
+                return std::noop_coroutine();
+            }
+        }
+    };
+
+    template <typename T>
     struct task_promise {
         auto get_return_object()
         {
-            return Task(
-                std::coroutine_handle<task_promise<Task, T>>::from_promise(
-                    *this));
+            std::cerr << "task_promise get_return_object\n";
+            return std::coroutine_handle<task_promise<T>>::from_promise(*this);
         }
 
         std::suspend_always initial_suspend()
         {
+            std::cerr << "task_promise initial_suspend\n";
             return {};
         }
 
-        struct final_awaiter {
-            bool await_ready() noexcept
-            {
-                return false;
-            }
-
-            void await_resume() noexcept {}
-
-            std::coroutine_handle<> await_suspend(
-                std::coroutine_handle<task_promise<Task, T>> h) noexcept
-            {
-                auto previous = h.promise().previous;
-                if (previous) {
-                    return previous;
-                } else {
-                    return std::noop_coroutine();
-                }
-            }
-        };
-
-        final_awaiter final_suspend() noexcept
+        task_final_awaiter<task_promise<T>> final_suspend() noexcept
         {
-            return {};
+            std::cerr << "task_promise<void> final_suspend destroy_self=" << destroy_self << "\n";
+            return {destroy_self};
         }
 
         void unhandled_exception()
@@ -87,58 +100,41 @@ namespace sk::cio {
         void return_value(T const &value) noexcept(
             std::is_nothrow_copy_constructible_v<T>)
         {
-
+            std::cerr << "task_promise return_value\n";
             result = value;
         }
 
         void return_value(T &&value) noexcept(
             std::is_nothrow_move_constructible_v<T>)
         {
-
+            std::cerr << "task_promise return_value\n";
             result = std::move(value);
         }
 
         T result{};
+        bool destroy_self{false};
         std::coroutine_handle<> previous;
     };
 
-    template <typename Task>
-    struct task_promise<Task, void> {
+    template <>
+    struct task_promise<void> {
         auto get_return_object()
         {
-            return Task(
-                std::coroutine_handle<task_promise<Task, void>>::from_promise(
-                    *this));
+            std::cerr << "task_promise<void> get_return_object\n";
+            return std::coroutine_handle<task_promise<void>>::from_promise(
+                *this);
         }
 
         std::suspend_always initial_suspend()
         {
+            std::cerr << "task_promise<void> initial_suspend\n";
             return {};
         }
 
-        struct final_awaiter {
-            bool await_ready() noexcept
-            {
-                return false;
-            }
-
-            void await_resume() noexcept {}
-
-            std::coroutine_handle<> await_suspend(
-                std::coroutine_handle<task_promise<Task, void>> h) noexcept
-            {
-                auto previous = h.promise().previous;
-                if (previous) {
-                    return previous;
-                } else {
-                    return std::noop_coroutine();
-                }
-            }
-        };
-
-        final_awaiter final_suspend() noexcept
+        task_final_awaiter<task_promise<void>> final_suspend() noexcept
         {
-            return {};
+            std::cerr << "task_promise<void> final_suspend destroy_self=" << destroy_self << "\n";
+            return {destroy_self};
         }
 
         void unhandled_exception()
@@ -146,14 +142,18 @@ namespace sk::cio {
             throw;
         }
 
-        void return_void() noexcept {}
+        void return_void() noexcept
+        {
+            std::cerr << "task_promise<void> return_void\n";
+        }
 
         std::coroutine_handle<> previous;
+        bool destroy_self{false};
     };
 
     template <typename T>
     struct task {
-        using promise_type = task_promise<task<T>, T>;
+        using promise_type = task_promise<T>;
         std::coroutine_handle<promise_type> coro_handle;
 
         task(std::coroutine_handle<promise_type> coro_handle_)
