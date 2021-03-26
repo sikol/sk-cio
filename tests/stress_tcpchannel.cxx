@@ -29,6 +29,7 @@
 #include <chrono>
 #include <fstream>
 #include <iostream>
+#include <array>
 
 #include <catch.hpp>
 
@@ -39,7 +40,7 @@
 using namespace sk::cio;
 using namespace std::literals::chrono_literals;
 
-constexpr int nthreads = 25;
+constexpr int nthreads = 30;
 constexpr int nops = 500;
 constexpr auto run_for = 20s;
 
@@ -51,8 +52,8 @@ task<int> stress_task()
 {
     std::random_device r;
     std::default_random_engine eng(r());
-    std::uniform_int_distribution<io_size_t> rnd_0_50(0, 50);
-    std::uniform_int_distribution<std::uint8_t> rnd_byte(0u, 255u);
+    std::uniform_int_distribution<io_size_t> rnd_0_50(0, 49);
+    std::uniform_int_distribution<int> rnd_byte(0, 255);
 
     auto start = std::chrono::steady_clock::now();
 
@@ -61,8 +62,11 @@ task<int> stress_task()
         // Connect to the test host.
         net::tcpchannel chnl;
         auto ret = co_await chnl.async_connect(*listen_addr);
-        if (!ret)
+        if (!ret) {
+            std::cerr << "stress_task: failed to connect: "
+                      << ret.error().message() << "\n";
             co_return 1;
+        }
 
         for (int i = 0; i < nops; ++i) {
             std::byte outbuf[50], inbuf[50];
@@ -70,19 +74,37 @@ task<int> stress_task()
 
             // Generate random data.
             buflen = rnd_0_50(eng);
-            for (auto i = 0; i < buflen; ++i)
-                outbuf[i] = std::byte(rnd_byte(eng));
+            for (auto n = 0; n < buflen; ++n)
+                outbuf[n] = std::byte(rnd_byte(eng));
 
-            auto wret = co_await async_write_all(chnl, outbuf, buflen);
-            if (wret.first != buflen || wret.second)
+            auto wret = co_await async_write_all(chnl, static_cast<std::byte *>(outbuf), buflen);
+            if (wret.first != buflen) {
+                fmt::print(stderr, "short write: {}\n", wret.first);
                 co_return 1;
+            }
 
             auto rret = co_await async_read_all(chnl, inbuf, buflen);
-            if (rret.first != buflen || rret.second)
+            if (rret.first != buflen) {
+                fmt::print(stderr, "short read: {}\n", rret.first);
                 co_return 1;
+            }
 
-            if (std::memcmp(outbuf, inbuf, buflen))
+            if (std::memcmp(outbuf, inbuf, buflen)) {
+                fmt::print(stderr, "failed compare\n");
+                std::ostringstream strm;
+
+                strm << "sent: ";
+                for (io_size_t n = 0; n < buflen; ++n)
+                    strm << static_cast<int>(outbuf[n]) << " ";
+
+                strm << "\nrecv: ";
+                for (io_size_t n = 0; n < buflen; ++n)
+                    strm << static_cast<int>(inbuf[n]) << " ";
+
+                strm << "\n";
+                fmt::print(stderr, "{}", strm.str());
                 co_return 1;
+            }
         }
 
         auto now = std::chrono::steady_clock::now();
@@ -93,19 +115,22 @@ task<int> stress_task()
     co_return 0;
 }
 
-task<void> handle_client(net::tcpchannel client) {
+task<void> handle_client(net::tcpchannel client)
+{
     for (;;) {
         sk::fixed_buffer<std::byte, 1024> buf;
 
         auto ret = co_await async_read_some(client, buf, unlimited);
+
         if (!ret) {
-            //fmt::print(stderr, "read err: {}\n", ret.error().message());
+            if (ret.error() != error::end_of_file)
+                fmt::print(stderr, "read err: {}\n", ret.error().message());
             co_await client.async_close();
             co_return;
         }
 
-        auto wret = co_await async_write_all(client, buf, unlimited);
-        if (wret.second) {
+        auto wret = co_await async_write_some(client, buf, unlimited);
+        if (!wret) {
             co_await client.async_close();
             co_return;
         }
@@ -115,12 +140,13 @@ task<void> handle_client(net::tcpchannel client) {
     co_return;
 }
 
-task<void> server_task(net::tcpserverchannel &chnl) {
+task<void> server_task(net::tcpserverchannel &chnl)
+{
     for (;;) {
         auto client = co_await chnl.async_accept();
         if (!client) {
-            fmt::print(stderr, "async_accept(): {}\n",
-                       client.error().message());
+            fmt::print(
+                stderr, "async_accept(): {}\n", client.error().message());
             co_return;
         }
 
@@ -133,13 +159,18 @@ TEST_CASE("tcpchannel stress test")
     // Create the server channel.
     auto netaddr = net::make_address(listen_address, listen_port);
     if (!netaddr) {
-        fmt::print(stderr, "{}:{}: {}\n", listen_address, listen_port,
+        fmt::print(stderr,
+                   "{}:{}: {}\n",
+                   listen_address,
+                   listen_port,
                    netaddr.error().message());
         return;
     }
     listen_addr = &*netaddr;
 
     auto server = net::tcpserverchannel::listen(*netaddr);
+    REQUIRE(server);
+
     co_detach(server_task(*server));
 
     std::cerr << "starting stress tasks\n";
@@ -147,9 +178,8 @@ TEST_CASE("tcpchannel stress test")
     std::vector<std::future<int>> futures;
 
     for (int i = 0; i < nthreads; ++i)
-        futures.emplace_back(std::async(std::launch::async, [&]() -> int {
-          return wait(stress_task());
-        }));
+        futures.emplace_back(std::async(
+            std::launch::async, [&]() -> int { return wait(stress_task()); }));
 
     std::cerr << "joining stress tasks\n";
 

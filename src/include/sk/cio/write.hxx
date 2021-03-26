@@ -52,13 +52,13 @@ namespace sk::cio {
                     channel_value_t<Channel> const* buf, io_size_t n)
         -> expected<io_size_t, std::error_code>
     {
-        return channel.write_some(buf, n);    
+        return channel.write_some(buf, n);
     }
 
     // async_write_some(channel, data, n)
     template<oseqchannel Channel>
     auto async_write_some(Channel& channel,
-                          channel_value_t<Channel> const* buf, io_size_t n)     
+                          channel_value_t<Channel> const* buf, io_size_t n)
         -> task<expected<io_size_t, std::error_code>>
     {
         co_return co_await channel.async_write_some(buf, n);
@@ -82,7 +82,7 @@ namespace sk::cio {
 
     // async_write_some(channel, range, n)
     template<oseqchannel Channel, std::ranges::contiguous_range Range>
-    auto async_write_some(Channel &channel, Range const &range, io_size_t n)
+    auto async_write_some(Channel &channel, Range &&range, io_size_t n)
          -> task<expected<io_size_t, std::error_code>>
          requires std::same_as<channel_value_t<Channel>,
                                std::ranges::range_value_t<Range>> {
@@ -90,6 +90,7 @@ namespace sk::cio {
         auto data = std::ranges::data(range);
         auto size = cio::detail::int_cast<io_size_t>(
                 std::ranges::size(range));
+
         if (n < size)
             size = n;
 
@@ -106,7 +107,7 @@ namespace sk::cio {
         auto ranges = buffer.get_readable_ranges();
         if (std::ranges::size(ranges) == 0u)
             return 0u;
-        
+
         auto &first_range = *std::ranges::begin(ranges);
         return write_some(channel, first_range, n);
     }
@@ -118,10 +119,10 @@ namespace sk::cio {
          requires std::same_as<channel_value_t<Channel>,
                                sk::buffer_value_t<Buffer>> {
 
-        auto ranges = buffer.get_readable_ranges();
+        auto ranges = buffer.readable_ranges();
         if (std::ranges::size(ranges) == 0u)
             co_return 0u;
-        
+
         auto &first_range = *std::ranges::begin(ranges);
         co_return co_await async_write_some(channel, first_range, n);
     }
@@ -328,7 +329,7 @@ namespace sk::cio {
         auto ranges = buffer.get_readable_ranges();
         if (std::ranges::size(ranges) == 0u)
             return 0u;
-        
+
         auto &first_range = *std::ranges::begin(ranges);
         return write_some_at(channel, loc, first_range, n);
     }
@@ -346,7 +347,7 @@ namespace sk::cio {
         auto ranges = buffer.get_readable_ranges();
         if (std::ranges::size(ranges) == 0u)
             co_return 0u;
-        
+
         auto &first_range = *std::ranges::begin(ranges);
         co_return co_await async_write_some_at(channel, loc, first_range, n);
     }

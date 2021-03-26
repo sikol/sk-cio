@@ -90,6 +90,7 @@ namespace sk::cio::net {
      */
     struct address {
         sockaddr_storage native_address;
+
         // Some systems provide this in sockaddr, but others don't.
         // For consistency, store it ourselves.
         socklen_t native_address_length;
@@ -115,6 +116,29 @@ namespace sk::cio::net {
                 throw std::domain_error("address is too large");
 
             std::memcpy(&native_address, ss, len);
+        }
+
+        // Return the zero address for an address family.
+        static auto zero_address(int af) -> expected<address, std::error_code>
+        {
+            switch (af) {
+            case AF_INET: {
+                sockaddr_in sin{};
+                sin.sin_family = AF_INET;
+                return address(reinterpret_cast<sockaddr *>(&sin), sizeof(sin));
+            }
+
+            case AF_INET6: {
+                sockaddr_in6 sin6{};
+                sin6.sin6_family = AF_INET6;
+                return address(reinterpret_cast<sockaddr *>(&sin6),
+                               sizeof(sin6));
+            }
+
+            default:
+                return make_unexpected(
+                    std::make_error_code(std::errc::address_family_not_supported));
+            }
         }
     };
 

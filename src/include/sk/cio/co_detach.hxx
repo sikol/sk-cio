@@ -33,12 +33,78 @@
 
 namespace sk::cio {
 
+    struct detach_promise {
+        auto get_return_object()
+        {
+            return std::coroutine_handle<detach_promise>::from_promise(
+                *this);
+        }
+
+        std::suspend_always initial_suspend()
+        {
+            //std::cerr << "task_promise<void> initial_suspend\n";
+            return {};
+        }
+
+        std::suspend_never final_suspend() noexcept
+        {
+            //std::cerr << "task_promise<void> final_suspend\n";
+            return {};
+        }
+
+        void unhandled_exception()
+        {
+            throw;
+        }
+
+        void return_void() noexcept
+        {
+            //std::cerr << "task_promise<void>: return_void\n";
+        }
+    };
+
+    struct detach_task {
+        using promise_type = detach_promise;
+        std::coroutine_handle<promise_type> coro_handle;
+
+        detach_task(std::coroutine_handle<promise_type> coro_handle_)
+            : coro_handle(coro_handle_)
+        {
+        }
+
+        detach_task(detach_task const &) = delete;
+        detach_task &operator=(detach_task const &) = delete;
+        detach_task &operator=(detach_task &&other) = delete;
+
+        detach_task(detach_task &&other) noexcept
+            : coro_handle(std::exchange(other.coro_handle, {}))
+        {
+        }
+
+        ~detach_task()
+        {
+            //if (coro_handle)
+            //    coro_handle.destroy();
+        }
+
+        void start()
+        {
+            coro_handle.resume();
+        }
+    };
+
+    template<typename T>
+    auto _internal_detach(task<T> &&task_) -> detach_task {
+        task<T> taskp(std::move(task_));
+        taskp.coro_handle.promise().previous = {};
+        co_await taskp;
+    }
+
     template <typename T>
     void co_detach(task<T> &&task_)
     {
-        auto coro = std::exchange(task_.coro_handle, {});
-        coro.promise().destroy_self = true;
-        coro.resume();
+        auto detach_task = _internal_detach(std::move(task_));
+        detach_task.start();
     }
 
 } // namespace sk::cio

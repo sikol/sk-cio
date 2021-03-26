@@ -60,7 +60,7 @@ namespace sk::cio::win32 {
                 if (overlapped->was_pending) {
                     overlapped->success = ret;
                     if (!overlapped->success)
-                        overlapped->error = GetLastError();
+                        overlapped->error = ::GetLastError();
                     else
                         overlapped->error = 0;
                     overlapped->bytes_transferred = bytes_transferred;

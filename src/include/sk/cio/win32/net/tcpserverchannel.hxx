@@ -62,7 +62,7 @@ namespace sk::cio::win32::net {
          * Create a TCP server channel listening on a local address.
          */
         [[nodiscard]]
-        static auto listen(cio::net::address const &addr) 
+        static auto listen(cio::net::address const &addr)
             -> expected<tcpserverchannel, std::error_code>;
 
         /*
@@ -79,12 +79,12 @@ namespace sk::cio::win32::net {
         /*
          * Close the socket.
          */
-        [[nodiscard]] 
-        auto async_close() 
+        [[nodiscard]]
+        auto async_close()
              -> task<expected<void, std::error_code>>;
 
-        [[nodiscard]] 
-        auto close() 
+        [[nodiscard]]
+        auto close()
              -> expected<void, std::error_code>;
 
     private:
@@ -99,13 +99,16 @@ namespace sk::cio::win32::net {
 
     inline tcpserverchannel::tcpserverchannel(unique_socket &&sock,
                                               int address_family)
-        : _native_handle(std::move(sock)), _address_family(address_family) {}
+        : _native_handle(std::move(sock)), _address_family(address_family)
+    {
+    }
 
     /*************************************************************************
      * tcpserverchannel::is_open()
      */
 
-    inline auto tcpserverchannel::is_open() const -> bool {
+    inline auto tcpserverchannel::is_open() const -> bool
+    {
         return _native_handle;
     }
 
@@ -114,7 +117,8 @@ namespace sk::cio::win32::net {
      */
 
     inline auto tcpserverchannel::listen(cio::net::address const &addr)
-        -> expected<tcpserverchannel, std::error_code> {
+        -> expected<tcpserverchannel, std::error_code>
+    {
 
         SOCKET listener;
         listener = ::socket(addr.address_family(), SOCK_STREAM, IPPROTO_TCP);
@@ -124,14 +128,23 @@ namespace sk::cio::win32::net {
 
         unique_socket listener_(listener);
 
-        auto ret = ::bind(
-            listener, reinterpret_cast<sockaddr const *>(&addr.native_address),
-            addr.native_address_length);
+        DWORD one = 1;
+        auto ret = ::setsockopt(listener,
+                                SOL_SOCKET,
+                                SO_REUSEADDR,
+                                reinterpret_cast<char const *>(&one),
+                                sizeof(one));
         if (ret)
             return make_unexpected(win32::get_last_winsock_error());
 
-        auto lret = ::listen(listener, SOMAXCONN);
-        if (lret)
+        ret = ::bind(listener,
+                     reinterpret_cast<sockaddr const *>(&addr.native_address),
+                     addr.native_address_length);
+        if (ret)
+            return make_unexpected(win32::get_last_winsock_error());
+
+        ret = ::listen(listener, SOMAXCONN);
+        if (ret)
             return make_unexpected(win32::get_last_winsock_error());
 
         reactor_handle::get_global_reactor().associate_handle(
@@ -143,7 +156,8 @@ namespace sk::cio::win32::net {
     /*************************************************************************
      * tcpserverchannel::close()
      */
-    inline auto tcpserverchannel::close() -> expected<void, std::error_code> {
+    inline auto tcpserverchannel::close() -> expected<void, std::error_code>
+    {
 
         if (!is_open())
             return make_unexpected(cio::error::channel_not_open);
@@ -158,7 +172,8 @@ namespace sk::cio::win32::net {
      * tcpserverchannel::async_close()
      */
     inline auto tcpserverchannel::async_close()
-        -> task<expected<void, std::error_code>> {
+        -> task<expected<void, std::error_code>>
+    {
 
         auto err =
             co_await async_invoke([&] { return _native_handle.close(); });
@@ -173,7 +188,8 @@ namespace sk::cio::win32::net {
      * tcpserverchannel::async_accept()
      */
     inline auto tcpserverchannel::async_accept()
-        -> task<expected<tcpchannel, std::error_code>> {
+        -> task<expected<tcpchannel, std::error_code>>
+    {
 
         SOCKET client_socket;
         client_socket = ::socket(_address_family, SOCK_STREAM, IPPROTO_TCP);
@@ -186,10 +202,13 @@ namespace sk::cio::win32::net {
         // This has to be provided even though we don't use it.
         char junk[(16 + sizeof(sockaddr_storage)) * 2];
 
-        auto ret = co_await win32::AsyncAcceptEx(
-            _native_handle.native_socket(), client_socket, junk, 0,
-            sizeof(sockaddr_storage) + 16, sizeof(sockaddr_storage) + 16,
-            nullptr);
+        auto ret = co_await win32::AsyncAcceptEx(_native_handle.native_socket(),
+                                                 client_socket,
+                                                 junk,
+                                                 0,
+                                                 sizeof(sockaddr_storage) + 16,
+                                                 sizeof(sockaddr_storage) + 16,
+                                                 nullptr);
 
         if (!ret)
             co_return make_unexpected(ret.error());

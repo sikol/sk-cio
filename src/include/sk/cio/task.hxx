@@ -42,24 +42,16 @@ namespace sk::cio {
 
     template <typename P>
     struct task_final_awaiter {
-        bool destroy_self{false};
-
         bool await_ready() noexcept
         {
             return false;
         }
 
-        void await_resume() noexcept {
-        }
+        void await_resume() noexcept {}
 
         std::coroutine_handle<>
         await_suspend(std::coroutine_handle<P> h) noexcept
         {
-            if (destroy_self) {
-                h.destroy();
-                return std::noop_coroutine();
-            }
-
             auto previous = h.promise().previous;
             if (previous) {
                 return previous;
@@ -83,7 +75,7 @@ namespace sk::cio {
 
         task_final_awaiter<task_promise<T>> final_suspend() noexcept
         {
-            return {destroy_self};
+            return {};
         }
 
         void unhandled_exception()
@@ -104,7 +96,6 @@ namespace sk::cio {
         }
 
         T result{};
-        bool destroy_self{false};
         std::coroutine_handle<> previous;
     };
 
@@ -123,7 +114,7 @@ namespace sk::cio {
 
         task_final_awaiter<task_promise<void>> final_suspend() noexcept
         {
-            return {destroy_self};
+            return {};
         }
 
         void unhandled_exception()
@@ -131,12 +122,9 @@ namespace sk::cio {
             throw;
         }
 
-        void return_void() noexcept
-        {
-        }
+        void return_void() noexcept {}
 
         std::coroutine_handle<> previous;
-        bool destroy_self{false};
     };
 
     template <typename T>
@@ -160,8 +148,8 @@ namespace sk::cio {
 
         ~task()
         {
-            if (coro_handle)
-                coro_handle.destroy();
+            // if (coro_handle)
+            //    coro_handle.destroy();
         }
 
         void start()

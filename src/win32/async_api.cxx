@@ -80,6 +80,7 @@ namespace sk::cio::win32 {
 
             overlapped->was_pending = (!overlapped->success &&
                                        (overlapped->error == ERROR_IO_PENDING));
+
             // We'd like to return false here if was_pending==false, because
             // that means the I/O has completed and we have the data.  This
             // doesn't work because the kernel will still post an event to
@@ -301,13 +302,14 @@ namespace sk::cio::win32 {
 
         BOOL overlapped_begin()
         {
-            return ConnectEx_fn(sock,
+            auto r = ConnectEx_fn(sock,
                                 addr,
                                 addrlen,
                                 send_buffer,
                                 send_buffer_size,
                                 bytes_sent,
-                                overlapped);
+                                reinterpret_cast<OVERLAPPED *>(overlapped));
+            return r;
         }
 
         void overlapped_suspended()

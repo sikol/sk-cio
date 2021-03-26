@@ -31,9 +31,9 @@
 
 #include <cstddef>
 
-#include <sk/cio/detail/safeint.hxx>
 #include <sk/cio/async_invoke.hxx>
 #include <sk/cio/channel/concepts.hxx>
+#include <sk/cio/detail/safeint.hxx>
 #include <sk/cio/expected.hxx>
 #include <sk/cio/net/address.hxx>
 #include <sk/cio/task.hxx>
@@ -96,10 +96,10 @@ namespace sk::cio::win32::net {
         /*
          * Close the socket.
          */
-        [[nodiscard]] 
+        [[nodiscard]]
         auto async_close() -> task<expected<void, std::error_code>>;
 
-        [[nodiscard]] 
+        [[nodiscard]]
         auto close() -> expected<void, std::error_code>;
 
     private:
@@ -116,20 +116,24 @@ namespace sk::cio::win32::net {
     inline tcpchannel::tcpchannel() {}
 
     inline tcpchannel::tcpchannel(unique_socket &&sock)
-        : _native_handle(std::move(sock)) {}
+        : _native_handle(std::move(sock))
+    {
+    }
 
     /*************************************************************************
      * tcpchannel::is_open()
      */
 
-    inline auto tcpchannel::is_open() const -> bool {
+    inline auto tcpchannel::is_open() const -> bool
+    {
         return _native_handle;
     }
 
     /*************************************************************************
      * tcpchannel::close()
      */
-    inline auto tcpchannel::close() -> expected<void, std::error_code> {
+    inline auto tcpchannel::close() -> expected<void, std::error_code>
+    {
 
         if (!is_open())
             return make_unexpected(cio::error::channel_not_open);
@@ -144,7 +148,8 @@ namespace sk::cio::win32::net {
      * tcpchannel::async_close()
      */
     inline auto tcpchannel::async_close()
-        -> task<expected<void, std::error_code>> {
+        -> task<expected<void, std::error_code>>
+    {
 
         auto err =
             co_await async_invoke([&]() { return _native_handle.close(); });
@@ -159,49 +164,97 @@ namespace sk::cio::win32::net {
      * tcpchannel::async_connect()
      */
     inline auto tcpchannel::async_connect(cio::net::address const &addr)
-        -> task<expected<void, std::error_code>> {
+        -> task<expected<void, std::error_code>>
+    {
 
-        SK_CHECK(is_open(), "attempt to connect on a closed channel");
+        SK_CHECK(!is_open(), "attempt to re-connect an open channel");
 
-        auto sock = ::WSASocketW(addr.address_family(), SOCK_STREAM,
-                                 IPPROTO_TCP, nullptr, 0, WSA_FLAG_OVERLAPPED);
+        auto sock = ::WSASocketW(addr.address_family(),
+                                 SOCK_STREAM,
+                                 IPPROTO_TCP,
+                                 nullptr,
+                                 0,
+                                 WSA_FLAG_OVERLAPPED);
 
         if (sock == INVALID_SOCKET)
             co_return make_unexpected(win32::get_last_winsock_error());
 
         unique_socket sock_(sock);
 
+        // Winsock requires binding the socket before we can use ConnectEx().
+        // Bind it to the all-zeroes address.
+        auto zero_address =
+            cio::net::address::zero_address(addr.address_family());
+        if (!zero_address)
+            co_return make_unexpected(zero_address.error());
+
+        if (::bind(sock,
+                   reinterpret_cast<sockaddr *>(&zero_address->native_address),
+                   zero_address->native_address_length) != 0)
+            co_return make_unexpected(win32::get_last_winsock_error());
+
+        reactor_handle::get_global_reactor().associate_handle(
+            reinterpret_cast<HANDLE>(sock));
+
         auto ret = co_await win32::AsyncConnectEx(
-            _native_handle.native_socket(),
+            sock,
             reinterpret_cast<sockaddr const *>(&addr.native_address),
-            addr.native_address_length, nullptr, 0, nullptr);
+            addr.native_address_length,
+            nullptr,
+            0,
+            nullptr);
 
         if (!ret)
             co_return make_unexpected(ret.error());
 
         _native_handle = std::move(sock_);
+        co_return {};
     }
 
     /*************************************************************************
      * tcpchannel::connect()
      */
     inline auto tcpchannel::connect(cio::net::address const &addr)
-        -> expected<void, std::error_code> {
+        -> expected<void, std::error_code>
+    {
 
         SK_CHECK(is_open(), "attempt to connect on a closed channel");
 
-        auto sock = ::WSASocketW(addr.address_family(), SOCK_STREAM,
-                                 IPPROTO_TCP, nullptr, 0, WSA_FLAG_OVERLAPPED);
+        auto sock = ::WSASocketW(addr.address_family(),
+                                 SOCK_STREAM,
+                                 IPPROTO_TCP,
+                                 nullptr,
+                                 0,
+                                 WSA_FLAG_OVERLAPPED);
 
         if (sock == INVALID_SOCKET)
             return make_unexpected(win32::get_last_winsock_error());
 
         unique_socket sock_(sock);
 
+        // Winsock requires binding the socket before we can use ConnectEx().
+        // Bind it to the all-zeroes address.
+        auto zero_address =
+            cio::net::address::zero_address(addr.address_family());
+        if (!zero_address)
+            return make_unexpected(zero_address.error());
+
+        if (::bind(sock,
+                   reinterpret_cast<sockaddr *>(&zero_address->native_address),
+                   zero_address->native_address_length) != 0)
+            return make_unexpected(win32::get_last_winsock_error());
+
+        reactor_handle::get_global_reactor().associate_handle(
+            reinterpret_cast<HANDLE>(sock));
+
         auto ret = ::WSAConnect(
-            _native_handle.native_socket(),
+            sock,
             reinterpret_cast<sockaddr const *>(&addr.native_address),
-            addr.native_address_length, nullptr, nullptr, nullptr, nullptr);
+            addr.native_address_length,
+            nullptr,
+            nullptr,
+            nullptr,
+            nullptr);
 
         if (ret)
             return make_unexpected(win32::get_last_winsock_error());
@@ -215,7 +268,7 @@ namespace sk::cio::win32::net {
 
     // clang-format off
     inline auto tcpchannel::async_read_some(value_type *buffer, io_size_t nobjs)
-        -> task<expected<io_size_t, std::error_code>> 
+        -> task<expected<io_size_t, std::error_code>>
     {
         // clang-format on
         SK_CHECK(is_open(), "attempt to read on a closed channel");
@@ -224,8 +277,11 @@ namespace sk::cio::win32::net {
 
         DWORD bytes_read = 0;
         auto ret = co_await win32::AsyncReadFile(
-            reinterpret_cast<HANDLE>(_native_handle.native_socket()), buffer,
-            dwbytes, &bytes_read, 0);
+            reinterpret_cast<HANDLE>(_native_handle.native_socket()),
+            buffer,
+            dwbytes,
+            &bytes_read,
+            0);
 
         if (!ret)
             co_return make_unexpected(
@@ -244,7 +300,7 @@ namespace sk::cio::win32::net {
 
     // clang-format off
     inline auto tcpchannel::read_some(value_type *buffer, io_size_t nobjs)
-        -> expected<io_size_t, std::error_code> 
+        -> expected<io_size_t, std::error_code>
     {
         // clang-format on
 
@@ -273,12 +329,17 @@ namespace sk::cio::win32::net {
 
         auto ret =
             ::ReadFile(reinterpret_cast<HANDLE>(_native_handle.native_socket()),
-                       buffer, dwbytes, &bytes_read, &overlapped);
+                       buffer,
+                       dwbytes,
+                       &bytes_read,
+                       &overlapped);
 
         if (!ret && (::GetLastError() == ERROR_IO_PENDING))
             ret = ::GetOverlappedResult(
                 reinterpret_cast<HANDLE>(_native_handle.native_socket()),
-                &overlapped, &bytes_read, TRUE);
+                &overlapped,
+                &bytes_read,
+                TRUE);
 
         if (!ret)
             return make_unexpected(
@@ -296,9 +357,9 @@ namespace sk::cio::win32::net {
      */
 
     // clang-format off
-    inline auto tcpchannel::async_write_some(value_type const *buffer, 
+    inline auto tcpchannel::async_write_some(value_type const *buffer,
                                              io_size_t nobjs)
-        -> task<expected<io_size_t, std::error_code>> 
+        -> task<expected<io_size_t, std::error_code>>
     {
         // clang-format on
         SK_CHECK(is_open(), "attempt to write on a closed channel");
@@ -307,8 +368,11 @@ namespace sk::cio::win32::net {
         auto dwbytes = cio::detail::int_cast<DWORD>(nobjs);
 
         auto ret = co_await win32::AsyncWriteFile(
-            reinterpret_cast<HANDLE>(_native_handle.native_socket()), buffer,
-            dwbytes, &bytes_written, 0);
+            reinterpret_cast<HANDLE>(_native_handle.native_socket()),
+            buffer,
+            dwbytes,
+            &bytes_written,
+            0);
 
         if (!ret)
             co_return make_unexpected(
@@ -323,7 +387,7 @@ namespace sk::cio::win32::net {
 
     // clang-format off
     inline auto tcpchannel::write_some(value_type const *buffer, io_size_t nobjs)
-        -> expected<io_size_t, std::error_code> 
+        -> expected<io_size_t, std::error_code>
     {
         // clang-format on
         SK_CHECK(is_open(), "attempt to write on a closed channel");
@@ -350,13 +414,18 @@ namespace sk::cio::win32::net {
 
         DWORD bytes_written = 0;
         auto ret = ::WriteFile(
-            reinterpret_cast<HANDLE>(_native_handle.native_socket()), buffer,
-            dwbytes, &bytes_written, &overlapped);
+            reinterpret_cast<HANDLE>(_native_handle.native_socket()),
+            buffer,
+            dwbytes,
+            &bytes_written,
+            &overlapped);
 
         if (!ret && (::GetLastError() == ERROR_IO_PENDING))
             ret = ::GetOverlappedResult(
                 reinterpret_cast<HANDLE>(_native_handle.native_socket()),
-                &overlapped, &bytes_written, TRUE);
+                &overlapped,
+                &bytes_written,
+                TRUE);
 
         if (!ret)
             return make_unexpected(
