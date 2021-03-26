@@ -157,7 +157,7 @@ namespace sk::cio::posix::net {
         -> task<expected<void, std::error_code>>
     {
 
-        SK_CHECK(is_open(), "attempt to connect on a closed channel");
+        SK_CHECK(!is_open(), "attempt to re-connect an open channel");
 
         auto sock = ::socket(addr.address_family(), SOCK_STREAM, IPPROTO_TCP);
 
@@ -167,7 +167,7 @@ namespace sk::cio::posix::net {
         unique_fd sock_(sock);
 
         auto ret = co_await async_fd_connect(
-            _fd.fd(),
+            sock,
             reinterpret_cast<sockaddr const *>(&addr.native_address),
             addr.native_address_length);
 

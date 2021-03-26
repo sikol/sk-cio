@@ -37,9 +37,10 @@ add_executable(test_cio
     test_omemchannel.cxx
     test_memchannel.cxx
     stress_idafilechannel.cxx
+    stress_tcpchannel.cxx
     )
 
-target_link_libraries(test_cio PRIVATE sk-cio Catch2::Catch2)
+target_link_libraries(test_cio PRIVATE sk-cio Catch2::Catch2 fmt::fmt)
 
 add_test(NAME test_cio
     COMMAND $<TARGET_FILE:test_cio>)
