@@ -48,7 +48,7 @@ jobs:
       shell: cmd
       run: ctest -V
 
-  x64_linux_gcc:
+  x64_linux_epoll_gcc:
     runs-on: ubuntu-latest
 
     steps:
@@ -78,6 +78,7 @@ jobs:
               -DCMAKE_BUILD_TYPE=$BUILD_TYPE                                  \
               -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake   \
               -DVCPKG_FEATURE_FLAGS=registries                                \
+              -DSK_CIO_DISABLE_IO_URING=ON                                    \
               ..
 
       - name: Build

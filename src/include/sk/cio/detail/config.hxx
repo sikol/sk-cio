@@ -29,6 +29,8 @@
 #ifndef SK_CIO_DETAIL_CONFIG_HXX_INCLUDED
 #define SK_CIO_DETAIL_CONFIG_HXX_INCLUDED
 
+#include <sk/cio/detail/build.hxx>
+
 #ifndef NDEBUG
 #    include <stdexcept>
 #    define SK_CIO_CHECKED

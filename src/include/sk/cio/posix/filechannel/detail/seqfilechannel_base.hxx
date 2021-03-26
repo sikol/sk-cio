@@ -99,8 +99,7 @@ namespace sk::cio::posix::detail {
     {
         SK_CHECK(is_open(), "attempt to read on a closed channel");
 
-        auto ret = co_await async_invoke(
-            [&, this] { return ::read(_fd.fd(), buffer, nobjs); });
+        auto ret = co_await async_fd_read(_fd.fd(), buffer, nobjs);
 
         if (ret == -1)
             co_return make_unexpected(get_errno());
@@ -142,8 +141,7 @@ namespace sk::cio::posix::detail {
     {
         SK_CHECK(is_open(), "attempt to read on a closed channel");
 
-        auto ret = co_await async_invoke(
-            [&, this] { return ::write(_fd.fd(), buffer, nobjs); });
+        auto ret = co_await async_fd_write(_fd.fd(), buffer, nobjs);
 
         if (ret == -1)
             co_return make_unexpected(get_errno());

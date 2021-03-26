@@ -11,7 +11,8 @@ Requires:
 Tested platforms:
 
 * Windows NT, MSVC 19.28 (VS 16.9)
-* Linux with epoll, GCC 10.2.0
+* Linux >= 5.6 with epoll and io_uring, GCC 10.2.0
+* Linux < 5.6 with epoll, GCC 10.2.0
 
 Unsupported compilers:
 

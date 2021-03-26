@@ -119,6 +119,11 @@ namespace sk::cio::posix {
             return _fd;
         }
 
+        // Give up ownership of the fd
+        auto release() -> int {
+            return std::exchange(_fd, invalid_fd);
+        }
+
     private:
         int _fd;
     };

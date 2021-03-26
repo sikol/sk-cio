@@ -236,10 +236,11 @@ namespace sk::cio::posix::detail {
     inline auto filechannel_base::async_close()
         -> task<expected<void, std::error_code>>
     {
-        auto err = co_await async_invoke([&] { return _fd.close(); });
+        int fd = _fd.release();
+        auto err = co_await async_fd_close(fd);
 
-        if (err)
-            co_return make_unexpected(err);
+        if (!err)
+            co_return make_unexpected(err.error());
 
         co_return {};
     }

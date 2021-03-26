@@ -34,20 +34,21 @@
 #    include <cassert>
 #    include <fcntl.h>
 
+#    include <sk/cio/async_invoke.hxx>
 #    include <sk/cio/posix/epoll_reactor.hxx>
 #    include <sk/cio/posix/error.hxx>
 #    include <sk/cio/reactor.hxx>
 
 namespace sk::cio::posix {
 
-    epoll_reactor::epoll_reactor()
+    epoll_reactor::epoll_reactor(workq &q) : _workq(q)
     {
         ::pipe(shutdown_pipe);
 
         auto epoll_fd_ = ::epoll_create(64);
         epoll_fd.assign(epoll_fd_);
 
-        struct epoll_event shutdown_ev;
+        epoll_event shutdown_ev;
         std::memset(&shutdown_ev, 0, sizeof(shutdown_ev));
         shutdown_ev.data.fd = shutdown_pipe[0];
         shutdown_ev.events = EPOLLET | EPOLLONESHOT | EPOLLIN;
@@ -61,11 +62,11 @@ namespace sk::cio::posix {
         epoll_event events[16];
         int nevents;
 
-        //std::cerr << "epoll_reactor : starting\n";
+        // std::cerr << "epoll_reactor : starting\n";
         while ((nevents = epoll_wait(
                     ep, events, sizeof(events) / sizeof(*events), -1)) != -1) {
 
-            //std::cerr << "epoll_reactor : got events = " << nevents << '\n';
+            // std::cerr << "epoll_reactor : got events = " << nevents << '\n';
             std::lock_guard state_lock(_state_mtx);
 
             for (int i = 0; i < nevents; ++i) {
@@ -76,12 +77,15 @@ namespace sk::cio::posix {
                     return;
 
                 auto &state = _state[fd];
-//                std::cerr << "epoll_reactor : event on fd=" << fd << '\n';
+                //                std::cerr << "epoll_reactor : event on fd=" <<
+                //                fd << '\n';
 
                 if (event.events & EPOLLIN) {
-                    //std::cerr << "epoll_reactor : EPOLLIN, read_waiter = " << state->read_waiter << '\n';
+                    // std::cerr << "epoll_reactor : EPOLLIN, read_waiter = " <<
+                    // state->read_waiter << '\n';
                     if (state->read_waiter) {
-                        //std::cerr << "epoll_reactor : resuming the read_waiter\n";
+                        // std::cerr << "epoll_reactor : resuming the
+                        // read_waiter\n";
                         std::lock_guard h_lock(state->read_waiter->mutex);
                         auto h = state->read_waiter->coro_handle;
                         state->read_waiter = nullptr;
@@ -91,9 +95,11 @@ namespace sk::cio::posix {
                 }
 
                 if (event.events & EPOLLOUT) {
-                    //std::cerr << "epoll_reactor : EPOLLOUT, write_waiter = " << state->read_waiter << '\n';
+                    // std::cerr << "epoll_reactor : EPOLLOUT, write_waiter = "
+                    // << state->read_waiter << '\n';
                     if (state->write_waiter) {
-                        //std::cerr << "epoll_reactor : resuming the write_waiter\n";
+                        // std::cerr << "epoll_reactor : resuming the
+                        // write_waiter\n";
                         std::lock_guard h_lock(state->write_waiter->mutex);
                         auto h = state->write_waiter->coro_handle;
                         state->write_waiter = nullptr;
@@ -103,19 +109,19 @@ namespace sk::cio::posix {
                 }
             }
 
-            //std::cerr << "epoll_reactor: waiting\n";
+            // std::cerr << "epoll_reactor: waiting\n";
         }
     }
 
     auto epoll_reactor::start() -> void
     {
-        epoll_thread = std::jthread(&epoll_reactor::epoll_thread_fn, this);
+        epoll_thread = std::thread(&epoll_reactor::epoll_thread_fn, this);
         _workq.start_threads();
     }
 
     auto epoll_reactor::stop() -> void
     {
-        //std::cerr << "epoll_reactor: requesting stop\n";
+        // std::cerr << "epoll_reactor: requesting stop\n";
         ::write(shutdown_pipe[1], "", 1);
         _workq.stop();
         epoll_fd.close();
@@ -124,7 +130,7 @@ namespace sk::cio::posix {
 
     auto epoll_reactor::associate_fd(int fd) -> void
     {
-        //std::cerr << "epoll_reactor : associate_fd " << fd << '\n';
+        // std::cerr << "epoll_reactor : associate_fd " << fd << '\n';
         std::lock_guard lock(_state_mtx);
 
         if (_state.size() < (fd + 1))
@@ -158,7 +164,7 @@ namespace sk::cio::posix {
     auto epoll_reactor::register_read_interest(int fd, epoll_coro_state *cstate)
         -> void
     {
-        //std::cerr << "epoll_reactor : register_read_interest " << fd << '\n';
+        // std::cerr << "epoll_reactor : register_read_interest " << fd << '\n';
         std::lock_guard lock(_state_mtx);
 
         assert(_state.size() > fd);
@@ -178,7 +184,8 @@ namespace sk::cio::posix {
                                                 epoll_coro_state *cstate)
         -> void
     {
-        //std::cerr << "epoll_reactor : register_write_interest " << fd << '\n';
+        // std::cerr << "epoll_reactor : register_write_interest " << fd <<
+        // '\n';
         std::lock_guard lock(_state_mtx);
 
         assert(_state.size() > fd);
@@ -192,6 +199,234 @@ namespace sk::cio::posix {
         state->event.events |= EPOLLIN;
         int r = epoll_ctl(epoll_fd.fd(), EPOLL_CTL_MOD, fd, &state->event);
         assert(r == 0);
+    }
+
+    /*************************************************************************
+     *
+     * POSIX async API.
+     *
+     */
+
+    /*
+     * Socket operations.
+     */
+
+    struct co_fd_is_readable {
+        epoll_reactor &reactor;
+        int fd;
+        epoll_coro_state cstate;
+
+        explicit co_fd_is_readable(epoll_reactor &reactor_, int fd_)
+            : fd(fd_), reactor(reactor_)
+        {
+        }
+
+        bool await_ready()
+        {
+            return false;
+        }
+
+        bool await_suspend(std::coroutine_handle<> coro_handle_)
+        {
+            std::lock_guard lock(cstate.mutex);
+            cstate.coro_handle = coro_handle_;
+            reactor.register_read_interest(fd, &cstate);
+            return true;
+        }
+
+        void await_resume() {}
+    };
+
+    struct co_fd_is_writable {
+        epoll_reactor &reactor;
+        int fd;
+        epoll_coro_state cstate;
+
+        explicit co_fd_is_writable(epoll_reactor &reactor_, int fd_)
+            : fd(fd_), reactor(reactor_)
+        {
+        }
+
+        bool await_ready()
+        {
+            return false;
+        }
+
+        bool await_suspend(std::coroutine_handle<> coro_handle_)
+        {
+            std::lock_guard lock(cstate.mutex);
+            cstate.coro_handle = coro_handle_;
+            reactor.register_write_interest(fd, &cstate);
+            return true;
+        }
+
+        void await_resume() {}
+    };
+
+    auto
+    epoll_reactor::async_fd_recv(int fd, void *buf, std::size_t n, int flags)
+        -> task<expected<ssize_t, std::error_code>>
+    {
+        do {
+            auto ret = ::recv(fd, buf, n, flags);
+            if (ret != -1)
+                co_return ret;
+
+            if (errno != EWOULDBLOCK)
+                co_return make_unexpected(get_errno());
+
+            co_await co_fd_is_readable(*this, fd);
+        } while (true);
+    }
+
+    auto epoll_reactor::async_fd_send(int fd,
+                                      void const *buf,
+                                      std::size_t n,
+                                      int flags)
+        -> task<expected<ssize_t, std::error_code>>
+    {
+        do {
+            auto ret = ::send(fd, buf, n, flags);
+            if (ret != -1)
+                co_return ret;
+
+            if (errno != EWOULDBLOCK)
+                co_return make_unexpected(get_errno());
+
+            co_await co_fd_is_writable(*this, fd);
+        } while (true);
+    }
+
+    auto epoll_reactor::async_fd_connect(int fd,
+                                         sockaddr const *addr,
+                                         socklen_t addrlen)
+        -> task<expected<void, std::error_code>>
+    {
+        auto ret = ::connect(fd, addr, addrlen);
+
+        if (ret == 0)
+            co_return {};
+
+        if (errno != EWOULDBLOCK)
+            co_return make_unexpected(get_errno());
+
+        co_await co_fd_is_writable(*this, fd);
+        co_return {};
+    }
+
+    auto
+    epoll_reactor::async_fd_accept(int fd, sockaddr *addr, socklen_t *addrlen)
+        -> task<expected<int, std::error_code>>
+    {
+        do {
+            auto ret = ::accept(fd, addr, addrlen);
+            if (ret != -1)
+                co_return ret;
+
+            if (errno != EWOULDBLOCK)
+                co_return make_unexpected(get_errno());
+
+            co_await co_fd_is_readable(*this, fd);
+        } while (true);
+    }
+
+    /*
+     * File I/O operations.  This is a very naive implementation based on
+     * thread dispatch; it doesn't scale well and will only be used if no
+     * better file I/O mechanism (e.g, io_uring) is available.
+     */
+    auto epoll_reactor::async_fd_open(char const *path, int flags, int mode)
+        -> task<expected<int, std::error_code>>
+    {
+        int fd = co_await async_invoke([&]() -> int {
+            int r = ::open(path, flags, mode);
+            return r >= 0 ? r : -errno;
+        });
+
+        if (fd < 0)
+            co_return make_unexpected(
+                std::error_code(-fd, std::system_category()));
+        else
+            co_return fd;
+    }
+
+    auto epoll_reactor::async_fd_close(int fd)
+        -> task<expected<int, std::error_code>>
+    {
+        auto ret = co_await async_invoke([&]() -> int {
+            int r = ::close(fd);
+            return r >= 0 ? r : -errno;
+        });
+
+        if (ret == -1)
+            co_return make_unexpected(
+                std::error_code(-ret, std::system_category()));
+        else
+            co_return fd;
+    }
+
+    auto epoll_reactor::async_fd_read(int fd, void *buf, std::size_t n)
+        -> task<expected<ssize_t, std::error_code>>
+    {
+        ssize_t ret = co_await async_invoke([&]() -> ssize_t {
+            ssize_t r = ::read(fd, buf, n);
+            return r >= 0 ? r : -errno;
+        });
+
+        if (ret < 0)
+            co_return make_unexpected(
+                std::error_code(-ret, std::system_category()));
+        else
+            co_return ret;
+    }
+
+    auto
+    epoll_reactor::async_fd_pread(int fd, void *buf, std::size_t n, off_t offs)
+        -> task<expected<ssize_t, std::error_code>>
+    {
+        ssize_t ret = co_await async_invoke([&]() -> ssize_t {
+            ssize_t r = ::pread(fd, buf, n, offs);
+            return r >= 0 ? r : -errno;
+        });
+
+        if (ret < 0)
+            co_return make_unexpected(
+                std::error_code(-ret, std::system_category()));
+        else
+            co_return ret;
+    }
+
+    auto epoll_reactor::async_fd_write(int fd, void const *buf, std::size_t n)
+        -> task<expected<ssize_t, std::error_code>>
+    {
+        ssize_t ret = co_await async_invoke([&]() -> ssize_t {
+            ssize_t r = ::write(fd, buf, n);
+            return r >= 0 ? r : -errno;
+        });
+
+        if (ret < 0)
+            co_return make_unexpected(
+                std::error_code(-ret, std::system_category()));
+        else
+            co_return ret;
+    }
+
+    auto epoll_reactor::async_fd_pwrite(int fd,
+                                        void const *buf,
+                                        std::size_t n,
+                                        off_t offs)
+        -> task<expected<ssize_t, std::error_code>>
+    {
+        ssize_t ret = co_await async_invoke([&]() -> ssize_t {
+            ssize_t r = ::pwrite(fd, buf, n, offs);
+            return r >= 0 ? r : -errno;
+        });
+
+        if (ret < 0)
+            co_return make_unexpected(
+                std::error_code(-ret, std::system_category()));
+        else
+            co_return ret;
     }
 
 } // namespace sk::cio::posix

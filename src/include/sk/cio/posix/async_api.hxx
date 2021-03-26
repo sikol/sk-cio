@@ -36,7 +36,9 @@
 
 #include <system_error>
 
+#include <sk/cio/detail/config.hxx>
 #include <sk/cio/expected.hxx>
+#include <sk/cio/posix/linux_reactor.hxx>
 #include <sk/cio/task.hxx>
 
 namespace sk::cio::posix {
@@ -47,20 +49,73 @@ namespace sk::cio::posix {
      *
      */
 
-    auto async_fd_open(char const *path, int flags, int mode = 0777)
-        -> task<expected<int, std::error_code>>;
+    inline auto async_fd_open(char const *path, int flags, int mode = 0777)
+        -> task<expected<int, std::error_code>>
+    {
+        return reactor_handle::get_global_reactor().async_fd_open(
+            path, flags, mode);
+    }
 
-    auto async_fd_recv(int fd, void *buf, std::size_t n, int flags)
-        -> task<expected<ssize_t, std::error_code>>;
+    inline auto async_fd_close(int fd) -> task<expected<int, std::error_code>>
+    {
+        return reactor_handle::get_global_reactor().async_fd_close(fd);
+    }
 
-    auto async_fd_send(int fd, void const *buf, std::size_t n, int flags)
-        -> task<expected<ssize_t, std::error_code>>;
+    inline auto async_fd_pread(int fd, void *buf, std::size_t n, off_t offs)
+        -> task<expected<ssize_t, std::error_code>>
+    {
+        return reactor_handle::get_global_reactor().async_fd_pread(
+            fd, buf, n, offs);
+    }
 
-    auto async_fd_connect(int, sockaddr const *, socklen_t)
-        -> task<expected<void, std::error_code>>;
+    inline auto async_fd_read(int fd, void *buf, std::size_t n)
+        -> task<expected<ssize_t, std::error_code>>
+    {
+        return reactor_handle::get_global_reactor().async_fd_read(fd, buf, n);
+    }
 
-    auto async_fd_accept(int, sockaddr *addr, socklen_t *)
-        -> task<expected<int, std::error_code>>;
+    inline auto async_fd_recv(int fd, void *buf, std::size_t n, int flags)
+        -> task<expected<ssize_t, std::error_code>>
+    {
+        return reactor_handle::get_global_reactor().async_fd_recv(
+            fd, buf, n, flags);
+    }
+
+    inline auto async_fd_write(int fd, void const *buf, std::size_t n)
+        -> task<expected<ssize_t, std::error_code>>
+    {
+        return reactor_handle::get_global_reactor().async_fd_write(fd, buf, n);
+    }
+
+    inline auto
+    async_fd_pwrite(int fd, void const *buf, std::size_t n, off_t offs)
+        -> task<expected<ssize_t, std::error_code>>
+    {
+        return reactor_handle::get_global_reactor().async_fd_pwrite(
+            fd, buf, n, offs);
+    }
+
+    inline auto async_fd_send(int fd, void const *buf, std::size_t n, int flags)
+        -> task<expected<ssize_t, std::error_code>>
+    {
+        return reactor_handle::get_global_reactor().async_fd_send(
+            fd, buf, n, flags);
+    }
+
+    inline auto
+    async_fd_connect(int fd, sockaddr const *addr, socklen_t addrlen)
+        -> task<expected<void, std::error_code>>
+    {
+        return reactor_handle::get_global_reactor().async_fd_connect(
+            fd, addr, addrlen);
+    }
+
+    inline auto async_fd_accept(int fd, sockaddr *addr, socklen_t *addrlen)
+        -> task<expected<int, std::error_code>>
+    {
+        return reactor_handle::get_global_reactor().async_fd_accept(
+            fd, addr, addrlen);
+    }
 
 } // namespace sk::cio::posix
 

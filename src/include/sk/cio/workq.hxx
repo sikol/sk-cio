@@ -65,7 +65,7 @@ namespace sk::cio {
         std::condition_variable _cv;
         std::mutex _mtx;
         std::deque<work_type> _work;
-        std::vector<std::jthread> _threads;
+        std::vector<std::thread> _threads;
         bool _stop = false;
     };
 

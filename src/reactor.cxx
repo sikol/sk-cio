@@ -26,6 +26,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include <sk/cio/detail/config.hxx>
 #include <sk/cio/reactor.hxx>
 
 namespace sk::cio {
@@ -33,7 +34,8 @@ namespace sk::cio {
     int reactor_handle::refs = 0;
     std::mutex reactor_handle::mutex;
 
-    reactor_handle::reactor_handle() {
+    reactor_handle::reactor_handle()
+    {
         std::lock_guard<std::mutex> lock(mutex);
         if (++refs > 1)
             return;
@@ -41,7 +43,8 @@ namespace sk::cio {
         get_global_reactor().start();
     }
 
-    reactor_handle::~reactor_handle() {
+    reactor_handle::~reactor_handle()
+    {
         std::lock_guard<std::mutex> lock(mutex);
         if (--refs)
             return;
@@ -49,7 +52,8 @@ namespace sk::cio {
         get_global_reactor().stop();
     }
 
-    auto reactor_handle::get_global_reactor() -> system_reactor_type & {
+    auto reactor_handle::get_global_reactor() -> system_reactor_type &
+    {
         static system_reactor_type global_reactor;
         return global_reactor;
     }

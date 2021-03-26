@@ -141,11 +141,11 @@ namespace sk::cio::posix::net {
     inline auto tcpchannel::async_close()
         -> task<expected<void, std::error_code>>
     {
+        int fd = _fd.release();
+        auto err = co_await async_fd_close(fd);
 
-        auto err = co_await async_invoke([&]() { return _fd.close(); });
-
-        if (err)
-            co_return make_unexpected(err);
+        if (!err)
+            co_return make_unexpected(err.error());
 
         co_return {};
     }

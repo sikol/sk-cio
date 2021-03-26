@@ -26,13 +26,17 @@
 
 cmake_minimum_required(VERSION 3.12)
 
+include(CheckIncludeFileCXX)
+
+option(SK_CIO_DISABLE_IO_URING "Disable io_uring backend on Linux")
+
 enable_testing()
 
 find_package(Threads REQUIRED)
 
 add_library(sk-cio)
 
-targeT_link_libraries(sk-cio PUBLIC Threads::Threads)
+target_link_libraries(sk-cio PUBLIC Threads::Threads)
 
 target_sources(sk-cio PRIVATE
     error.cxx
@@ -100,8 +104,29 @@ if (WIN32)
 endif ()
 
 if (UNIX)
+    if (CMAKE_SYSTEM_NAME STREQUAL Linux)
+        target_sources(sk-cio PRIVATE
+            include/sk/cio/posix/epoll_reactor.hxx
+            include/sk/cio/posix/io_uring_reactor.hxx
+            include/sk/cio/posix/linux_reactor.hxx
+            posix/epoll_reactor.cxx
+            posix/linux_reactor.cxx)
+
+        check_include_file_cxx("linux/io_uring.h" HAVE_IO_URING_HEADER LANGUAGE CXX)
+        find_library(URING_LIBRARY uring)
+
+        if (HAVE_IO_URING_HEADER AND URING_LIBRARY AND NOT SK_CIO_DISABLE_IO_URING)
+            set(SK_CIO_HAVE_IO_URING YES)
+        else ()
+            set(SK_CIO_HAVE_IO_URING NO)
+        endif ()
+
+        if (NOT SK_CIO_HAVE_IO_URING AND NOT SK_CIO_DISABLE_IO_URING)
+            message(FATAL_ERROR "Could not find io_uring.  Install liburing, or set SK_CIO_DISABLE_IO_URING=ON.")
+        endif ()
+    endif ()
+
     target_sources(sk-cio PRIVATE
-        posix/epoll_reactor.cxx
         posix/async_api.cxx
 
         include/sk/cio/posix/filechannel/detail/dafilechannel_base.hxx
@@ -109,13 +134,20 @@ if (UNIX)
         include/sk/cio/posix/net/tcpserverchannel.hxx
 
         include/sk/cio/posix/async_api.hxx
-        include/sk/cio/posix/epoll_reactor.hxx
         include/sk/cio/posix/error.hxx
         include/sk/cio/posix/fd.hxx
         )
+
+    if (SK_CIO_HAVE_IO_URING)
+        target_sources(sk-cio PRIVATE posix/io_uring_reactor.cxx)
+        target_link_libraries(sk-cio PRIVATE uring)
+    endif ()
 endif ()
 
+configure_file(include/sk/cio/detail/build.hxx.in include/sk/cio/detail/build.hxx)
+
 target_include_directories(sk-cio PUBLIC include)
+target_include_directories(sk-cio PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/include)
 target_link_libraries(sk-cio PUBLIC tl::expected)
 
 if (WIN32)

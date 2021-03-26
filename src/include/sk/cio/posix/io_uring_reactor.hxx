@@ -26,70 +26,43 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_POSIX_EPOLL_REACTOR_HXX_INCLUDED
-#define SK_CIO_POSIX_EPOLL_REACTOR_HXX_INCLUDED
+#ifndef SK_CIO_POSIX_IO_URING_REACTOR_HXX_INCLUDED
+#define SK_CIO_POSIX_IO_URING_REACTOR_HXX_INCLUDED
 
 #include <sys/types.h>
 #include <sys/epoll.h>
-#include <sys/socket.h>
+#include <sys/mman.h>
+#include <sys/uio.h>
+#include <linux/io_uring.h>
 
+#include <atomic>
 #include <coroutine>
 #include <cstring>
+#include <deque>
 #include <iostream>
 #include <system_error>
 #include <thread>
 
+#include <liburing.h>
+
 #include <sk/cio/concepts.hxx>
 #include <sk/cio/posix/fd.hxx>
 #include <sk/cio/task.hxx>
-#include <sk/cio/expected.hxx>
 #include <sk/cio/workq.hxx>
 
 namespace sk::cio::posix {
 
-    struct epoll_coro_state {
-        bool was_pending;
-        int ret;
-        int error;
-        std::coroutine_handle<> coro_handle;
-        std::mutex mutex;
-    };
+    struct io_uring_reactor final {
 
-    struct fd_state final {
-        fd_state(int fd_) : fd(fd_), read_waiter(nullptr), write_waiter(nullptr)
-        {
-            std::memset(&event, 0, sizeof(event));
-            event.data.fd = fd;
-            event.events = EPOLLET | EPOLLONESHOT;
-        }
+        // Try to create a new io_uring_reactor; returns NULL if we can't
+        // use io_uring on this system.
+        static auto make(workq &) -> std::unique_ptr<io_uring_reactor>;
 
-        int fd;
-        struct epoll_event event;
-        epoll_coro_state *read_waiter;
-        epoll_coro_state *write_waiter;
-    };
-
-    struct epoll_reactor final {
-
-        explicit epoll_reactor(workq &);
-
-        // Not copyable.
-        epoll_reactor(epoll_reactor const &) = delete;
-        epoll_reactor &operator=(epoll_reactor const &) = delete;
-
-        // Not movable.
-        epoll_reactor(epoll_reactor &&) noexcept = delete;
-        epoll_reactor &operator=(epoll_reactor &&) noexcept = delete;
-
-        unique_fd epoll_fd;
-
-        // Associate a new fd with our epoll.
-        auto associate_fd(int) -> void;
-        auto deassociate_fd(int) -> void;
-
-        // Register interest in an fd
-        auto register_read_interest(int fd, epoll_coro_state *state) -> void;
-        auto register_write_interest(int fd, epoll_coro_state *state) -> void;
+        io_uring_reactor(io_uring_reactor const &) = delete;
+        io_uring_reactor &operator=(io_uring_reactor const &) = delete;
+        io_uring_reactor(io_uring_reactor &&) noexcept = delete;
+        io_uring_reactor &operator=(io_uring_reactor &&) noexcept = delete;
+        ~io_uring_reactor() = default;
 
         // Start this reactor.
         auto start() -> void;
@@ -101,8 +74,7 @@ namespace sk::cio::posix {
         auto post(std::function<void()> fn) -> void;
 
         // POSIX async API
-        [[nodiscard]] auto
-        async_fd_open(char const *path, int flags, int mode = 0777)
+        [[nodiscard]] auto async_fd_open(char const *path, int flags, int mode)
             -> task<expected<int, std::error_code>>;
 
         [[nodiscard]] auto async_fd_close(int fd)
@@ -116,14 +88,6 @@ namespace sk::cio::posix {
             -> task<expected<ssize_t, std::error_code>>;
 
         [[nodiscard]] auto
-        async_fd_recv(int fd, void *buf, std::size_t n, int flags)
-            -> task<expected<ssize_t, std::error_code>>;
-
-        [[nodiscard]] auto
-        async_fd_send(int fd, void const *buf, std::size_t n, int flags)
-            -> task<expected<ssize_t, std::error_code>>;
-
-        [[nodiscard]] auto
         async_fd_write(int fd, void const *buf, std::size_t n)
             -> task<expected<ssize_t, std::error_code>>;
 
@@ -131,25 +95,29 @@ namespace sk::cio::posix {
         async_fd_pwrite(int fd, void const *buf, std::size_t n, off_t offs)
             -> task<expected<ssize_t, std::error_code>>;
 
-        [[nodiscard]] auto async_fd_connect(int, sockaddr const *, socklen_t)
-            -> task<expected<void, std::error_code>>;
-
-        [[nodiscard]] auto async_fd_accept(int, sockaddr *addr, socklen_t *)
-            -> task<expected<int, std::error_code>>;
+        // Possibly shouldn't be public.
+        auto _put_sq(io_uring_sqe *sqe) -> void;
 
     private:
+        explicit io_uring_reactor(workq&);
+
+        std::mutex _sq_mutex;
+
+        void io_uring_thread_fn();
+        std::thread io_uring_thread;
+
         workq &_workq;
+        io_uring ring{};
 
-        std::mutex _state_mtx;
-        std::vector<std::unique_ptr<fd_state>> _state;
+        // must be called with _sq_mutex held
+        [[nodiscard]] auto _try_put_sq(io_uring_sqe *sqe) -> bool;
 
-        void epoll_thread_fn();
-        std::thread epoll_thread;
-        int shutdown_pipe[2];
+        static constexpr unsigned _max_queue_size = 512;
+        std::deque<io_uring_sqe *> _pending;
     };
 
-    static_assert(reactor<epoll_reactor>);
+    static_assert(reactor<io_uring_reactor>);
 
 }; // namespace sk::cio::posix
 
-#endif // SK_CIO_POSIX_EPOLL_REACTOR_HXX_INCLUDED
+#endif // SK_CIO_POSIX_IO_URING_REACTOR_HXX_INCLUDED
