@@ -88,8 +88,8 @@ namespace sk::cio::posix {
 
         bool await_suspend(std::coroutine_handle<> coro_handle_)
         {
-            std::lock_guard lock(mutex);
             coro_handle = coro_handle_;
+            std::lock_guard lock(mutex);
             reactor->_put_sq(sqe);
             return true;
         }
@@ -106,7 +106,8 @@ namespace sk::cio::posix {
         auto reactor_ = new io_uring_reactor(q);
         auto reactor = std::unique_ptr<io_uring_reactor>(reactor_);
 
-        auto ret = io_uring_queue_init(_max_queue_size, &reactor->ring, 0);
+        auto ret = io_uring_queue_init(
+            _max_queue_size, &reactor->ring, IORING_SETUP_CLAMP);
         if (ret < 0)
             return nullptr;
 
@@ -154,9 +155,13 @@ namespace sk::cio::posix {
         // io_uring_submit().
         std::lock_guard _(_sq_mutex);
 
+        // std::cerr << "trying to queue\n";
         if (_try_put_sq(newsqe)) {
             auto r = io_uring_submit(&ring);
-            assert(r == 1);
+            if (r >= 0 || r == -EBUSY)
+                return;
+            else
+                abort();
         } else
             _pending.push_back(newsqe);
     }
@@ -172,7 +177,6 @@ namespace sk::cio::posix {
 
             // Process any pending CQEs.
 
-            //std::cerr << "io_uring: waiting for event\n";
             auto r = io_uring_wait_cqe(&ring, &cqe);
             assert(r == 0);
 
@@ -186,17 +190,15 @@ namespace sk::cio::posix {
                 std::lock_guard h_lock(cstate->mutex);
                 cstate->ret = cqe->res;
                 cstate->flags = cqe->flags;
+                _workq.post([=] { cstate->coro_handle.resume(); });
+
                 io_uring_cqe_seen(&ring, cqe);
                 ++did_requests;
-
-                _workq.post([=] { cstate->coro_handle.resume(); });
             } while (io_uring_peek_cqe(&ring, &cqe) == 0);
 
             {
                 // Queue any pending SQEs.
                 std::lock_guard sq_lock(_sq_mutex);
-                //std::cerr << "reactor: did " << did_requests
-                //          << " now pending=" << _pending.size() << '\n';
 
                 while (!_pending.empty()) {
                     if (_try_put_sq(_pending.front()))
@@ -204,6 +206,8 @@ namespace sk::cio::posix {
                     else
                         break;
                 }
+
+                io_uring_submit(&ring);
             }
         }
     }

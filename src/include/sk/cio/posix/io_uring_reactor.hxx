@@ -112,6 +112,7 @@ namespace sk::cio::posix {
         // must be called with _sq_mutex held
         [[nodiscard]] auto _try_put_sq(io_uring_sqe *sqe) -> bool;
 
+        // This is the queue size we request, it may be smaller in practice.
         static constexpr unsigned _max_queue_size = 512;
         std::deque<io_uring_sqe *> _pending;
     };
