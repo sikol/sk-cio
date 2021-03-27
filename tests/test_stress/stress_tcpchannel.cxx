@@ -77,7 +77,7 @@ task<int> stress_task()
             for (auto n = 0; n < buflen; ++n)
                 outbuf[n] = std::byte(rnd_byte(eng));
 
-            // static_cast to work around MSVC bug
+            // std::span to work around MSVC bug
             auto wret =
                 co_await async_write_all(chnl, std::span(outbuf, buflen));
             if (wret.first != buflen) {
@@ -85,7 +85,7 @@ task<int> stress_task()
                 co_return 1;
             }
 
-            auto rret = co_await async_read_all(chnl, inbuf, buflen);
+            auto rret = co_await async_read_all(chnl, std::span(inbuf, buflen));
             if (rret.first != buflen) {
                 fmt::print(stderr, "short read: {}\n", rret.first);
                 co_return 1;
