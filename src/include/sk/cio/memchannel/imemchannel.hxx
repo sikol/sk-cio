@@ -33,8 +33,8 @@
 #include <cstring>
 #include <system_error>
 
-#include <sk/cio/memchannel/detail/memchannel_base.hxx>
 #include <sk/cio/expected.hxx>
+#include <sk/cio/memchannel/detail/memchannel_base.hxx>
 #include <sk/cio/task.hxx>
 #include <sk/cio/types.hxx>
 
@@ -43,96 +43,26 @@ namespace sk::cio {
     struct imemchannel final : detail::memchannel_base {
         using value_type = std::byte;
 
-        imemchannel() = default;
+        imemchannel(void const *begin, void const *end)
+            : detail::memchannel_base(const_cast<void *>(begin),
+                                      const_cast<void *>(end))
+        {
+        }
+
         imemchannel(imemchannel &&) = default;
         imemchannel &operator=(imemchannel &&) = default;
         imemchannel(imemchannel const &) = delete;
         imemchannel &operator=(imemchannel const &) = delete;
         ~imemchannel() = default;
 
-        [[nodiscard]] auto open(std::byte const *begin, std::byte const *end)
-            -> expected<void, std::error_code>
-        {
-            auto ret = _open(begin, end);
-            if (ret)
-                _read_position = 0;
-            return ret;
-        }
-
-        [[nodiscard]] auto open(void const *begin, void const *end)
-            -> expected<void, std::error_code>
-        {
-            return open(static_cast<std::byte const *>(begin),
-                        static_cast<std::byte const *>(end));
-        }
-
-        [[nodiscard]] auto open(char const *begin,
-                                char const *end)
-        -> expected<void, std::error_code>
-        {
-            return open(reinterpret_cast<std::byte const *>(begin),
-                        reinterpret_cast<std::byte const *>(end));
-        }
-
-        [[nodiscard]] auto open(signed char const *begin,
-                                signed char const *end)
-            -> expected<void, std::error_code>
-        {
-            return open(reinterpret_cast<std::byte const *>(begin),
-                        reinterpret_cast<std::byte const *>(end));
-        }
-
-        [[nodiscard]] auto open(unsigned char const *begin,
-                                unsigned char const *end)
-            -> expected<void, std::error_code>
-        {
-            return open(reinterpret_cast<std::byte const *>(begin),
-                        reinterpret_cast<std::byte const *>(end));
-        }
-
-        [[nodiscard]] auto open(std::byte const *begin, std::size_t n)
-            -> expected<void, std::error_code>
-        {
-            if (n > (std::numeric_limits<std::uintptr_t>::max() -
-                     reinterpret_cast<std::uintptr_t>(begin)))
-                return make_unexpected(
-                    std::make_error_code(std::errc::bad_address));
-
-            return open(begin, begin + n);
-        }
-
-        [[nodiscard]] auto open(char const *begin, std::size_t n)
-        -> expected<void, std::error_code>
-        {
-            return open(reinterpret_cast<std::byte const *>(begin), n);
-        }
-
-        [[nodiscard]] auto open(signed char const *begin, std::size_t n)
-            -> expected<void, std::error_code>
-        {
-            return open(reinterpret_cast<std::byte const *>(begin), n);
-        }
-
-        [[nodiscard]] auto open(unsigned char const *begin, std::size_t n)
-            -> expected<void, std::error_code>
-        {
-            return open(reinterpret_cast<std::byte const *>(begin), n);
-        }
-
-        [[nodiscard]] auto open(void const *begin, std::size_t n)
-            -> expected<void, std::error_code>
-        {
-            return open(reinterpret_cast<std::byte const *>(begin), n);
-        }
-
         [[nodiscard]] auto
-        read_some_at(io_offset_t loc, std::byte *buffer, io_size_t n)
+        read_some_at(io_offset_t loc, std::byte *buffer, io_size_t n) noexcept
             -> expected<io_size_t, std::error_code>
         {
             return _read_some_at(loc, buffer, n);
         }
 
-        [[nodiscard]] auto read_some(std::byte *buffer, io_size_t n)
+        [[nodiscard]] auto read_some(std::byte *buffer, io_size_t n) noexcept
             -> expected<io_size_t, std::error_code>
         {
             auto ret = read_some_at(_read_position, buffer, n);
@@ -141,14 +71,15 @@ namespace sk::cio {
             return ret;
         }
 
-        [[nodiscard]] auto
-        async_read_some_at(io_offset_t loc, std::byte *buf, io_size_t n)
+        [[nodiscard]] auto async_read_some_at(io_offset_t loc,
+                                              std::byte *buf,
+                                              io_size_t n) noexcept
             -> task<expected<io_size_t, std::error_code>>
         {
             co_return read_some_at(loc, buf, n);
         }
 
-        [[nodiscard]] auto async_read_some(std::byte *buf, io_size_t n)
+        [[nodiscard]] auto async_read_some(std::byte *buf, io_size_t n) noexcept
             -> task<expected<io_size_t, std::error_code>>
         {
             co_return read_some(buf, n);
@@ -157,6 +88,20 @@ namespace sk::cio {
     private:
         std::size_t _read_position = 0;
     };
+
+    [[nodiscard]] inline auto make_imemchannel(void const *begin,
+                                               void const *end) -> imemchannel
+    {
+        return imemchannel(begin, end);
+    }
+
+    template<std::ranges::contiguous_range Range>
+    [[nodiscard]] auto make_imemchannel(Range &&r) {
+        auto data = std::ranges::data(r);
+        auto size = std::ranges::size(r);
+
+        return make_imemchannel(data, data + size);
+    }
 
 } // namespace sk::cio
 

@@ -26,5 +26,13 @@
 
 cmake_minimum_required(VERSION 3.12)
 
-add_subdirectory(test_basics)
-add_subdirectory(test_stress)
+add_executable(test_stress
+    main.cxx
+    stress_idafilechannel.cxx
+    stress_tcpchannel.cxx
+    )
+
+target_link_libraries(test_stress PRIVATE sk-cio Catch2::Catch2 fmt::fmt)
+
+add_test(NAME test_stress
+    COMMAND $<TARGET_FILE:test_stress>)

@@ -40,30 +40,12 @@
 
 using namespace sk::cio;
 
-TEST_CASE("memchannel::open() out of range fails") {
-    std::byte *buf = reinterpret_cast<std::byte *>(static_cast<uintptr_t>(-10));
-    memchannel chnl;
-    auto ret = chnl.open(buf, 20);
-    REQUIRE(!ret);
-    REQUIRE(ret.error() == std::errc::bad_address);
-}
-
-TEST_CASE("memchannel::open() end before begin fails") {
-    char buf[2];
-    memchannel chnl;
-    auto ret = chnl.open(buf + 1, buf);
-    REQUIRE(!ret);
-    REQUIRE(ret.error() == std::errc::bad_address);
-}
-
 TEST_CASE("memchannel::write_some()") {
     std::byte const buf[] = {std::byte('A'), std::byte('B'), std::byte('C')};
     char out[4];
     std::memset(out, 'X', sizeof out);
 
-    memchannel chnl;
-    auto ret = chnl.open(out, sizeof out);
-    REQUIRE(ret);
+    auto chnl = make_memchannel(out);
 
     auto nbytes = chnl.write_some(buf, 3);
     REQUIRE(nbytes);
@@ -79,9 +61,7 @@ TEST_CASE("memchannel::write_some() single byte") {
     char out[4];
     std::memset(out, 'X', sizeof out);
 
-    memchannel chnl;
-    auto ret = chnl.open(out, 3);
-    REQUIRE(ret);
+    auto chnl = make_memchannel(out, out + 3);
 
     auto nbytes = chnl.write_some(buf, 1);
     REQUIRE(nbytes);
@@ -110,9 +90,7 @@ TEST_CASE("memchannel::write_some_at() single byte") {
     char out[4];
     std::memset(out, 'X', sizeof out);
 
-    memchannel chnl;
-    auto ret = chnl.open(out, 3);
-    REQUIRE(ret);
+    auto chnl = make_memchannel(out, out + 3);
 
     auto nbytes = chnl.write_some_at(0, buf, 1);
     REQUIRE(nbytes);
@@ -142,9 +120,7 @@ TEST_CASE("memchannel::write_some() past the end") {
     char out[4];
     std::memset(out, 'X', sizeof out);
 
-    memchannel chnl;
-    auto ret = chnl.open(out, 3);
-    REQUIRE(ret);
+    auto chnl = make_memchannel(out, out + 3);
 
     auto nbytes = chnl.write_some(buf, 4);
     REQUIRE(nbytes);
@@ -160,9 +136,7 @@ TEST_CASE("memchannel::write_some() with an invalid location") {
     char out[4];
     std::memset(out, 'X', sizeof out);
 
-    memchannel chnl;
-    auto ret = chnl.open(out, sizeof out);
-    REQUIRE(ret);
+    auto chnl = make_memchannel(out);
 
     auto nbytes = chnl.write_some_at(4, buf, 3);
     REQUIRE(!nbytes);
@@ -174,9 +148,7 @@ TEST_CASE("memchannel::read_some()") {
     std::byte dat[4];
     std::memset(dat, 'X', sizeof dat);
 
-    memchannel chnl;
-    auto ret = chnl.open(buf, sizeof buf);
-    REQUIRE(ret);
+    auto chnl = make_memchannel(buf);
 
     auto nbytes = chnl.read_some(dat, 3);
     REQUIRE(nbytes);
@@ -192,9 +164,7 @@ TEST_CASE("memchannel::read_some() single-byte") {
     std::byte dat[4];
     std::memset(dat, 'X', sizeof dat);
 
-    memchannel chnl;
-    auto ret = chnl.open(buf, sizeof buf);
-    REQUIRE(ret);
+    auto chnl = make_memchannel(buf);
 
     auto nbytes = chnl.read_some(dat, 1);
     REQUIRE(nbytes);
@@ -223,9 +193,7 @@ TEST_CASE("memchannel::read_some_at() single-byte") {
     std::byte dat[4];
     std::memset(dat, 'X', sizeof dat);
 
-    memchannel chnl;
-    auto ret = chnl.open(buf, sizeof buf);
-    REQUIRE(ret);
+    auto chnl = make_memchannel(buf);
 
     auto nbytes = chnl.read_some_at(0, dat, 1);
     REQUIRE(nbytes);
@@ -254,9 +222,7 @@ TEST_CASE("memchannel::read_some() past the end") {
     std::byte dat[4];
     std::memset(dat, 'X', sizeof dat);
 
-    memchannel chnl;
-    auto ret = chnl.open(buf, sizeof buf);
-    REQUIRE(ret);
+    auto chnl = make_memchannel(buf);
 
     auto nbytes = chnl.read_some(dat, 4);
     REQUIRE(nbytes);
@@ -272,9 +238,7 @@ TEST_CASE("memchannel::read_some_at() with an invalid location") {
     std::byte dat[4];
     std::memset(dat, 'X', sizeof dat);
 
-    memchannel chnl;
-    auto ret = chnl.open(buf, sizeof buf);
-    REQUIRE(ret);
+    auto chnl = make_memchannel(buf);
 
     auto nbytes = chnl.read_some_at(4, dat, 1);
     REQUIRE(!nbytes);

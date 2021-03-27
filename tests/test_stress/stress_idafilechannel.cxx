@@ -53,7 +53,8 @@ task<int> stress_task(idafilechannel &chnl)
         for (int i = 0; i < nops; ++i) {
             std::byte b;
             auto offs = rnd(eng);
-            auto ret = co_await async_read_some_at(chnl, offs, &b, 1);
+            auto ret =
+                co_await async_read_some_at(chnl, offs, std::span(&b, 1));
 
             if (!ret)
                 co_return 1;

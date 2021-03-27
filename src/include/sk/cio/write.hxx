@@ -34,8 +34,6 @@
 
 namespace sk::cio {
 
-    // clang-format off
-
     /*************************************************************************
      *
      * Channel output.
@@ -46,313 +44,309 @@ namespace sk::cio {
      * write_some()
      */
 
-    // write_some(channel, data, n)
-    template<oseqchannel Channel>
-    auto write_some(Channel& channel,
-                    channel_value_t<Channel> const* buf, io_size_t n)
-        -> expected<io_size_t, std::error_code>
-    {
-        return channel.write_some(buf, n);
-    }
-
-    // async_write_some(channel, data, n)
-    template<oseqchannel Channel>
-    auto async_write_some(Channel& channel,
-                          channel_value_t<Channel> const* buf, io_size_t n)
-        -> task<expected<io_size_t, std::error_code>>
-    {
-        co_return co_await channel.async_write_some(buf, n);
-    }
-
-    // write_some(channel, range, n)
+    // clang-format off
     template<oseqchannel Channel, std::ranges::contiguous_range Range>
-    auto write_some(Channel &channel, Range const &range, io_size_t n)
+    [[nodiscard]]
+    auto write_some(Channel &channel,
+                    Range &&range,
+                    io_size_t n = unlimited)
          -> expected<io_size_t, std::error_code>
-         requires std::same_as<channel_value_t<Channel>,
-                               std::ranges::range_value_t<Range>> {
-
+    requires std::same_as<channel_value_t<Channel>,
+                          std::ranges::range_value_t<Range>>
+    // clang-format on
+    {
         auto data = std::ranges::data(range);
-        auto size = cio::detail::int_cast<io_size_t>(
-                std::ranges::size(range));
+        auto size = cio::detail::int_cast<io_size_t>(std::ranges::size(range));
+
         if (n < size)
             size = n;
 
-        return write_some(channel, data, size);
+        return channel.write_some(data, size);
     }
 
-    // async_write_some(channel, range, n)
+    // clang-format off
     template<oseqchannel Channel, std::ranges::contiguous_range Range>
-    auto async_write_some(Channel &channel, Range &&range, io_size_t n)
+    [[nodiscard]]
+    auto async_write_some(Channel &channel,
+                          Range &&range,
+                          io_size_t n = unlimited)
          -> task<expected<io_size_t, std::error_code>>
-         requires std::same_as<channel_value_t<Channel>,
-                               std::ranges::range_value_t<Range>> {
-
+    requires std::same_as<channel_value_t<Channel>,
+                          std::ranges::range_value_t<Range>>
+    // clang-format on
+    {
         auto data = std::ranges::data(range);
-        auto size = cio::detail::int_cast<io_size_t>(
-                std::ranges::size(range));
+        auto size = cio::detail::int_cast<io_size_t>(std::ranges::size(range));
 
         if (n < size)
             size = n;
 
-        co_return co_await async_write_some(channel, data, size);
+        co_return co_await channel.async_write_some(data, size);
     }
 
-    // write_some(channel, buf, n)
+    // clang-format off
     template<oseqchannel Channel, sk::readable_buffer Buffer>
-    auto write_some(Channel &channel, Buffer &buffer, io_size_t n)
+    [[nodiscard]]
+    auto write_some(Channel &channel,
+                    Buffer &buffer,
+                    io_size_t n = unlimited)
         -> expected<io_size_t, std::error_code>
-           requires std::same_as<channel_value_t<Channel>,
-                                  sk::buffer_value_t<Buffer>> {
-
+    requires std::same_as<channel_value_t<Channel>,
+                          sk::buffer_value_t<Buffer>>
+    // clang-format on
+    {
         auto ranges = buffer.get_readable_ranges();
         if (std::ranges::size(ranges) == 0u)
             return 0u;
 
         auto &first_range = *std::ranges::begin(ranges);
-        return write_some(channel, first_range, n);
+        auto bytes_written = write_some(channel, first_range, n);
+
+        if (!bytes_written)
+            return make_unexpected(bytes_written.error());
+
+        buffer.discard(*bytes_written);
+        return *bytes_written;
     }
 
-    // async_write_some(channel, buf, n)
+    // clang-format off
     template<oseqchannel Channel, sk::readable_buffer Buffer>
-    auto async_write_some(Channel &channel, Buffer &buffer, io_size_t n)
+    [[nodiscard]]
+    auto async_write_some(Channel &channel,
+                          Buffer &buffer,
+                          io_size_t n = unlimited)
          -> task<expected<io_size_t, std::error_code>>
-         requires std::same_as<channel_value_t<Channel>,
-                               sk::buffer_value_t<Buffer>> {
-
+    requires std::same_as<channel_value_t<Channel>,
+                          sk::buffer_value_t<Buffer>>
+    // clang-format on
+    {
         auto ranges = buffer.readable_ranges();
         if (std::ranges::size(ranges) == 0u)
             co_return 0u;
 
         auto &first_range = *std::ranges::begin(ranges);
-        co_return co_await async_write_some(channel, first_range, n);
+        auto bytes_written = co_await async_write_some(channel, first_range, n);
+
+        if (!bytes_written)
+            co_return make_unexpected(bytes_written.error());
+
+        buffer.discard(*bytes_written);
+        co_return *bytes_written;
     }
 
     /*************************************************************************
      * write_all()
      */
 
-    // write_all(channel, data, n)
-    template<oseqchannel Channel>
+    // clang-format off
+    template<oseqchannel Channel, std::ranges::contiguous_range Range>
+    [[nodiscard]]
     auto write_all(Channel &channel,
-                   channel_value_t<Channel> const *data,
-                   io_size_t n)
-        -> std::pair<io_size_t, std::error_code> {
+                   Range &&range,
+                   io_size_t n = unlimited)
+         -> std::pair<io_size_t, std::error_code>
+    requires std::same_as<channel_const_value_t<Channel>,
+                          std::add_const_t<std::ranges::range_value_t<Range>>>
+    // clang-format on
+    {
+        auto data = std::ranges::data(range);
+        auto size = cio::detail::int_cast<io_size_t>(std::ranges::size(range));
+        if (n < size)
+            size = n;
 
         io_size_t bytes_written = 0;
 
-        while (n) {
-            auto ret = write_some(channel, data, n);
+        while (size) {
+            auto ret = channel.write_some(data, size);
 
             if (!ret)
                 return {bytes_written, ret.error()};
 
             bytes_written += *ret;
-            n -= *ret;
+            size -= *ret;
             data += *ret;
         }
 
         return {bytes_written, sk::cio::error::no_error};
     }
 
-    // async_write_all(channel, data, n)
-    template<oseqchannel Channel>
+    // clang-format off
+    template <oseqchannel Channel, std::ranges::contiguous_range Range>
+    [[nodiscard]]
     auto async_write_all(Channel &channel,
-                         channel_value_t<Channel> const *data,
-                         io_size_t n)
-        -> task<std::pair<io_size_t, std::error_code>> {
+                         Range &&range,
+                         io_size_t n = unlimited)
+        -> task<std::pair<io_size_t, std::error_code>>
+    requires std::same_as<channel_value_t<Channel>,
+                          std::ranges::range_value_t<Range>>
+    // clang-format on
+    {
+        auto data = std::ranges::data(range);
+        auto size = cio::detail::int_cast<io_size_t>(std::ranges::size(range));
+        if (n < size)
+            size = n;
 
         io_size_t bytes_written = 0;
 
-        while (n) {
-            auto ret = co_await async_write_some(channel, data, n);
+        while (size) {
+            auto ret = co_await channel.async_write_some(data, size);
 
             if (!ret)
                 co_return {bytes_written, ret.error()};
 
             bytes_written += *ret;
-            n -= *ret;
+            size -= *ret;
             data += *ret;
         }
 
         co_return {bytes_written, sk::cio::error::no_error};
     }
 
-    // write_all(channel, range, n)
-    template<oseqchannel Channel, std::ranges::contiguous_range Range>
-    auto write_all(Channel &channel, Range const &range, io_size_t n)
-         -> std::pair<io_size_t, std::error_code>
-         requires std::same_as<
-            channel_const_value_t<Channel>,
-            std::add_const_t<std::ranges::range_value_t<Range>>
-         > {
-
-        auto data = std::ranges::data(range);
-        auto size = cio::detail::int_cast<io_size_t>(
-                std::ranges::size(range));
-        if (n < size)
-            size = n;
-
-        return write_all(channel, data, size);
-    }
-
-    // async_write_all(channel, range, n)
-    template<oseqchannel Channel, std::ranges::contiguous_range Range>
-    auto async_write_all(Channel &channel, Range const &range, io_size_t n)
-         -> task<std::pair<io_size_t, std::error_code>>
-         requires std::same_as<channel_value_t<Channel>,
-                               std::ranges::range_value_t<Range>> {
-
-        auto data = std::ranges::data(range);
-        auto size = cio::detail::int_cast<io_size_t>(
-                std::ranges::size(range));
-        if (n < size)
-            size = n;
-
-        co_return co_await async_write_all(channel, data, size);
-    }
-
-
-    // write_all(channel, buffer, n)
+    // clang-format off
     template<oseqchannel Channel, sk::readable_buffer Buffer>
-    auto write_all(Channel &channel, Buffer &buffer, io_size_t n)
+    [[nodiscard]]
+    auto write_all(Channel &channel,
+                   Buffer &buffer,
+                   io_size_t n = unlimited)
         -> std::pair<io_size_t, std::error_code>
-           requires std::same_as<channel_value_t<Channel>,
-                                 sk::buffer_value_t<Buffer>> {
-
+    requires std::same_as<channel_value_t<Channel>,
+                          sk::buffer_value_t<Buffer>>
+    // clang-format on
+    {
         io_size_t bytes_written = 0;
 
+        std::pair<io_size_t, std::error_code> ret;
+
         for (auto &&range : buffer.readable_ranges()) {
-            auto ret = write_all(channel, range, n - bytes_written);
+            ret = write_all(channel, range, n - bytes_written);
             bytes_written += ret.first;
 
-            if (ret.second)
-                return {bytes_written, ret.second};
+            if (ret.first == 0 || ret.second)
+                break;
         }
 
-        return {bytes_written, sk::cio::error::no_error};
+        buffer.discard(bytes_written);
+        return {bytes_written, ret.second};
     }
 
-    // async_write_all(channel, buffer, n)
+    // clang-format off
     template<oseqchannel Channel, sk::readable_buffer Buffer>
-    auto async_write_all(Channel &channel, Buffer &buffer, io_size_t n)
+    [[nodiscard]]
+    auto async_write_all(Channel &channel,
+                         Buffer &buffer,
+                         io_size_t n = unlimited)
         -> task<std::pair<io_size_t, std::error_code>>
-           requires std::same_as<channel_value_t<Channel>,
-                                 sk::buffer_value_t<Buffer>> {
-
+    requires std::same_as<channel_value_t<Channel>,
+                          sk::buffer_value_t<Buffer>>
+    // clang-format on
+    {
         io_size_t bytes_written = 0;
 
+        std::pair<io_size_t, std::error_code> ret;
+
         for (auto &&range : buffer.readable_ranges()) {
-            auto ret = write_all(channel, range, n - bytes_written);
+            ret = co_await async_write_all(channel, range, n - bytes_written);
             bytes_written += ret.first;
 
-            if (ret.second)
-                co_return {bytes_written, ret.second};
+            if (ret.first == 0 || ret.second)
+                break;
         }
 
-        co_return {bytes_written, sk::cio::error::no_error};
+        buffer.discard(bytes_written);
+        co_return {bytes_written, ret.second};
     }
 
-     /*************************************************************************
+    /*************************************************************************
      * write_some_at()
      */
 
-    // write_some_at(channel, loc, data, n)
-    template<odachannel Channel>
-    auto write_some_at(Channel &channel,
-                       io_offset_t loc,
-                       channel_value_t<Channel> const *data,
-                       io_size_t n)
-        -> expected<io_size_t, std::error_code> {
-
-        return channel.write_some_at(loc, data, n);
-    }
-
-    // async_write_some_at(channel, loc, data, n)
-    template<odachannel Channel>
-    auto async_write_some_at(Channel &channel,
-                             io_offset_t loc,
-                             channel_value_t<Channel> const *data,
-                             io_size_t n)
-        -> expected<io_size_t, std::error_code> {
-
-        co_return co_await channel.async_write_some_at(loc, data, n);
-    }
-
-    // write_some_at(channel, loc, range, n)
+    // clang-format off
     template<odachannel Channel, std::ranges::contiguous_range Range>
+    [[nodiscard]]
     auto write_some_at(Channel &channel,
                        io_offset_t loc,
-                       Range const &range,
-                       io_size_t n)
+                       Range &&range,
+                       io_size_t n = unlimited)
          -> expected<io_size_t, std::error_code>
-         requires std::same_as<channel_value_t<Channel>,
-                               std::ranges::range_value_t<Range>> {
-
+    requires std::same_as<channel_value_t<Channel>,
+                          std::ranges::range_value_t<Range>>
+    // clang-format on
+    {
         auto data = std::ranges::data(range);
-        auto size = cio::detail::int_cast<io_size_t>(
-                std::ranges::size(range));
+        auto size = cio::detail::int_cast<io_size_t>(std::ranges::size(range));
         if (n < size)
             size = n;
 
-        return write_some_at(channel, loc, data, size);
+        return channel.write_some_at(loc, data, size);
     }
 
-    // async_write_some_at(chanel, loc, range, n)
+    // clang-format off
     template<odachannel Channel, std::ranges::contiguous_range Range>
+    [[nodiscard]]
     auto async_write_some_at(Channel &channel,
                              io_offset_t loc,
-                             Range const &range,
-                             io_size_t n)
+                             Range &&range,
+                             io_size_t n = unlimited)
          -> task<expected<io_size_t, std::error_code>>
-         requires std::same_as<channel_value_t<Channel>,
-                               std::ranges::range_value_t<Range>> {
-
+    requires std::same_as<channel_value_t<Channel>,
+                          std::ranges::range_value_t<Range>>
+    // clang-format on
+    {
         auto data = std::ranges::data(range);
-        auto size = cio::detail::int_cast<io_size_t>(
-                std::ranges::size(range));
+        auto size = cio::detail::int_cast<io_size_t>(std::ranges::size(range));
         if (n < size)
             size = n;
 
-        co_return co_await async_write_some_at(channel, loc, data, size);
+        co_return co_await channel.async_write_some_at(loc, data, size);
     }
 
-    // write_some_at(channel, loc, buffer, n)
+    // clang-format off
     template<odachannel Channel, sk::readable_buffer Buffer>
+    [[nodiscard]]
     auto write_some_at(Channel &channel,
                        io_offset_t loc,
                        Buffer &buffer,
-                       io_size_t n)
+                       io_size_t n = unlimited)
         -> expected<io_size_t, std::error_code>
-           requires std::same_as<channel_value_t<Channel>,
-                                 sk::buffer_value_t<Buffer>> {
-
+    requires std::same_as<channel_value_t<Channel>,
+                          sk::buffer_value_t<Buffer>>
+    // clang-format on
+    {
         auto ranges = buffer.get_readable_ranges();
         if (std::ranges::size(ranges) == 0u)
             return 0u;
 
         auto &first_range = *std::ranges::begin(ranges);
-        return write_some_at(channel, loc, first_range, n);
+        auto bytes_written = write_some_at(channel, loc, first_range, n);
+        if (!bytes_written)
+            return bytes_written.error();
+        buffer.discard(*bytes_written);
+        return *bytes_written;
     }
 
-    // async_write_some_at(channel, loc, buffer, n)
+    // clang-format off
     template<odachannel Channel, sk::writable_buffer Buffer>
+    [[nodiscard]]
     auto async_write_some_at(Channel &channel,
                              io_offset_t loc,
                              Buffer &buffer,
-                             io_size_t n)
+                             io_size_t n = unlimited)
          -> task<expected<io_size_t, std::error_code>>
          requires std::same_as<channel_value_t<Channel>,
-                               sk::buffer_value_t<Buffer>> {
-
+                               sk::buffer_value_t<Buffer>>
+    // clang-format on
+    {
         auto ranges = buffer.get_readable_ranges();
         if (std::ranges::size(ranges) == 0u)
             co_return 0u;
 
         auto &first_range = *std::ranges::begin(ranges);
-        co_return co_await async_write_some_at(channel, loc, first_range, n);
+        auto bytes_written = co_await async_write_some_at(channel, loc, first_range, n);
+        if (!bytes_written)
+            co_return bytes_written.error();
+        buffer.discard(*bytes_written);
+        co_return *bytes_written;
     }
-
-    // clang-format on
 
 } // namespace sk::cio
 

@@ -43,6 +43,18 @@
 
 namespace sk::cio {
 
+    // clang-format off
+
+    // Internal concepts.
+    namespace detail {
+
+        template<typename T>
+        concept bytesized_char =
+                std::integral<T> &&
+                sizeof(T) == sizeof(std::byte);
+
+    }
+
     /*************************************************************************
      *
      * Channel concepts.
@@ -57,42 +69,40 @@ namespace sk::cio {
      *
      */
 
-    // clang-format off
-
     /*
      * channel_base: a channel which could be either an input channel
      * or an output channel.  A channel reads or writes objects of a
      * particular type (T::value_type), which is usually a char type.
-     * 
+     *
      * Note that closing the channel returns std::error_code.  This is
      * because the channel may be not fully flushed until it's closed,
      * and the final flush could return an error.
      */
-    template <typename Channel> 
+    template <typename Channel>
     concept channel_base = requires(Channel &channel) {
         // The type that the channel reads and writes.  This is usually a
         // char-like type, although it doesn't have to be.
         typename Channel::value_type;
 
         // Close the channel synchronously.
-        { channel.close() } 
+        { channel.close() }
             -> std::same_as<expected<void, std::error_code>>;
 
         // Close the channel asynchronously.
-        { channel.async_close() } 
+        { channel.async_close() }
             -> std::same_as<task<expected<void, std::error_code>>>;
     };
 
     /*************************************************************************
-     * 
+     *
      * Sequential access (seq) channels.
-     * 
+     *
      * A sequential channel can be read from and written to sequentially.
-     * 
+     *
      * The most common example of a sequential channel is a socket, or a hardware
      * device like a serial port, but files are also sequential channels when
      * reading and writing using the internal file pointer.
-     * 
+     *
      */
 
     /*************************************************************************
@@ -100,18 +110,18 @@ namespace sk::cio {
      */
 
     template <typename Channel>
-    concept oseqchannel = 
+    concept oseqchannel =
         channel_base<Channel> &&
         requires(Channel &channel,
                  io_size_t nobjects,
                  typename Channel::value_type const *buf) {
 
             // Write data to the channel synchronously.
-            { channel.write_some(buf, nobjects) } 
+            { channel.write_some(buf, nobjects) }
                 -> std::same_as<expected<io_size_t, std::error_code>>;
 
             // Write data to the channel asynchronously.
-            { channel.async_write_some(buf, nobjects) } 
+            { channel.async_write_some(buf, nobjects) }
                 -> std::same_as<task<expected<io_size_t, std::error_code>>>;
         };
 
@@ -141,13 +151,13 @@ namespace sk::cio {
     concept seqchannel = iseqchannel<Channel> && oseqchannel<Channel>;
 
     /*************************************************************************
-     * 
+     *
      * Direct access (da) channels.
-     * 
+     *
      * A direct access channel can be read from and written to at any location.
      * The most common example of a direct access channel is a file, or a
      * physical storage device like a hard disk.
-     * 
+     *
      */
 
     /*************************************************************************
@@ -155,7 +165,7 @@ namespace sk::cio {
      */
 
     template <typename Channel>
-    concept odachannel = 
+    concept odachannel =
         channel_base<Channel> &&
         requires(Channel &channel,
                  io_size_t nobjects,
@@ -163,7 +173,7 @@ namespace sk::cio {
                  typename Channel::value_type const *buf) {
 
             // Write data to the channel synchronously.
-            { channel.write_some_at(offset, buf, nobjects) } 
+            { channel.write_some_at(offset, buf, nobjects) }
                 -> std::same_as<expected<io_size_t, std::error_code>>;
 
             // Write data to the channel asynchronously.
@@ -207,7 +217,7 @@ namespace sk::cio {
 
     // Return the const value type of a channel.
     template<typename Channel>
-    using channel_const_value_t = 
+    using channel_const_value_t =
         typename std::add_const_t<channel_value_t<Channel>>;
 
     // clang-format on

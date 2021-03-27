@@ -65,7 +65,7 @@ namespace sk::cio::win32::detail {
         /*
          * Test if this channel has been opened.
          */
-        auto is_open() const -> bool;
+        [[nodiscard]] auto is_open() const -> bool;
 
         [[nodiscard]]
         auto async_close()

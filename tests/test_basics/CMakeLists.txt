@@ -26,5 +26,22 @@
 
 cmake_minimum_required(VERSION 3.12)
 
-add_subdirectory(test_basics)
-add_subdirectory(test_stress)
+add_executable(test_basics
+    main.cxx
+    test_task.cxx
+    test_iseqfilechannel.cxx
+    test_iseqfilechannel_open.cxx
+    test_idafilechannel.cxx
+    test_odafilechannel.cxx
+    test_imemchannel.cxx
+    test_omemchannel.cxx
+    test_memchannel.cxx
+    test_iseqcharchannel.cxx
+    test_oseqcharchannel.cxx
+    test_seqcharchannel.cxx
+    )
+
+target_link_libraries(test_basics PRIVATE sk-cio Catch2::Catch2 fmt::fmt)
+
+add_test(NAME test_basics
+    COMMAND $<TARGET_FILE:test_basics>)

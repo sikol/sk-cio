@@ -48,24 +48,29 @@ namespace sk::cio::detail {
         memchannel_base(memchannel_base const &) = delete;
         memchannel_base &operator=(memchannel_base const &) = delete;
 
-        [[nodiscard]] auto is_open() const -> bool {
+        [[nodiscard]] auto is_open() const -> bool
+        {
             return _begin != nullptr;
         }
 
         [[nodiscard]] auto async_close()
-            -> task<expected<void, std::error_code>> {
+            -> task<expected<void, std::error_code>>
+        {
             _begin = nullptr;
             co_return {};
         }
 
-        [[nodiscard]] auto close() -> expected<void, std::error_code> {
+        [[nodiscard]] auto close() -> expected<void, std::error_code>
+        {
             _begin = nullptr;
             return {};
         }
 
-        [[nodiscard]] auto _read_some_at(io_offset_t loc, std::byte *buffer,
-                                         io_size_t n)
-            -> expected<io_size_t, std::error_code> {
+    protected:
+        [[nodiscard]] auto
+        _read_some_at(io_offset_t loc, std::byte *buffer, io_size_t n)
+            -> expected<io_size_t, std::error_code>
+        {
 
             if (loc > static_cast<std::uintptr_t>(_end - _begin))
                 return make_unexpected(cio::error::end_of_file);
@@ -82,10 +87,10 @@ namespace sk::cio::detail {
             return n;
         }
 
-        [[nodiscard]] auto _write_some_at(io_offset_t loc, std::byte const *buf,
-                                          io_size_t n)
-            -> expected<io_size_t, std::error_code> {
-
+        [[nodiscard]] auto
+        _write_some_at(io_offset_t loc, std::byte const *buf, io_size_t n)
+            -> expected<io_size_t, std::error_code>
+        {
             if (loc > static_cast<std::uintptr_t>(_end - _begin))
                 return make_unexpected(cio::error::end_of_file);
 
@@ -101,44 +106,33 @@ namespace sk::cio::detail {
             return n;
         }
 
-        [[nodiscard]] auto _async_read_some_at(io_offset_t loc, std::byte *buf,
-                                               io_size_t n)
-            -> task<expected<io_size_t, std::error_code>> {
+        [[nodiscard]] auto
+        _async_read_some_at(io_offset_t loc, std::byte *buf, io_size_t n)
+            -> task<expected<io_size_t, std::error_code>>
+        {
             co_return _read_some_at(loc, buf, n);
         }
 
         [[nodiscard]] auto
         _async_write_some_at(io_offset_t loc, std::byte const *buf, io_size_t n)
-            -> task<expected<io_size_t, std::error_code>> {
+            -> task<expected<io_size_t, std::error_code>>
+        {
             co_return _write_some_at(loc, buf, n);
         }
 
-    protected:
         memchannel_base() = default;
         ~memchannel_base() = default;
 
-        [[nodiscard]] expected<void, std::error_code> _open(std::byte *ptr,
-                                                            std::byte *end) {
-            if (_begin)
-                return make_unexpected(cio::error::channel_already_open);
-
-            if (end < ptr)
-                return make_unexpected(
-                    std::make_error_code(std::errc::bad_address));
-
-            _begin = ptr;
-            _end = end;
-            return {};
-        }
-
-        [[nodiscard]] expected<void, std::error_code>
-        _open(std::byte const *ptr, std::byte const *end) {
-            return _open(const_cast<std::byte *>(ptr),
-                         const_cast<std::byte *>(end));
+        memchannel_base(void *ptr, void *end)
+            : _begin(static_cast<std::byte *>(ptr)),
+              _end(static_cast<std::byte *>(end))
+        {
+            if (_end < _begin)
+                _end = _begin;
         }
 
     private:
-        std::byte *_begin = nullptr;
+        std::byte *_begin;
         std::byte *_end;
     };
 

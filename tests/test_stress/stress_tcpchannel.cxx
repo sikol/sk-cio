@@ -26,10 +26,10 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include <array>
 #include <chrono>
 #include <fstream>
 #include <iostream>
-#include <array>
 
 #include <catch.hpp>
 
@@ -52,7 +52,7 @@ task<int> stress_task()
 {
     std::random_device r;
     std::default_random_engine eng(r());
-    std::uniform_int_distribution<io_size_t> rnd_0_50(0, 49);
+    std::uniform_int_distribution<io_size_t> rnd_1_50(1, 50);
     std::uniform_int_distribution<int> rnd_byte(0, 255);
 
     auto start = std::chrono::steady_clock::now();
@@ -73,11 +73,13 @@ task<int> stress_task()
             io_size_t buflen;
 
             // Generate random data.
-            buflen = rnd_0_50(eng);
+            buflen = rnd_1_50(eng);
             for (auto n = 0; n < buflen; ++n)
                 outbuf[n] = std::byte(rnd_byte(eng));
 
-            auto wret = co_await async_write_all(chnl, static_cast<std::byte *>(outbuf), buflen);
+            // static_cast to work around MSVC bug
+            auto wret =
+                co_await async_write_all(chnl, std::span(outbuf, buflen));
             if (wret.first != buflen) {
                 fmt::print(stderr, "short write: {}\n", wret.first);
                 co_return 1;

@@ -46,7 +46,7 @@ target_sources(sk-cio PRIVATE
     include/sk/cio/channel/concepts.hxx
     include/sk/cio/write.hxx
     include/sk/cio/read.hxx
-    include/sk/cio/channel/charchannel.hxx
+    include/sk/cio/charchannel.hxx
     include/sk/cio/channel/pmr_channel.hxx
 
     include/sk/cio/filechannel.hxx

@@ -36,84 +36,16 @@ namespace sk::cio {
     struct memchannel final : detail::memchannel_base {
         using value_type = std::byte;
 
-        memchannel() = default;
+        memchannel(void *begin, void *end)
+            : detail::memchannel_base(begin, end)
+        {
+        }
+
         memchannel(memchannel &&) = default;
         memchannel &operator=(memchannel &&) = default;
         memchannel(memchannel const &) = delete;
         memchannel &operator=(memchannel const &) = delete;
         ~memchannel() = default;
-
-        [[nodiscard]] auto open(std::byte *begin, std::byte *end)
-            -> expected<void, std::error_code>
-        {
-            auto ret = _open(begin, end);
-            if (ret)
-                _read_position = 0;
-            return ret;
-        }
-
-        [[nodiscard]] auto open(void *begin, void *end)
-            -> expected<void, std::error_code>
-        {
-            return open(static_cast<std::byte *>(begin),
-                        static_cast<std::byte *>(end));
-        }
-
-        [[nodiscard]] auto open(char *begin, char *end)
-        -> expected<void, std::error_code>
-        {
-            return open(reinterpret_cast<std::byte *>(begin),
-                        reinterpret_cast<std::byte *>(end));
-        }
-
-        [[nodiscard]] auto open(signed char *begin, signed char *end)
-            -> expected<void, std::error_code>
-        {
-            return open(reinterpret_cast<std::byte *>(begin),
-                        reinterpret_cast<std::byte *>(end));
-        }
-
-        [[nodiscard]] auto open(unsigned char *begin, unsigned char *end)
-            -> expected<void, std::error_code>
-        {
-            return open(reinterpret_cast<std::byte *>(begin),
-                        reinterpret_cast<std::byte *>(end));
-        }
-
-        [[nodiscard]] auto open(std::byte *begin, std::size_t n)
-            -> expected<void, std::error_code>
-        {
-            if (n > (std::numeric_limits<std::uintptr_t>::max() -
-                     reinterpret_cast<std::uintptr_t>(begin)))
-                return make_unexpected(
-                    std::make_error_code(std::errc::bad_address));
-
-            return open(begin, begin + n);
-        }
-
-        [[nodiscard]] auto open(char *begin, std::size_t n)
-        -> expected<void, std::error_code>
-        {
-            return open(reinterpret_cast<std::byte *>(begin), n);
-        }
-
-        [[nodiscard]] auto open(signed char *begin, std::size_t n)
-            -> expected<void, std::error_code>
-        {
-            return open(reinterpret_cast<std::byte *>(begin), n);
-        }
-
-        [[nodiscard]] auto open(unsigned char *begin, std::size_t n)
-            -> expected<void, std::error_code>
-        {
-            return open(reinterpret_cast<std::byte *>(begin), n);
-        }
-
-        [[nodiscard]] auto open(void *begin, std::size_t n)
-            -> expected<void, std::error_code>
-        {
-            return open(reinterpret_cast<std::byte *>(begin), n);
-        }
 
         [[nodiscard]] auto
         read_some_at(io_offset_t loc, std::byte *buffer, io_size_t n)
@@ -177,6 +109,20 @@ namespace sk::cio {
         std::size_t _read_position = 0;
         std::size_t _write_position = 0;
     };
+
+    [[nodiscard]] inline auto make_memchannel(void *begin,
+                                              void *end) -> memchannel
+    {
+        return memchannel(begin, end);
+    }
+
+    template<std::ranges::contiguous_range Range>
+    [[nodiscard]] auto make_memchannel(Range &&r) {
+        auto data = std::ranges::data(r);
+        auto size = std::ranges::size(r);
+
+        return make_memchannel(data, data + size);
+    }
 
 } // namespace sk::cio
 

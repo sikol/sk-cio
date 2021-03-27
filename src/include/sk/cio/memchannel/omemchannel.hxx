@@ -26,15 +26,15 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_MEMCHANNEL_OSEQMEMCHANNEL_HXX_INCLUDED
-#define SK_CIO_MEMCHANNEL_OSEQMEMCHANNEL_HXX_INCLUDED
+#ifndef SK_CIO_MEMCHANNEL_OMEMCHANNEL_HXX_INCLUDED
+#define SK_CIO_MEMCHANNEL_OMEMCHANNEL_HXX_INCLUDED
 
 #include <cstddef>
 #include <cstring>
 #include <system_error>
 
-#include <sk/cio/memchannel/detail/memchannel_base.hxx>
 #include <sk/cio/expected.hxx>
+#include <sk/cio/memchannel/detail/memchannel_base.hxx>
 #include <sk/cio/task.hxx>
 #include <sk/cio/types.hxx>
 
@@ -43,91 +43,15 @@ namespace sk::cio {
     struct omemchannel final : detail::memchannel_base {
         using value_type = std::byte;
 
-        omemchannel() = default;
+        omemchannel(void *begin, void *end)
+            : detail::memchannel_base(begin, end)
+        {
+        }
+
         omemchannel(omemchannel &&other) = default;
         omemchannel &operator=(omemchannel &&) = default;
         omemchannel(omemchannel const &) = delete;
         omemchannel &operator=(omemchannel const &) = delete;
-
-        [[nodiscard]]
-        auto open(std::byte *begin, std::byte *end)
-            -> expected<void, std::error_code>
-        {
-            auto ret = _open(begin, end);
-            if (ret)
-                _write_position = 0;
-            return ret;
-        }
-
-        [[nodiscard]]
-        auto open(void *begin, void *end) -> expected<void, std::error_code>
-        {
-            return open(static_cast<std::byte *>(begin),
-                        static_cast<std::byte *>(end));
-        }
-
-        [[nodiscard]]
-        auto open(char *begin, char *end)
-        -> expected<void, std::error_code>
-        {
-            return open(reinterpret_cast<std::byte *>(begin),
-                        reinterpret_cast<std::byte *>(end));
-        }
-
-        [[nodiscard]]
-        auto open(signed char *begin, signed char *end)
-            -> expected<void, std::error_code>
-        {
-            return open(reinterpret_cast<std::byte *>(begin),
-                        reinterpret_cast<std::byte *>(end));
-        }
-
-        [[nodiscard]]
-        auto open(unsigned char *begin, unsigned char *end)
-            -> expected<void, std::error_code>
-        {
-            return open(reinterpret_cast<std::byte *>(begin),
-                        reinterpret_cast<std::byte *>(end));
-        }
-
-        [[nodiscard]]
-        auto open(std::byte *begin, std::size_t n)
-            -> expected<void, std::error_code>
-        {
-            if (n > (std::numeric_limits<std::uintptr_t>::max() -
-                     reinterpret_cast<std::uintptr_t>(begin)))
-                return make_unexpected(
-                    std::make_error_code(std::errc::bad_address));
-
-            return open(begin, begin + n);
-        }
-
-        [[nodiscard]]
-        auto open(char *begin, std::size_t n)
-        -> expected<void, std::error_code>
-        {
-            return open(reinterpret_cast<std::byte *>(begin), n);
-        }
-
-        [[nodiscard]]
-        auto open(signed char *begin, std::size_t n)
-            -> expected<void, std::error_code>
-        {
-            return open(reinterpret_cast<std::byte *>(begin), n);
-        }
-
-        [[nodiscard]]
-        auto open(unsigned char *begin, std::size_t n)
-            -> expected<void, std::error_code>
-        {
-            return open(reinterpret_cast<std::byte *>(begin), n);
-        }
-
-        [[nodiscard]]
-        auto open(void *begin, std::size_t n) -> expected<void, std::error_code>
-        {
-            return open(reinterpret_cast<std::byte *>(begin), n);
-        }
 
         [[nodiscard]] auto
         write_some_at(io_offset_t loc, std::byte const *buf, io_size_t n)
@@ -161,6 +85,21 @@ namespace sk::cio {
     private:
         std::size_t _write_position = 0;
     };
+
+    [[nodiscard]] inline auto make_omemchannel(void *begin, void *end)
+        -> omemchannel
+    {
+        return omemchannel(begin, end);
+    }
+
+    template <std::ranges::contiguous_range Range>
+    [[nodiscard]] auto make_omemchannel(Range &&r)
+    {
+        auto data = std::ranges::data(r);
+        auto size = std::ranges::size(r);
+
+        return make_omemchannel(data, data + size);
+    }
 
 } // namespace sk::cio
 

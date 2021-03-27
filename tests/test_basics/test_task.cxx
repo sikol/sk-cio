@@ -41,62 +41,48 @@
 using sk::cio::task;
 
 auto get_int() -> task<int> {
-    std::cerr << "get_int() : running\n";
     co_return 42;
 }
 
 TEST_CASE("task<int> works") {
-    std::cerr << "\n\ntask<int> starting\n";
     int i = wait(get_int());
     REQUIRE(i == 42);
 }
 
 auto set_int(int &i) -> task<void> {
-    std::cerr << "set_int() : running\n";
     i = 42;
     co_return;
 }
 
 TEST_CASE("task<void> works") {
     int i = 0;
-    std::cerr << "\n\ntask<void> starting\n";
     wait(set_int(i));
     REQUIRE(i == 42);
 }
 
 task<void> detached1(std::promise<int> &p) {
-    std::cerr << "detached1 start\n";
     p.set_value(42);
-    std::cerr << "detached1 returning\n";
     co_return;
 }
 
 task<void> detached2(std::promise<int> &p) {
-    std::cerr << "detached2: enter\n";
     co_detach(detached1(p));
-    std::cerr << "detached2: return\n";
     co_return;
 }
 
 task<int> test_detached1() {
-    std::cerr << "test_detached1 start\n";
     std::promise<int> p;
     std::future f = p.get_future();
 
-    std::cerr << "test_detached1 calling detached1\n";
     co_detach(detached1(p));
-    std::cerr << "test_detached1 returning\n";
     co_return f.get();
 }
 
 task<int> test_detached2() {
-    std::cerr << "in test_detached2\n";
     std::promise<int> p;
     std::future f = p.get_future();
 
-    std::cerr << "calling co_detach\n";
     co_detach(detached2(p));
-    std::cerr << "returning\n";
     co_return f.get();
 }
 

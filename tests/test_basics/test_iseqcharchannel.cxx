@@ -26,26 +26,33 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_HXX_INCLUDED
-#define SK_CIO_HXX_INCLUDED
+#include <catch.hpp>
 
-#include <sk/cio/async_invoke.hxx>
-#include <sk/cio/co_detach.hxx>
-#include <sk/cio/error.hxx>
-#include <sk/cio/expected.hxx>
-#include <sk/cio/task.hxx>
-#include <sk/cio/wait.hxx>
-#include <sk/cio/read.hxx>
-#include <sk/cio/write.hxx>
+#include <cstring>
+#include <sk/cio.hxx>
 
-#include <sk/cio/filechannel.hxx>
-#include <sk/cio/memchannel.hxx>
-#include <sk/cio/charchannel.hxx>
+using namespace sk::cio;
 
-#include <sk/cio/net/address.hxx>
-#include <sk/cio/net/tcpchannel.hxx>
-#include <sk/cio/net/tcpserverchannel.hxx>
+TEST_CASE("iseqcharchannel<char> read_some") {
+    char const inbuf[] = { 'A', 'B', 'C' };
+    auto mchan = make_imemchannel(inbuf);
+    auto cchan = make_iseqcharchannel<char>(mchan);
 
-#include <sk/buffer/fixed_buffer.hxx>
+    char outbuf[4] = {};
+    auto r = read_some(cchan, outbuf, sizeof(outbuf));
+    REQUIRE(r);
+    REQUIRE(*r == 3);
+    REQUIRE(!std::strcmp(outbuf, "ABC"));
+}
 
-#endif // SK_CIO_HXX_INCLUDED
+TEST_CASE("iseqcharchannel<char> async_read_some") {
+    char const inbuf[] = { 'A', 'B', 'C' };
+    auto mchan = make_imemchannel(inbuf);
+    auto cchan = make_iseqcharchannel<char>(mchan);
+
+    char outbuf[4] = {};
+    auto r = wait(async_read_some(cchan, outbuf, sizeof(outbuf)));
+    REQUIRE(r);
+    REQUIRE(*r == 3);
+    REQUIRE(!std::strcmp(outbuf, "ABC"));
+}

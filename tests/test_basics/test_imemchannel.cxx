@@ -40,33 +40,14 @@
 
 using namespace sk::cio;
 
-TEST_CASE("imemchannel::open() out of range fails") {
-    std::byte const *buf =
-        reinterpret_cast<std::byte const *>(static_cast<uintptr_t>(-10));
-    imemchannel chnl;
-    auto ret = chnl.open(buf, 20);
-    REQUIRE(!ret);
-    REQUIRE(ret.error() == std::errc::bad_address);
-}
-
-TEST_CASE("imemchannel::open() end before begin fails") {
-    char buf[2];
-    imemchannel chnl;
-    auto ret = chnl.open(buf + 1, buf);
-    REQUIRE(!ret);
-    REQUIRE(ret.error() == std::errc::bad_address);
-}
-
-TEST_CASE("imemchannel::read_some()") {
+TEST_CASE("imemchannel::read_some() partial buffer") {
     char buf[20] = {'A', 'B', 'C'};
     std::byte dat[4];
     std::memset(dat, 'X', sizeof dat);
 
-    imemchannel chnl;
-    auto ret = chnl.open(buf, sizeof buf);
-    REQUIRE(ret);
+    auto chnl = make_imemchannel(buf);
 
-    auto nbytes = chnl.read_some(dat, 3);
+    auto nbytes = read_some(chnl, dat, 3);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 3);
     REQUIRE(dat[0] == std::byte{'A'});
@@ -75,28 +56,42 @@ TEST_CASE("imemchannel::read_some()") {
     REQUIRE(dat[3] == std::byte{'X'});
 }
 
+TEST_CASE("imemchannel::read_some() entire buffer") {
+    char inbuf[] = {'A', 'B', 'C' };
+    std::byte outbuf[10];
+    std::memset(outbuf, 'X', sizeof outbuf);
+
+    auto chnl = make_imemchannel(inbuf);
+
+    auto nbytes = read_some(chnl, outbuf);
+    REQUIRE(nbytes);
+    REQUIRE(*nbytes == 3);
+    REQUIRE(outbuf[0] == std::byte{'A'});
+    REQUIRE(outbuf[1] == std::byte{'B'});
+    REQUIRE(outbuf[2] == std::byte{'C'});
+    REQUIRE(outbuf[3] == std::byte{'X'});
+}
+
 TEST_CASE("imemchannel::read_some() single-byte") {
     char buf[3] = {'A', 'B', 'C'};
     std::byte dat[4];
     std::memset(dat, 'X', sizeof dat);
 
-    imemchannel chnl;
-    auto ret = chnl.open(buf, sizeof buf);
-    REQUIRE(ret);
+    auto chnl = make_imemchannel(buf);
 
-    auto nbytes = chnl.read_some(dat, 1);
+    auto nbytes = read_some(chnl, dat, 1);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.read_some(dat + 1, 1);
+    nbytes = read_some(chnl, std::span(dat + 1, 1));
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.read_some(dat + 2, 1);
+    nbytes = read_some(chnl, std::span(dat + 2, 1));
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.read_some(dat, 1);
+    nbytes = read_some(chnl, dat, 1);
     REQUIRE(!nbytes);
     REQUIRE(nbytes.error() == error::end_of_file);
 
@@ -111,9 +106,7 @@ TEST_CASE("imemchannel::read_some_at() single-byte") {
     std::byte dat[4];
     std::memset(dat, 'X', sizeof dat);
 
-    imemchannel chnl;
-    auto ret = chnl.open(buf, sizeof buf);
-    REQUIRE(ret);
+    auto chnl = make_imemchannel(buf);
 
     auto nbytes = chnl.read_some_at(0, dat, 1);
     REQUIRE(nbytes);
@@ -142,9 +135,7 @@ TEST_CASE("imemchannel::read_some() past the end") {
     std::byte dat[4];
     std::memset(dat, 'X', sizeof dat);
 
-    imemchannel chnl;
-    auto ret = chnl.open(buf, sizeof buf);
-    REQUIRE(ret);
+    auto chnl = make_imemchannel(buf);
 
     auto nbytes = chnl.read_some(dat, 4);
     REQUIRE(nbytes);
@@ -160,9 +151,7 @@ TEST_CASE("imemchannel::read_some_at() with an invalid location") {
     std::byte dat[4];
     std::memset(dat, 'X', sizeof dat);
 
-    imemchannel chnl;
-    auto ret = chnl.open(buf, sizeof buf);
-    REQUIRE(ret);
+    auto chnl = make_imemchannel(buf);
 
     auto nbytes = chnl.read_some_at(4, dat, 1);
     REQUIRE(!nbytes);
