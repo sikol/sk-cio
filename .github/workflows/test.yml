@@ -152,9 +152,9 @@ jobs:
         working-directory: ${{github.workspace}}/build
         run: |
           cmake                                                               \
-              -DCMAKE_C_COMPILER=clang                                        \
+              -DCMAKE_C_COMPILER=clang-11                                     \
               -DCMAKE_C_FLAGS="-m64 -O2 -g3"                                  \
-              -DCMAKE_CXX_COMPILER=clang++                                    \
+              -DCMAKE_CXX_COMPILER=clang++-11                                 \
               -DCMAKE_CXX_FLAGS="-m64 -O2 -g3 -std=c++20 -fcoroutines-ts"     \
               -DCMAKE_BUILD_TYPE=$BUILD_TYPE                                  \
               -DSK_CIO_DISABLE_IO_URING=ON                                    \
