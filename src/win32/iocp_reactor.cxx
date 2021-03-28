@@ -26,19 +26,21 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <sk/cio/reactor.hxx>
-#include <sk/cio/win32/error.hxx>
-#include <sk/cio/win32/iocp_reactor.hxx>
+#include <sk/reactor.hxx>
+#include <sk/win32/detail/iocp_reactor.hxx>
+#include <sk/win32/error.hxx>
 
-namespace sk::cio::win32 {
+namespace sk::win32::detail {
 
-    iocp_reactor::iocp_reactor() {
+    iocp_reactor::iocp_reactor()
+    {
         auto hdl =
             ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0);
         completion_port.assign(hdl);
     }
 
-    auto iocp_reactor::completion_thread_fn() -> void {
+    auto iocp_reactor::completion_thread_fn() -> void
+    {
         auto port_handle = completion_port.native_handle();
 
         for (;;) {
@@ -47,8 +49,11 @@ namespace sk::cio::win32 {
             iocp_coro_state *overlapped = nullptr;
 
             auto ret = ::GetQueuedCompletionStatus(
-                port_handle, &bytes_transferred, &completion_key,
-                reinterpret_cast<OVERLAPPED **>(&overlapped), INFINITE);
+                port_handle,
+                &bytes_transferred,
+                &completion_key,
+                reinterpret_cast<OVERLAPPED **>(&overlapped),
+                INFINITE);
 
             if (overlapped == nullptr)
                 // Happens when our completion port is closed.
@@ -67,14 +72,13 @@ namespace sk::cio::win32 {
                 }
             }
 
-            auto h = overlapped->coro_handle;
-            _workq.post([=] {
-                h.resume();
-            });
+            auto &h = overlapped->coro_handle;
+            _workq.post([&] { h.resume(); });
         }
     }
 
-    auto iocp_reactor::start() -> void {
+    auto iocp_reactor::start() -> void
+    {
         WSADATA wsadata;
         ::WSAStartup(MAKEWORD(2, 2), &wsadata);
 
@@ -83,18 +87,21 @@ namespace sk::cio::win32 {
         _workq.start_threads();
     }
 
-    auto iocp_reactor::stop() -> void {
+    auto iocp_reactor::stop() -> void
+    {
         _workq.stop();
         completion_port.close();
         completion_thread.join();
     }
 
-    auto iocp_reactor::associate_handle(HANDLE h) -> void {
+    auto iocp_reactor::associate_handle(HANDLE h) -> void
+    {
         ::CreateIoCompletionPort(h, completion_port.native_handle(), 0, 0);
     }
 
-    auto iocp_reactor::post(std::function<void()> fn) -> void {
+    auto iocp_reactor::post(std::function<void()> fn) -> void
+    {
         _workq.post(std::move(fn));
     }
 
-} // namespace sk::cio::win32
+} // namespace sk::win32::detail

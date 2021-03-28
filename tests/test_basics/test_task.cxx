@@ -34,11 +34,11 @@
 #include <string>
 #include <iostream>
 
-#include <sk/cio/task.hxx>
-#include <sk/cio/wait.hxx>
-#include <sk/cio/co_detach.hxx>
+#include <sk/task.hxx>
+#include <sk/wait.hxx>
+#include <sk/co_detach.hxx>
 
-using sk::cio::task;
+using sk::task;
 
 auto get_int() -> task<int> {
     co_return 42;

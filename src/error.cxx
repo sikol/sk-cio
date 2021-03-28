@@ -26,17 +26,19 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <sk/cio/error.hxx>
+#include <sk/channel/error.hxx>
 
-namespace sk::cio {
+namespace sk {
 
     namespace detail {
 
-        auto cio_errc_category::name() const noexcept -> char const * {
-            return "async";
+        auto cio_errc_category::name() const noexcept -> char const *
+        {
+            return "channel";
         }
 
-        auto cio_errc_category::message(int c) const -> std::string {
+        auto cio_errc_category::message(int c) const -> std::string
+        {
             switch (static_cast<error>(c)) {
             case error::no_error:
                 return "success";
@@ -44,11 +46,11 @@ namespace sk::cio {
             case error::end_of_file:
                 return "end of file";
 
-//            case error::no_space_in_buffer:
-//                return "no space in buffer";
+                //            case error::no_space_in_buffer:
+                //                return "no space in buffer";
 
-//            case error::no_data_in_buffer:
-//                return "no data in buffer";
+                //            case error::no_data_in_buffer:
+                //                return "no data in buffer";
 
             case error::filechannel_invalid_flags:
                 return "invalid filechannel flags";
@@ -71,13 +73,15 @@ namespace sk::cio {
 
     } // namespace detail
 
-    auto async_errc_category() -> detail::cio_errc_category const & {
+    auto async_errc_category() -> detail::cio_errc_category const &
+    {
         static detail::cio_errc_category c;
         return c;
     }
 
-    auto make_error_code(error e) -> std::error_code {
+    auto make_error_code(error e) -> std::error_code
+    {
         return {static_cast<int>(e), async_errc_category()};
     }
 
-} // namespace sk::cio
+} // namespace sk

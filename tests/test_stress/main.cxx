@@ -29,10 +29,10 @@
 #define CATCH_CONFIG_RUNNER
 #include <catch.hpp>
 
-#include <sk/cio/reactor.hxx>
+#include <sk/reactor.hxx>
 
 int main(int argc, char **argv) {
-    sk::cio::reactor_handle reactor;
+    sk::reactor_handle reactor;
 
     int result = Catch::Session().run(argc, argv);
 

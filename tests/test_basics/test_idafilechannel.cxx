@@ -34,14 +34,15 @@
 #include <stdexcept>
 #include <string>
 
-#include <sk/cio/filechannel/idafilechannel.hxx>
-#include <sk/cio/read.hxx>
-#include <sk/cio/task.hxx>
-#include <sk/cio/wait.hxx>
+#include <sk/channel/filechannel/idafilechannel.hxx>
+#include <sk/channel/read.hxx>
+#include <sk/wait.hxx>
+#include <sk/task.hxx>
 
-using namespace sk::cio;
+using namespace sk;
 
-TEST_CASE("idafilechannel::read()") {
+TEST_CASE("idafilechannel::read()")
+{
     std::string test_string = "This is a test\n";
 
     {
@@ -71,7 +72,8 @@ TEST_CASE("idafilechannel::read()") {
         REQUIRE(*nbytes == 15 - i);
         auto expected = std::vector<std::byte>(
             reinterpret_cast<std::byte *>(test_string.data() + i),
-            reinterpret_cast<std::byte *>(test_string.data() + test_string.size()));
+            reinterpret_cast<std::byte *>(test_string.data() +
+                                          test_string.size()));
         REQUIRE(buf == expected);
     }
 
@@ -81,7 +83,8 @@ TEST_CASE("idafilechannel::read()") {
     REQUIRE(nbytes.error() == error::end_of_file);
 }
 
-TEST_CASE("idafilechannel::async_read()") {
+TEST_CASE("idafilechannel::async_read()")
+{
     std::string test_string = "This is a test\n";
 
     {

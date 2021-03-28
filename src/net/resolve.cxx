@@ -26,12 +26,13 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <sk/cio/net/address.hxx>
-#include <sk/cio/async_invoke.hxx>
-#include <sk/cio/win32/windows.hxx>
+#include <sk/async_invoke.hxx>
+#include <sk/detail/platform.hxx>
+#include <sk/net/address.hxx>
 
-#ifdef _WIN32
-#    include <sk/cio/win32/error.hxx>
+#ifdef SK_CIO_PLATFORM_WINDOWS
+#    include <sk/win32/error.hxx>
+#    include <sk/win32/windows.hxx>
 #endif
 
 #ifndef NI_MAXHOST
@@ -42,25 +43,29 @@
 #    define NI_MAXSERV 32
 #endif
 
-namespace sk::cio::net {
+namespace sk::net {
     namespace detail {
 
-        auto resolver_errc_category::name() const noexcept -> char const * {
+        auto resolver_errc_category::name() const noexcept -> char const *
+        {
             return "resolver";
         }
 
-        auto resolver_errc_category::message(int c) const -> std::string {
+        auto resolver_errc_category::message(int c) const -> std::string
+        {
             return gai_strerror(c);
         }
 
     } // namespace detail
 
-    auto resolver_errc_category() -> detail::resolver_errc_category const & {
+    auto resolver_errc_category() -> detail::resolver_errc_category const &
+    {
         static detail::resolver_errc_category c;
         return c;
     }
 
-    auto make_error_code(resolver_error e) -> std::error_code {
+    auto make_error_code(resolver_error e) -> std::error_code
+    {
         return {static_cast<int>(e), resolver_errc_category()};
     }
 
@@ -68,16 +73,17 @@ namespace sk::cio::net {
      * make_address()
      */
     auto make_address(std::string const &hostname, std::string const &service)
-        -> expected<address, std::error_code> {
+        -> expected<address, std::error_code>
+    {
 
-        addrinfo hints;
+        addrinfo hints{};
         addrinfo *gai_result;
-        std::memset(&hints, 0, sizeof(hints));
         hints.ai_flags = AI_NUMERICHOST;
 
         auto ret = ::getaddrinfo(hostname.c_str(),
                                  service.empty() ? nullptr : service.c_str(),
-                                 &hints, &gai_result);
+                                 &hints,
+                                 &gai_result);
 
         if (ret)
             return make_unexpected(
@@ -94,16 +100,18 @@ namespace sk::cio::net {
     /*************************************************************************
      * async_resolve()
      */
-    auto async_resolve_address(std::string hostname, std::string port)
-        -> task<expected<std::vector<address>, std::error_code>> {
+    auto async_resolve_address(std::string const &hostname,
+                               std::string const &port)
+        -> task<expected<std::vector<address>, std::error_code>>
+    {
 
-        addrinfo hints;
+        addrinfo hints{};
         addrinfo *gai_result;
-        std::memset(&hints, 0, sizeof(hints));
 
         auto ret = co_await async_invoke([&] {
             return ::getaddrinfo(hostname.c_str(),
-                                 port.empty() ? nullptr : port.c_str(), &hints,
+                                 port.empty() ? nullptr : port.c_str(),
+                                 &hints,
                                  &gai_result);
         });
 
@@ -126,13 +134,18 @@ namespace sk::cio::net {
     /*************************************************************************
      * operator<< (ostream, address)
      */
-    std::ostream &operator<<(std::ostream &strm, address const &addr) {
+    std::ostream &operator<<(std::ostream &strm, address const &addr)
+    {
         char host[NI_MAXHOST];
         char port[NI_MAXSERV];
 
         auto ret = getnameinfo(
             reinterpret_cast<sockaddr const *>(&addr.native_address),
-            addr.native_address_length, host, sizeof(host), port, sizeof(port),
+            addr.native_address_length,
+            host,
+            sizeof(host),
+            port,
+            sizeof(port),
             NI_NUMERICHOST | NI_NUMERICSERV);
 
         if (ret) {
@@ -140,15 +153,15 @@ namespace sk::cio::net {
             return strm;
         }
 
-        if (port != 0 && std::strchr(host, ':') != NULL)
+        if (*port != '\0' && (std::strchr(host, ':') != nullptr))
             strm << '[' << host << ']';
         else
             strm << host;
 
-        if (strcmp(port, "0"))
+        if (std::strcmp(port, "0") != 0)
             strm << ":" << port;
 
         return strm;
     }
 
-} // namespace sk::cio::net
+} // namespace sk::net

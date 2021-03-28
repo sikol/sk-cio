@@ -27,10 +27,10 @@
 cmake_minimum_required(VERSION 3.12)
 
 add_executable(async_type async_type.cxx)
-target_link_libraries(async_type PRIVATE sk-cio fmt::fmt)
+target_link_libraries(async_type PRIVATE sk-cio fmt)
 
 add_executable(async_resolve async_resolve.cxx)
-target_link_libraries(async_resolve PRIVATE sk-cio fmt::fmt)
+target_link_libraries(async_resolve PRIVATE sk-cio fmt)
 
 add_executable(async_tcp_echo_server async_tcp_echo_server.cxx)
-target_link_libraries(async_tcp_echo_server PRIVATE sk-cio fmt::fmt)
+target_link_libraries(async_tcp_echo_server PRIVATE sk-cio fmt)

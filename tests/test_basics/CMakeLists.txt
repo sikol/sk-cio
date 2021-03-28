@@ -41,7 +41,7 @@ add_executable(test_basics
     test_seqcharchannel.cxx
     )
 
-target_link_libraries(test_basics PRIVATE sk-cio Catch2::Catch2 fmt::fmt)
+target_link_libraries(test_basics PRIVATE sk-cio catch fmt)
 
 add_test(NAME test_basics
     COMMAND $<TARGET_FILE:test_basics>)

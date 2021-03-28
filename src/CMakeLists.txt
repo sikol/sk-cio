@@ -43,44 +43,53 @@ target_sources(sk-cio PRIVATE
     reactor.cxx
     net/resolve.cxx
 
-    include/sk/cio/channel/concepts.hxx
-    include/sk/cio/write.hxx
-    include/sk/cio/read.hxx
-    include/sk/cio/charchannel.hxx
-    include/sk/cio/channel/pmr_channel.hxx
+    include/sk/channel/concepts.hxx
+    include/sk/channel/error.hxx
+    include/sk/channel/types.hxx
+    include/sk/channel/concepts.hxx
+    include/sk/channel/charchannel.hxx
+    include/sk/channel/filechannel.hxx
+    include/sk/channel/memchannel.hxx
+    include/sk/channel/pmr_channel.hxx
+    include/sk/channel/write.hxx
+    include/sk/channel/read.hxx
 
-    include/sk/cio/filechannel.hxx
-    include/sk/cio/filechannel/detail/filechannel_base.hxx
-    include/sk/cio/filechannel/filechannel.hxx
-    include/sk/cio/filechannel/idafilechannel.hxx
-    include/sk/cio/filechannel/odafilechannel.hxx
-    include/sk/cio/filechannel/dafilechannel.hxx
-    include/sk/cio/filechannel/iseqfilechannel.hxx
-    include/sk/cio/filechannel/oseqfilechannel.hxx
-    include/sk/cio/filechannel/seqfilechannel.hxx
+    include/sk/channel/filechannel/detail/filechannel_base.hxx
+    include/sk/channel/filechannel/filechannel.hxx
+    include/sk/channel/filechannel/idafilechannel.hxx
+    include/sk/channel/filechannel/odafilechannel.hxx
+    include/sk/channel/filechannel/dafilechannel.hxx
+    include/sk/channel/filechannel/iseqfilechannel.hxx
+    include/sk/channel/filechannel/oseqfilechannel.hxx
+    include/sk/channel/filechannel/seqfilechannel.hxx
 
-    include/sk/cio/memchannel/detail/memchannel_base.hxx
-    include/sk/cio/memchannel/imemchannel.hxx
-    include/sk/cio/memchannel/omemchannel.hxx
-    include/sk/cio/memchannel/memchannel.hxx
-    include/sk/cio/memchannel.hxx
+    include/sk/channel/memchannel/detail/memchannel_base.hxx
+    include/sk/channel/memchannel/imemchannel.hxx
+    include/sk/channel/memchannel/omemchannel.hxx
 
-    include/sk/cio/net/address.hxx
-    include/sk/cio/net/tcpchannel.hxx
-    include/sk/cio/net/tcpserverchannel.hxx
+    include/sk/net/address.hxx
+    include/sk/net/tcpchannel.hxx
+    include/sk/net/tcpserverchannel.hxx
 
-    include/sk/cio/detail/config.hxx
-    include/sk/cio/detail/safeint.hxx
+    include/sk/detail/platform.hxx
+    include/sk/detail/safeint.hxx
+    include/sk/detail/coroutine.hxx
+    include/sk/detail/clang_experimental_coroutine.hxx
 
-    include/sk/cio/concepts.hxx
-    include/sk/cio/error.hxx
-    include/sk/cio/task.hxx
-    include/sk/cio/types.hxx
-    include/sk/cio/reactor.hxx
-    include/sk/cio/async_invoke.hxx
-    include/sk/cio/expected.hxx
-    include/sk/cio/co_detach.hxx
-    include/sk/cio/workq.hxx
+    include/sk/task.hxx
+    include/sk/reactor.hxx
+    include/sk/async_invoke.hxx
+    include/sk/expected.hxx
+    include/sk/co_detach.hxx
+    include/sk/workq.hxx
+    include/sk/check.hxx
+
+    include/sk/buffer/circular_buffer.hxx
+    include/sk/buffer/dynamic_buffer.hxx
+    include/sk/buffer/fixed_buffer.hxx
+    include/sk/buffer/range_buffer.hxx
+    include/sk/buffer/pmr_buffer.hxx
+    include/sk/buffer.hxx
 
     include/sk/cio.hxx
     )
@@ -91,24 +100,24 @@ if (WIN32)
         win32/iocp_reactor.cxx
         win32/async_api.cxx
 
-        include/sk/cio/win32/filechannel/detail/filechannel_base.hxx
-        include/sk/cio/win32/net/tcpchannel.hxx
-        include/sk/cio/win32/net/tcpserverchannel.hxx
+        include/sk/win32/detail/iocp_reactor.hxx
+        include/sk/win32/detail/filechannel/filechannel_base.hxx
+        include/sk/win32/detail/net/tcpchannel.hxx
+        include/sk/win32/detail/net/tcpserverchannel.hxx
 
-        include/sk/cio/win32/error.hxx
-        include/sk/cio/win32/handle.hxx
-        include/sk/cio/win32/iocp_reactor.hxx
-        include/sk/cio/win32/windows.hxx
-        include/sk/cio/win32/async_api.hxx
+        include/sk/win32/error.hxx
+        include/sk/win32/handle.hxx
+        include/sk/win32/windows.hxx
+        include/sk/win32/async_api.hxx
         )
 endif ()
 
 if (UNIX)
     if (CMAKE_SYSTEM_NAME STREQUAL Linux)
         target_sources(sk-cio PRIVATE
-            include/sk/cio/posix/epoll_reactor.hxx
-            include/sk/cio/posix/io_uring_reactor.hxx
-            include/sk/cio/posix/linux_reactor.hxx
+            include/sk/posix/detail/epoll_reactor.hxx
+            include/sk/posix/detail/io_uring_reactor.hxx
+            include/sk/posix/detail/linux_reactor.hxx
             posix/epoll_reactor.cxx
             posix/linux_reactor.cxx)
 
@@ -129,26 +138,23 @@ if (UNIX)
     target_sources(sk-cio PRIVATE
         posix/async_api.cxx
 
-        include/sk/cio/posix/filechannel/detail/dafilechannel_base.hxx
-        include/sk/cio/posix/net/tcpchannel.hxx
-        include/sk/cio/posix/net/tcpserverchannel.hxx
+        include/sk/posix/detail/filechannel/dafilechannel_base.hxx
+        include/sk/posix/detail/net/tcpchannel.hxx
+        include/sk/posix/detail/net/tcpserverchannel.hxx
 
-        include/sk/cio/posix/async_api.hxx
-        include/sk/cio/posix/error.hxx
-        include/sk/cio/posix/fd.hxx
+        include/sk/posix/async_api.hxx
+        include/sk/posix/error.hxx
+        include/sk/posix/fd.hxx
         )
 
     if (SK_CIO_HAVE_IO_URING)
         target_sources(sk-cio PRIVATE posix/io_uring_reactor.cxx)
+        target_compile_definitions(sk-cio PUBLIC SK_CIO_HAVE_IO_URING)
         target_link_libraries(sk-cio PRIVATE uring)
     endif ()
 endif ()
 
-configure_file(include/sk/cio/detail/build.hxx.in include/sk/cio/detail/build.hxx)
-
 target_include_directories(sk-cio PUBLIC include)
-target_include_directories(sk-cio PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/include)
-target_link_libraries(sk-cio PUBLIC tl::expected)
 
 if (WIN32)
     target_link_libraries(sk-cio PUBLIC wsock32 ws2_32)

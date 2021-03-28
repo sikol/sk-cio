@@ -34,11 +34,11 @@
 #include <stdexcept>
 #include <string>
 
-#include <sk/cio/filechannel/odafilechannel.hxx>
-#include <sk/cio/write.hxx>
-#include <sk/cio/task.hxx>
+#include <sk/channel/filechannel/odafilechannel.hxx>
+#include <sk/channel/write.hxx>
+#include <sk/task.hxx>
 
-using namespace sk::cio;
+using namespace sk;
 
 #if 0
 TEST_CASE("odafilechannel::write_some_at()") {

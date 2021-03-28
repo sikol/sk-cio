@@ -31,7 +31,7 @@
 #include <cstring>
 #include <sk/cio.hxx>
 
-using namespace sk::cio;
+using namespace sk;
 
 TEST_CASE("iseqcharchannel<char> read_some") {
     char const inbuf[] = { 'A', 'B', 'C' };

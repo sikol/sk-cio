@@ -34,7 +34,7 @@
 
 #include <sk/cio.hxx>
 
-using namespace sk::cio;
+using namespace sk;
 using namespace std::literals::chrono_literals;
 
 constexpr int nthreads = 25;

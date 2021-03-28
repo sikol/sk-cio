@@ -26,10 +26,9 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <sk/cio/detail/config.hxx>
-#include <sk/cio/posix/linux_reactor.hxx>
+#include <sk/posix/detail/linux_reactor.hxx>
 
-namespace sk::cio::posix {
+namespace sk::posix::detail {
 
     linux_reactor::linux_reactor()
     {
@@ -97,7 +96,6 @@ namespace sk::cio::posix {
         return _epoll->async_fd_close(fd);
     }
 
-
     auto linux_reactor::async_fd_read(int fd, void *buf, std::size_t n)
         -> task<expected<ssize_t, std::error_code>>
     {
@@ -148,7 +146,7 @@ namespace sk::cio::posix {
 
     auto
     linux_reactor::async_fd_recv(int fd, void *buf, std::size_t n, int flags)
-    -> task<expected<ssize_t, std::error_code>>
+        -> task<expected<ssize_t, std::error_code>>
     {
         return _epoll->async_fd_recv(fd, buf, n, flags);
     }
@@ -157,7 +155,7 @@ namespace sk::cio::posix {
                                       const void *buf,
                                       std::size_t n,
                                       int flags)
-    -> task<expected<ssize_t, std::error_code>>
+        -> task<expected<ssize_t, std::error_code>>
     {
         return _epoll->async_fd_send(fd, buf, n, flags);
     }
@@ -170,10 +168,11 @@ namespace sk::cio::posix {
         return _epoll->async_fd_connect(fd, addr, addrlen);
     }
 
-    auto linux_reactor::async_fd_accept(int fd, sockaddr *addr, socklen_t *addrlen)
+    auto
+    linux_reactor::async_fd_accept(int fd, sockaddr *addr, socklen_t *addrlen)
         -> task<expected<int, std::error_code>>
     {
         return _epoll->async_fd_accept(fd, addr, addrlen);
     }
 
-} // namespace sk::cio::posix
+} // namespace sk::posix

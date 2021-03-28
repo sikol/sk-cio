@@ -26,10 +26,9 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <sk/cio/detail/config.hxx>
-#include <sk/cio/reactor.hxx>
+#include <sk/reactor.hxx>
 
-namespace sk::cio {
+namespace sk {
 
     int reactor_handle::refs = 0;
     std::mutex reactor_handle::mutex;
@@ -58,4 +57,4 @@ namespace sk::cio {
         return global_reactor;
     }
 
-} // namespace sk::cio
+} // namespace sk

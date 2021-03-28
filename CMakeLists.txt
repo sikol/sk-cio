@@ -30,10 +30,7 @@ project(sk-cio VERSION 1.0.0)
 
 enable_testing()
 
-find_package(Catch2 CONFIG REQUIRED)
-find_package(tl-expected REQUIRED)
-find_package(fmt REQUIRED)
-
+add_subdirectory(thirdparty)
 add_subdirectory(tests)
 add_subdirectory(src)
 add_subdirectory(sample)

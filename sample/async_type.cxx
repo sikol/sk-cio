@@ -34,7 +34,7 @@
 
 #include <sk/cio.hxx>
 
-using namespace sk::cio;
+using namespace sk;
 
 task<void> print_file(std::string const &name) {
     iseqfilechannel chnl;
@@ -50,7 +50,7 @@ task<void> print_file(std::string const &name) {
         auto nbytes = co_await async_read_some(chnl, buffer, unlimited);
 
         if (!nbytes) {
-            if (nbytes.error() != sk::cio::error::end_of_file)
+            if (nbytes.error() != sk::error::end_of_file)
                 std::cerr << name << ": " << nbytes.error().message() << "\n";
             break;
         }
@@ -74,7 +74,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    sk::cio::reactor_handle reactor;
+    sk::reactor_handle reactor;
 
     for (auto &&file : std::span(argv + 1, argv + argc)) {
         wait(print_file(file));

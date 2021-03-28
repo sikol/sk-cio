@@ -26,20 +26,16 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <sk/cio/detail/config.hxx>
+#include <sys/epoll.h>
+#include <cassert>
+#include <fcntl.h>
 
-#if defined(SK_CIO_PLATFORM_LINUX)
+#include <sk/async_invoke.hxx>
+#include <sk/posix/detail/epoll_reactor.hxx>
+#include <sk/posix/error.hxx>
+#include <sk/reactor.hxx>
 
-#    include <sys/epoll.h>
-#    include <cassert>
-#    include <fcntl.h>
-
-#    include <sk/cio/async_invoke.hxx>
-#    include <sk/cio/posix/epoll_reactor.hxx>
-#    include <sk/cio/posix/error.hxx>
-#    include <sk/cio/reactor.hxx>
-
-namespace sk::cio::posix {
+namespace sk::posix::detail {
 
     epoll_reactor::epoll_reactor(workq &q) : _workq(q)
     {
@@ -87,10 +83,10 @@ namespace sk::cio::posix {
                         // std::cerr << "epoll_reactor : resuming the
                         // read_waiter\n";
                         std::lock_guard h_lock(state->read_waiter->mutex);
-                        auto h = state->read_waiter->coro_handle;
+                        auto &h = state->read_waiter->coro_handle;
                         state->read_waiter = nullptr;
                         state->event.events &= ~EPOLLIN;
-                        _workq.post([=] { h.resume(); });
+                        _workq.post([&] { h.resume(); });
                     }
                 }
 
@@ -104,7 +100,7 @@ namespace sk::cio::posix {
                         auto h = state->write_waiter->coro_handle;
                         state->write_waiter = nullptr;
                         state->event.events &= ~EPOLLOUT;
-                        _workq.post([=] { h.resume(); });
+                        _workq.post([&] { h.resume(); });
                     }
                 }
             }
@@ -226,7 +222,7 @@ namespace sk::cio::posix {
             return false;
         }
 
-        bool await_suspend(std::coroutine_handle<> coro_handle_)
+        bool await_suspend(coroutine_handle<> coro_handle_)
         {
             std::lock_guard lock(cstate.mutex);
             cstate.coro_handle = coro_handle_;
@@ -252,7 +248,7 @@ namespace sk::cio::posix {
             return false;
         }
 
-        bool await_suspend(std::coroutine_handle<> coro_handle_)
+        bool await_suspend(coroutine_handle<> coro_handle_)
         {
             std::lock_guard lock(cstate.mutex);
             cstate.coro_handle = coro_handle_;
@@ -429,6 +425,4 @@ namespace sk::cio::posix {
             co_return ret;
     }
 
-} // namespace sk::cio::posix
-
-#endif // SK_CIO_PLATFORM_LINUX
+} // namespace sk::posix::detail

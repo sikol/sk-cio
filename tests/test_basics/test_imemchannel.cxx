@@ -29,16 +29,11 @@
 #include <catch.hpp>
 
 #include <cstring>
-#include <fstream>
-#include <iostream>
-#include <stdexcept>
-#include <string>
 
-#include <sk/cio/memchannel/imemchannel.hxx>
-#include <sk/cio/read.hxx>
-#include <sk/cio/task.hxx>
+#include <sk/channel/read.hxx>
+#include <sk/channel/memchannel/imemchannel.hxx>
 
-using namespace sk::cio;
+using namespace sk;
 
 TEST_CASE("imemchannel::read_some() partial buffer") {
     char buf[20] = {'A', 'B', 'C'};

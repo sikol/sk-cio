@@ -29,20 +29,16 @@
 #include <catch.hpp>
 
 #include <cstring>
-#include <fstream>
-#include <iostream>
-#include <stdexcept>
-#include <string>
 
-#include <sk/cio/memchannel/omemchannel.hxx>
-#include <sk/cio/read.hxx>
-#include <sk/cio/write.hxx>
-#include <sk/cio/task.hxx>
-#include <sk/cio/wait.hxx>
+#include <sk/channel/memchannel/omemchannel.hxx>
+#include <sk/channel/read.hxx>
+#include <sk/channel/write.hxx>
+#include <sk/wait.hxx>
 
-using namespace sk::cio;
+using namespace sk;
 
-TEST_CASE("omemchannel::write_some()") {
+TEST_CASE("omemchannel::write_some()")
+{
     std::byte const buf[] = {std::byte('A'), std::byte('B'), std::byte('C')};
     char out[4];
     std::memset(out, 'X', sizeof out);
@@ -58,7 +54,8 @@ TEST_CASE("omemchannel::write_some()") {
     REQUIRE(out[3] == 'X');
 }
 
-TEST_CASE("omemchannel::async_write_some()") {
+TEST_CASE("omemchannel::async_write_some()")
+{
     std::byte const buf[] = {std::byte('A'), std::byte('B'), std::byte('C')};
     char out[4];
     std::memset(out, 'X', sizeof out);
@@ -74,7 +71,8 @@ TEST_CASE("omemchannel::async_write_some()") {
     REQUIRE(out[3] == 'X');
 }
 
-TEST_CASE("omemchannel::write_some() single byte") {
+TEST_CASE("omemchannel::write_some() single byte")
+{
     std::byte const buf[] = {std::byte('A'), std::byte('B'), std::byte('C')};
     char out[4];
     std::memset(out, 'X', sizeof out);
@@ -103,7 +101,8 @@ TEST_CASE("omemchannel::write_some() single byte") {
     REQUIRE(out[3] == 'X');
 }
 
-TEST_CASE("omemchannel::async_write_some() single byte") {
+TEST_CASE("omemchannel::async_write_some() single byte")
+{
     std::byte const buf[] = {std::byte('A'), std::byte('B'), std::byte('C')};
     char out[4];
     std::memset(out, 'X', sizeof out);
@@ -132,7 +131,8 @@ TEST_CASE("omemchannel::async_write_some() single byte") {
     REQUIRE(out[3] == 'X');
 }
 
-TEST_CASE("omemchannel::write_some_at() single byte") {
+TEST_CASE("omemchannel::write_some_at() single byte")
+{
     std::byte const buf[] = {std::byte('A'), std::byte('B'), std::byte('C')};
     char out[4];
     std::memset(out, 'X', sizeof out);
@@ -161,9 +161,10 @@ TEST_CASE("omemchannel::write_some_at() single byte") {
     REQUIRE(out[3] == 'X');
 }
 
-TEST_CASE("omemchannel::write_some() past the end") {
-    std::byte const buf[] = {std::byte('A'), std::byte('B'), std::byte('C'),
-                             std::byte('D')};
+TEST_CASE("omemchannel::write_some() past the end")
+{
+    std::byte const buf[] = {
+        std::byte('A'), std::byte('B'), std::byte('C'), std::byte('D')};
     char out[4];
     std::memset(out, 'X', sizeof out);
 
@@ -178,7 +179,8 @@ TEST_CASE("omemchannel::write_some() past the end") {
     REQUIRE(out[3] == 'X');
 }
 
-TEST_CASE("omemchannel::write_some() with an invalid location") {
+TEST_CASE("omemchannel::write_some() with an invalid location")
+{
     std::byte const buf[] = {std::byte('A'), std::byte('B'), std::byte('C')};
     char out[4];
     std::memset(out, 'X', sizeof out);

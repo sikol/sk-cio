@@ -37,10 +37,10 @@
 #include <cassert>
 #include <system_error>
 
-#include <sk/cio/async_invoke.hxx>
-#include <sk/cio/posix/error.hxx>
-#include <sk/cio/posix/io_uring_reactor.hxx>
-#include <sk/cio/reactor.hxx>
+#include <sk/async_invoke.hxx>
+#include <sk/posix/detail/io_uring_reactor.hxx>
+#include <sk/posix/error.hxx>
+#include <sk/reactor.hxx>
 
 namespace {
 
@@ -65,7 +65,7 @@ namespace {
 
 } // namespace
 
-namespace sk::cio::posix {
+namespace sk::posix::detail {
 
     struct co_sqe_wait final {
         co_sqe_wait(io_uring_reactor *reactor_, io_uring_sqe *sqe_)
@@ -78,7 +78,7 @@ namespace sk::cio::posix {
         io_uring_sqe *sqe;
         std::int32_t ret = -1;
         std::uint32_t flags = 0;
-        std::coroutine_handle<> coro_handle;
+        coroutine_handle<> coro_handle;
         std::mutex mutex;
 
         bool await_ready()
@@ -86,7 +86,7 @@ namespace sk::cio::posix {
             return false;
         }
 
-        bool await_suspend(std::coroutine_handle<> coro_handle_)
+        bool await_suspend(coroutine_handle<> coro_handle_)
         {
             coro_handle = coro_handle_;
             std::lock_guard lock(mutex);
@@ -299,4 +299,4 @@ namespace sk::cio::posix {
         co_return co_await co_sqe_wait(this, &sqe);
     }
 
-} // namespace sk::cio::posix
+} // namespace sk::posix::detail

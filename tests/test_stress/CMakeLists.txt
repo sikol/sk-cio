@@ -32,7 +32,7 @@ add_executable(test_stress
     stress_tcpchannel.cxx
     )
 
-target_link_libraries(test_stress PRIVATE sk-cio Catch2::Catch2 fmt::fmt)
+target_link_libraries(test_stress PRIVATE sk-cio catch fmt)
 
 add_test(NAME test_stress
     COMMAND $<TARGET_FILE:test_stress>)

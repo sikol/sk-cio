@@ -26,23 +26,30 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <sk/cio/win32/error.hxx>
+#include <sk/win32/error.hxx>
 
-namespace sk::cio::win32 {
+namespace sk::win32 {
 
     namespace detail {
 
-        auto win32_errc_category::name() const noexcept -> char const * {
+        auto win32_errc_category::name() const noexcept -> char const *
+        {
             return "win32";
         }
 
-        auto win32_errc_category::message(int c) const -> std::string {
+        auto win32_errc_category::message(int c) const -> std::string
+        {
             LPSTR msgbuf;
 
-            auto len = ::FormatMessageA(
-                FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
-                    FORMAT_MESSAGE_IGNORE_INSERTS,
-                nullptr, c, 0, reinterpret_cast<LPSTR>(&msgbuf), 0, nullptr);
+            auto len = ::FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER |
+                                            FORMAT_MESSAGE_FROM_SYSTEM |
+                                            FORMAT_MESSAGE_IGNORE_INSERTS,
+                                        nullptr,
+                                        c,
+                                        0,
+                                        reinterpret_cast<LPSTR>(&msgbuf),
+                                        0,
+                                        nullptr);
 
             if (len == 0)
                 return "[FormatMessageA() failed]";
@@ -58,52 +65,58 @@ namespace sk::cio::win32 {
 
     } // namespace detail
 
-    auto win32_errc_category() -> detail::win32_errc_category const & {
+    auto win32_errc_category() -> detail::win32_errc_category const &
+    {
         static detail::win32_errc_category c;
         return c;
     }
 
-    auto make_error_code(error e) -> std::error_code {
+    auto make_error_code(error e) -> std::error_code
+    {
         switch (static_cast<DWORD>(e)) {
         case ERROR_HANDLE_EOF:
-            return cio::error::end_of_file;
+            return sk::error::end_of_file;
         default:
             return {static_cast<int>(e), win32_errc_category()};
         }
     }
 
-    auto make_win32_error(int e) -> std::error_code {
+    auto make_win32_error(int e) -> std::error_code
+    {
         return make_error_code(static_cast<error>(e));
     }
 
-    auto make_win32_error(DWORD e) -> std::error_code {
+    auto make_win32_error(DWORD e) -> std::error_code
+    {
         return make_error_code(static_cast<error>(e));
     }
 
-    auto make_win32_error(LSTATUS e) -> std::error_code {
+    auto make_win32_error(LSTATUS e) -> std::error_code
+    {
         return make_error_code(static_cast<error>(e));
     }
 
-    auto get_last_error() -> std::error_code {
+    auto get_last_error() -> std::error_code
+    {
         return make_win32_error(::GetLastError());
     }
 
-    auto get_last_winsock_error() -> std::error_code {
+    auto get_last_winsock_error() -> std::error_code
+    {
         return make_win32_error(::WSAGetLastError());
     }
 
-    auto win32_to_generic_error(std::error_code ec) -> std::error_code {
+    auto win32_to_generic_error(std::error_code ec) -> std::error_code
+    {
         // If it's not a Win32 error to begin with, return it as-is.
         if (&ec.category() != &win32_errc_category())
             return ec;
 
         switch (ec.value()) {
         case ERROR_HANDLE_EOF:
-            return cio::error::end_of_file;
+            return sk::error::end_of_file;
 
         case ERROR_FILE_NOT_FOUND:
-            return std::make_error_code(std::errc::no_such_file_or_directory);
-
         case ERROR_PATH_NOT_FOUND:
             return std::make_error_code(std::errc::no_such_file_or_directory);
 
@@ -122,4 +135,5 @@ namespace sk::cio::win32 {
             return ec;
         }
     }
-} // namespace sk::async::win32
+
+} // namespace sk::win32

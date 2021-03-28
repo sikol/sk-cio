@@ -36,12 +36,12 @@
 #include <cstring>
 #include <system_error>
 
-#include <sk/cio/async_invoke.hxx>
-#include <sk/cio/expected.hxx>
-#include <sk/cio/posix/async_api.hxx>
-#include <sk/cio/posix/error.hxx>
-#include <sk/cio/reactor.hxx>
-#include <sk/cio/task.hxx>
+#include <sk/async_invoke.hxx>
+#include <sk/expected.hxx>
+#include <sk/posix/async_api.hxx>
+#include <sk/posix/error.hxx>
+#include <sk/reactor.hxx>
+#include <sk/task.hxx>
 
 namespace sk::cio::posix {
 
@@ -50,6 +50,5 @@ namespace sk::cio::posix {
      * POSIX async API.
      *
      */
-
 
 } // namespace sk::cio::posix

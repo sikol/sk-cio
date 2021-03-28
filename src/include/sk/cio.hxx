@@ -29,23 +29,23 @@
 #ifndef SK_CIO_HXX_INCLUDED
 #define SK_CIO_HXX_INCLUDED
 
-#include <sk/cio/async_invoke.hxx>
-#include <sk/cio/co_detach.hxx>
-#include <sk/cio/error.hxx>
-#include <sk/cio/expected.hxx>
-#include <sk/cio/task.hxx>
-#include <sk/cio/wait.hxx>
-#include <sk/cio/read.hxx>
-#include <sk/cio/write.hxx>
+#include <sk/async_invoke.hxx>
+#include <sk/co_detach.hxx>
+#include <sk/expected.hxx>
+#include <sk/task.hxx>
+#include <sk/wait.hxx>
 
-#include <sk/cio/filechannel.hxx>
-#include <sk/cio/memchannel.hxx>
-#include <sk/cio/charchannel.hxx>
+#include <sk/channel/charchannel.hxx>
+#include <sk/channel/filechannel.hxx>
+#include <sk/channel/memchannel.hxx>
+#include <sk/channel/error.hxx>
+#include <sk/channel/read.hxx>
+#include <sk/channel/write.hxx>
 
-#include <sk/cio/net/address.hxx>
-#include <sk/cio/net/tcpchannel.hxx>
-#include <sk/cio/net/tcpserverchannel.hxx>
+#include <sk/net/address.hxx>
+#include <sk/net/tcpchannel.hxx>
+#include <sk/net/tcpserverchannel.hxx>
 
-#include <sk/buffer/fixed_buffer.hxx>
+#include <sk/buffer.hxx>
 
 #endif // SK_CIO_HXX_INCLUDED

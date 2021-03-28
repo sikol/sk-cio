@@ -38,9 +38,52 @@
       "addressSanitizerEnabled": true,
       "variables": [
         {
-          "name": "SK_CONFIG_BUILD_TESTS",
-          "value": "ON",
-          "type": "BOOL"
+          "name": "VCPKG_FEATURE_FLAGS",
+          "value": "registries",
+          "type": "STRING"
+        }
+      ]
+    },
+    {
+      "name": "x64-linux-gcc-debug",
+      "generator": "Ninja",
+      "configurationType": "Debug",
+      "cmakeExecutable": "cmake",
+      "remoteCopySourcesExclusionList": [ ".vs", "out", "_build" ],
+      "cmakeCommandArgs": "",
+      "buildCommandArgs": "",
+      "ctestCommandArgs": "",
+      "cmakeToolchain": "vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "inheritEnvironments": [ "linux_x64" ],
+      "remoteMachineName": "${defaultRemoteMachineName}",
+      "remoteCMakeListsRoot": "$HOME/vs-build/${projectDirName}/${workspaceHash}/src",
+      "remoteBuildRoot": "$HOME/vs-build/${projectDirName}/${workspaceHash}/out/build/${name}",
+      "remoteInstallRoot": "$HOME/vs-build/${projectDirName}/${workspaceHash}/out/install/${name}",
+      "remoteCopySources": true,
+      "rsyncCommandArgs": "-t --delete --delete-excluded",
+      "remoteCopyBuildOutput": false,
+      "remoteCopySourcesMethod": "rsync",
+      "addressSanitizerRuntimeFlags": "detect_leaks=0",
+      "variables": [
+        {
+          "name": "CMAKE_C_COMPILER",
+          "value": "/usr/bin/gcc",
+          "type": "STRING"
+        },
+        {
+          "name": "CMAKE_C_FLAGS",
+          "value": "-O0 -g3 -ggdb",
+          "type": "STRING"
+        },
+        {
+          "name": "CMAKE_CXX_COMPILER",
+          "value": "/usr/bin/g++",
+          "type": "STRING"
+        },
+        {
+          "name": "CMAKE_CXX_FLAGS",
+          "value": "-O0 -g3 -ggdb -fcoroutines",
+          "type": "STRING"
         },
         {
           "name": "VCPKG_FEATURE_FLAGS",

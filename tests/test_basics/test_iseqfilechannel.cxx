@@ -28,20 +28,17 @@
 
 #include <catch.hpp>
 
-#include <cstring>
 #include <fstream>
-#include <iostream>
-#include <stdexcept>
 #include <string>
 
-#include <sk/cio/read.hxx>
-#include <sk/cio/filechannel/iseqfilechannel.hxx>
-#include <sk/cio/task.hxx>
-#include <sk/cio/wait.hxx>
+#include <sk/channel/filechannel/iseqfilechannel.hxx>
+#include <sk/channel/read.hxx>
+#include <sk/wait.hxx>
 
-using namespace sk::cio;
+using namespace sk;
 
-TEST_CASE("iseqfilechannel::read()") {
+TEST_CASE("iseqfilechannel::read()")
+{
     std::string test_string("This is a test\n");
 
     {
@@ -82,7 +79,8 @@ TEST_CASE("iseqfilechannel::read()") {
     REQUIRE(nbytes.error() == error::end_of_file);
 }
 
-TEST_CASE("iseqfilechannel::async_read()") {
+TEST_CASE("iseqfilechannel::async_read()")
+{
     std::string test_string("This is a test\n");
 
     {

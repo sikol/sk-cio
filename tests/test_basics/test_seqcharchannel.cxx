@@ -31,7 +31,7 @@
 #include <cstring>
 #include <sk/cio.hxx>
 
-using namespace sk::cio;
+using namespace sk;
 
 static_assert(iseqchannel<iseqcharchannel<char, imemchannel>>);
 

@@ -29,18 +29,14 @@
 #include <catch.hpp>
 
 #include <cstring>
-#include <fstream>
-#include <iostream>
-#include <stdexcept>
-#include <string>
 
-#include <sk/cio/memchannel/memchannel.hxx>
-#include <sk/cio/read.hxx>
-#include <sk/cio/task.hxx>
+#include <sk/channel/memchannel/memchannel.hxx>
+#include <sk/channel/read.hxx>
 
-using namespace sk::cio;
+using namespace sk;
 
-TEST_CASE("memchannel::write_some()") {
+TEST_CASE("memchannel::write_some()")
+{
     std::byte const buf[] = {std::byte('A'), std::byte('B'), std::byte('C')};
     char out[4];
     std::memset(out, 'X', sizeof out);
@@ -56,7 +52,8 @@ TEST_CASE("memchannel::write_some()") {
     REQUIRE(out[3] == 'X');
 }
 
-TEST_CASE("memchannel::write_some() single byte") {
+TEST_CASE("memchannel::write_some() single byte")
+{
     std::byte const buf[] = {std::byte('A'), std::byte('B'), std::byte('C')};
     char out[4];
     std::memset(out, 'X', sizeof out);
@@ -85,7 +82,8 @@ TEST_CASE("memchannel::write_some() single byte") {
     REQUIRE(out[3] == 'X');
 }
 
-TEST_CASE("memchannel::write_some_at() single byte") {
+TEST_CASE("memchannel::write_some_at() single byte")
+{
     std::byte const buf[] = {std::byte('A'), std::byte('B'), std::byte('C')};
     char out[4];
     std::memset(out, 'X', sizeof out);
@@ -114,9 +112,10 @@ TEST_CASE("memchannel::write_some_at() single byte") {
     REQUIRE(out[3] == 'X');
 }
 
-TEST_CASE("memchannel::write_some() past the end") {
-    std::byte const buf[] = {std::byte('A'), std::byte('B'), std::byte('C'),
-                             std::byte('D')};
+TEST_CASE("memchannel::write_some() past the end")
+{
+    std::byte const buf[] = {
+        std::byte('A'), std::byte('B'), std::byte('C'), std::byte('D')};
     char out[4];
     std::memset(out, 'X', sizeof out);
 
@@ -131,7 +130,8 @@ TEST_CASE("memchannel::write_some() past the end") {
     REQUIRE(out[3] == 'X');
 }
 
-TEST_CASE("memchannel::write_some() with an invalid location") {
+TEST_CASE("memchannel::write_some() with an invalid location")
+{
     std::byte const buf[] = {std::byte('A'), std::byte('B'), std::byte('C')};
     char out[4];
     std::memset(out, 'X', sizeof out);
@@ -143,7 +143,8 @@ TEST_CASE("memchannel::write_some() with an invalid location") {
     REQUIRE(nbytes.error() == error::end_of_file);
 }
 
-TEST_CASE("memchannel::read_some()") {
+TEST_CASE("memchannel::read_some()")
+{
     char buf[20] = {'A', 'B', 'C'};
     std::byte dat[4];
     std::memset(dat, 'X', sizeof dat);
@@ -159,7 +160,8 @@ TEST_CASE("memchannel::read_some()") {
     REQUIRE(dat[3] == std::byte{'X'});
 }
 
-TEST_CASE("memchannel::read_some() single-byte") {
+TEST_CASE("memchannel::read_some() single-byte")
+{
     char buf[3] = {'A', 'B', 'C'};
     std::byte dat[4];
     std::memset(dat, 'X', sizeof dat);
@@ -188,7 +190,8 @@ TEST_CASE("memchannel::read_some() single-byte") {
     REQUIRE(dat[3] == std::byte{'X'});
 }
 
-TEST_CASE("memchannel::read_some_at() single-byte") {
+TEST_CASE("memchannel::read_some_at() single-byte")
+{
     char buf[3] = {'A', 'B', 'C'};
     std::byte dat[4];
     std::memset(dat, 'X', sizeof dat);
@@ -217,7 +220,8 @@ TEST_CASE("memchannel::read_some_at() single-byte") {
     REQUIRE(dat[3] == std::byte{'X'});
 }
 
-TEST_CASE("memchannel::read_some() past the end") {
+TEST_CASE("memchannel::read_some() past the end")
+{
     char buf[3] = {'A', 'B', 'C'};
     std::byte dat[4];
     std::memset(dat, 'X', sizeof dat);
@@ -233,7 +237,8 @@ TEST_CASE("memchannel::read_some() past the end") {
     REQUIRE(dat[3] == std::byte{'X'});
 }
 
-TEST_CASE("memchannel::read_some_at() with an invalid location") {
+TEST_CASE("memchannel::read_some_at() with an invalid location")
+{
     char buf[3] = {'A', 'B', 'C'};
     std::byte dat[4];
     std::memset(dat, 'X', sizeof dat);

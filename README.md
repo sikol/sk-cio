@@ -8,15 +8,12 @@ Requires:
 
 * [sk-buffer](https://github.com/sikol/sk-buffer)
  
-Tested platforms:
+Supported platform / compiler combinations:
 
 * Windows NT, MSVC 19.28 (VS 16.9)
-* Linux >= 5.6 with epoll and io_uring, GCC 10.2.0
-* Linux < 5.6 with epoll, GCC 10.2.0
-
-Unsupported compilers:
-
-* Clang 11.0 (missing C++20 coroutines)
+* Windows NT, Clang-cl 11.0.1 (VS 16.9), Microsoft STL
+* Linux with epoll and/or io_uring, GCC 10.2.0
+* Linux with epoll and/or io_uring, Clang 11.0.1 with libstdc++
 
 Example:
 

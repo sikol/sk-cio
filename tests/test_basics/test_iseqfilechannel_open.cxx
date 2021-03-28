@@ -31,9 +31,9 @@
 
 #include <catch.hpp>
 
-#include <sk/cio/filechannel/iseqfilechannel.hxx>
+#include <sk/channel/filechannel/iseqfilechannel.hxx>
 
-using namespace sk::cio;
+using namespace sk;
 
 TEST_CASE("iseqfilechannel::open() existing file") {
     std::ignore = std::remove("test.txt");

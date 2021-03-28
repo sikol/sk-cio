@@ -34,7 +34,7 @@
 
 #include <sk/cio.hxx>
 
-using namespace sk::cio;
+using namespace sk;
 
 task<void> resolve(std::string const &name) {
     std::cout << name << ": ";
@@ -67,7 +67,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    sk::cio::reactor_handle reactor;
+    sk::reactor_handle reactor;
 
     for (auto &&name : std::span(argv + 1, argv + argc)) {
         wait(resolve(name));

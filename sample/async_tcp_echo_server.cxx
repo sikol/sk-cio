@@ -34,7 +34,7 @@
 
 #include <sk/cio.hxx>
 
-using namespace sk::cio;
+using namespace sk;
 
 task<void> handle_client(net::tcpchannel client) {
     for (;;) {
@@ -95,7 +95,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    sk::cio::reactor_handle reactor;
+    sk::reactor_handle reactor;
     wait(run(argv[1], argv[2]));
     return 0;
 }
