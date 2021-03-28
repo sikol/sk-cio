@@ -26,31 +26,31 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_POSIX_NET_TCPCHANNEL_HXX_INCLUDED
-#define SK_CIO_POSIX_NET_TCPCHANNEL_HXX_INCLUDED
+#ifndef SK_NET_DETAIL_POSIX_CPCHANNEL_HXX_INCLUDED
+#define SK_NET_DETAIL_POSIX_CPCHANNEL_HXX_INCLUDED
 
 #include <sys/types.h>
 #include <sys/socket.h>
 
 #include <cstddef>
 
-#include <sk/cio/async_invoke.hxx>
-#include <sk/cio/channel/concepts.hxx>
-#include <sk/cio/detail/safeint.hxx>
-#include <sk/cio/expected.hxx>
-#include <sk/cio/net/address.hxx>
-#include <sk/cio/task.hxx>
-#include <sk/cio/posix/async_api.hxx>
-#include <sk/cio/posix/fd.hxx>
-#include <sk/cio/posix/error.hxx>
+#include <sk/async_invoke.hxx>
+#include <sk/channel/concepts.hxx>
+#include <sk/detail/safeint.hxx>
+#include <sk/expected.hxx>
+#include <sk/net/address.hxx>
+#include <sk/posix/async_api.hxx>
+#include <sk/posix/error.hxx>
+#include <sk/posix/fd.hxx>
+#include <sk/task.hxx>
 
-namespace sk::cio::posix::net {
+namespace sk::posix::detail {
 
     struct tcpchannel {
         using value_type = std::byte;
 
-        tcpchannel();
-        tcpchannel(unique_fd &&);
+        tcpchannel() = default;
+        explicit tcpchannel(sk::posix::unique_fd &&);
         tcpchannel(tcpchannel const &) = delete;
         tcpchannel(tcpchannel &&) noexcept = default;
         tcpchannel &operator=(tcpchannel const &) = delete;
@@ -60,15 +60,15 @@ namespace sk::cio::posix::net {
         /*
          * Test if this channel has been opened.
          */
-        auto is_open() const -> bool;
+        [[nodiscard]] auto is_open() const -> bool;
 
         /*
          * Connect to a remote host.
          */
-        [[nodiscard]] auto async_connect(cio::net::address const &addr)
+        [[nodiscard]] auto async_connect(sk::net::address const &addr)
             -> task<expected<void, std::error_code>>;
 
-        [[nodiscard]] auto connect(cio::net::address const &addr)
+        [[nodiscard]] auto connect(sk::net::address const &addr)
             -> expected<void, std::error_code>;
 
         /*
@@ -98,7 +98,7 @@ namespace sk::cio::posix::net {
         [[nodiscard]] auto close() -> expected<void, std::error_code>;
 
     private:
-        unique_fd _fd;
+        sk::posix::unique_fd _fd;
     };
 
     static_assert(seqchannel<tcpchannel>);
@@ -107,9 +107,10 @@ namespace sk::cio::posix::net {
      * tcpchannel::tcpchannel()
      */
 
-    inline tcpchannel::tcpchannel() {}
-
-    inline tcpchannel::tcpchannel(unique_fd &&sock) : _fd(std::move(sock)) {}
+    inline tcpchannel::tcpchannel(sk::posix::unique_fd &&sock)
+        : _fd(std::move(sock))
+    {
+    }
 
     /*************************************************************************
      * tcpchannel::is_open()
@@ -127,7 +128,7 @@ namespace sk::cio::posix::net {
     {
 
         if (!is_open())
-            return make_unexpected(cio::error::channel_not_open);
+            return make_unexpected(error::channel_not_open);
 
         auto err = _fd.close();
         if (err)
@@ -142,7 +143,7 @@ namespace sk::cio::posix::net {
         -> task<expected<void, std::error_code>>
     {
         int fd = _fd.release();
-        auto err = co_await async_fd_close(fd);
+        auto err = co_await sk::posix::async_fd_close(fd);
 
         if (!err)
             co_return make_unexpected(err.error());
@@ -153,7 +154,7 @@ namespace sk::cio::posix::net {
     /*************************************************************************
      * tcpchannel::async_connect()
      */
-    inline auto tcpchannel::async_connect(cio::net::address const &addr)
+    inline auto tcpchannel::async_connect(sk::net::address const &addr)
         -> task<expected<void, std::error_code>>
     {
 
@@ -162,11 +163,11 @@ namespace sk::cio::posix::net {
         auto sock = ::socket(addr.address_family(), SOCK_STREAM, IPPROTO_TCP);
 
         if (sock == -1)
-            co_return make_unexpected(get_errno());
+            co_return make_unexpected(sk::posix::get_errno());
 
-        unique_fd sock_(sock);
+        sk::posix::unique_fd sock_(sock);
 
-        auto ret = co_await async_fd_connect(
+        auto ret = co_await sk::posix::async_fd_connect(
             sock,
             reinterpret_cast<sockaddr const *>(&addr.native_address),
             addr.native_address_length);
@@ -176,12 +177,13 @@ namespace sk::cio::posix::net {
 
         reactor_handle::get_global_reactor().associate_fd(sock);
         _fd = std::move(sock_);
+        co_return {};
     }
 
     /*************************************************************************
      * tcpchannel::connect()
      */
-    inline auto tcpchannel::connect(cio::net::address const &addr)
+    inline auto tcpchannel::connect(sk::net::address const &addr)
         -> expected<void, std::error_code>
     {
         return wait(async_connect(addr));
@@ -196,14 +198,15 @@ namespace sk::cio::posix::net {
     {
         SK_CHECK(is_open(), "attempt to read on a closed channel");
 
-        auto bytes_read = co_await async_fd_recv(_fd.fd(), buffer, nobjs, 0);
+        auto bytes_read =
+            co_await sk::posix::async_fd_recv(_fd.fd(), buffer, nobjs, 0);
 
         if (!bytes_read)
             co_return make_unexpected(bytes_read.error());
 
         // 0 bytes = client went away
         if (*bytes_read == 0)
-            co_return make_unexpected(cio::error::end_of_file);
+            co_return make_unexpected(error::end_of_file);
 
         co_return *bytes_read;
     }
@@ -229,14 +232,15 @@ namespace sk::cio::posix::net {
     {
         SK_CHECK(is_open(), "attempt to write on a closed channel");
 
-        auto bytes_read = co_await async_fd_send(_fd.fd(), buffer, nobjs, 0);
+        auto bytes_read =
+            co_await sk::posix::async_fd_send(_fd.fd(), buffer, nobjs, 0);
 
         if (!bytes_read)
             co_return make_unexpected(bytes_read.error());
 
         // 0 bytes = client went away
         if (*bytes_read == 0)
-            co_return make_unexpected(cio::error::end_of_file);
+            co_return make_unexpected(sk::error::end_of_file);
 
         co_return *bytes_read;
     }
@@ -252,6 +256,6 @@ namespace sk::cio::posix::net {
         return wait(async_write_some(buffer, nobjs));
     }
 
-} // namespace sk::cio::win32::net
+} // namespace sk::posix::detail
 
-#endif // SK_CIO_POSIX_NET_TCPCHANNEL_HXX_INCLUDED
+#endif // SK_NET_DETAIL_POSIX_CPCHANNEL_HXX_INCLUDED

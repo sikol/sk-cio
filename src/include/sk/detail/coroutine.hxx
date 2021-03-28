@@ -26,25 +26,48 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_CONCEPTS_HXX_INCLUDED
-#define SK_CIO_CONCEPTS_HXX_INCLUDED
+#ifndef SK_DETAIL_COROUTINE_HXX
+#define SK_DETAIL_COROUTINE_HXX
 
-namespace sk::cio {
+#if defined(__cpp_impl_coroutine)
+// C++20 coroutines: GCC, MSVC.
+#    define SK_HAS_STD_COROUTINES
+#    include <coroutine>
 
-    /*************************************************************************
-     *
-     * Concept of an I/O reactor.
-     *
-     */
+namespace sk {
 
-    // clang-format off
-	template<typename Reactor>
-	concept reactor = requires(Reactor & r) {
-		{ r.start() };
-		{ r.stop() };
-	};
-    // clang-format on
+    using std::coroutine_handle;
+    using std::noop_coroutine_handle;
+    using std::suspend_always;
+    using std::suspend_never;
 
-} // namespace sk::cio
+} // namespace sk
 
-#endif // SK_CIO_CONCEPTS_HXX_INCLUDED
+#elif defined(__clang__)
+// Clang: TS coroutines.
+
+#    define SK_HAS_TS_COROUTINES
+
+#    if defined(_MSC_VER) || !__has_include(<experimental/coroutine>)
+// If <experimental/coroutine> is not present (e.g., libstdc++) then provide
+// our own.  We also need to do this on Clang-cl because the Microsoft header
+// isn't ABI-compatible with Clang's coroutines.
+#        include <sk/detail/clang_experimental_coroutine.hxx>
+#    else
+#        include <experimental/coroutine>
+#    endif
+
+namespace sk {
+
+    using std::experimental::coroutine_handle;
+    using std::experimental::suspend_always;
+    using std::experimental::suspend_never;
+
+} // namespace sk
+
+#else
+#    error could not detect a supported coroutine implementation
+
+#endif
+
+#endif // SK_DETAIL_COROUTINE_HXX
