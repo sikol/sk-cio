@@ -26,29 +26,31 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
+#include <catch.hpp>
 
-#include <fcntl.h>
-#include <netdb.h>
+#include "sk/buffer/pmr_buffer.hxx"
+#include "sk/buffer/range_buffer.hxx"
 
-#include <cstring>
-#include <system_error>
+TEST_CASE("pmr_buffer") {
+    std::string input_string("testing");
+    auto range_buffer = sk::make_readable_range_buffer(input_string);
 
-#include <sk/async_invoke.hxx>
-#include <sk/expected.hxx>
-#include <sk/posix/async_api.hxx>
-#include <sk/posix/error.hxx>
-#include <sk/reactor.hxx>
-#include <sk/task.hxx>
+    auto pmr_readable_buffer = sk::make_pmr_buffer_adapter(range_buffer);
 
-namespace sk::cio::posix {
+    std::string output_string(input_string.size(), 'X');
+    buffer_read(pmr_readable_buffer, output_string);
 
-    /*************************************************************************
-     *
-     * POSIX async API.
-     *
-     */
+    REQUIRE(output_string == input_string);
+}
 
-} // namespace sk::cio::posix
+TEST_CASE("pmr_writable_buffer") {
+    std::string input_string("testing");
+
+    std::string output_string(input_string.size(), 'X');
+    auto range_buffer = sk::make_writable_range_buffer(output_string);
+
+    auto pmr_writable_buffer = sk::make_pmr_buffer_adapter(range_buffer);
+    buffer_write(pmr_writable_buffer, input_string);
+
+    REQUIRE(output_string == input_string);
+}
