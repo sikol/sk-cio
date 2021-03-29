@@ -70,10 +70,7 @@ namespace sk {
             { b.read(data, n) } -> std::same_as<typename Buffer::size_type>;
 
             // Get the buffer's readable extents.
-            { b.readable_ranges() }
-                -> std::same_as<
-                    std::vector<
-                        std::span<typename Buffer::const_value_type>>>;
+            { b.readable_ranges() } -> std::ranges::range<>;
 
             // Remove data from the start of the buffer.
             { b.discard(n) } -> std::same_as<typename Buffer::size_type>;
@@ -94,10 +91,7 @@ namespace sk {
             { b.write(data, n) } -> std::same_as<typename Buffer::size_type>;
 
             // Get the buffer's writable extents.
-            { b.writable_ranges() }
-                -> std::same_as<
-                    std::vector<
-                        std::span<typename Buffer::value_type>>>;
+            { b.writable_ranges() } -> std::ranges::range<>;
 
             // Mark empty space as readable.
             { b.commit(n) } -> std::same_as<typename Buffer::size_type>;

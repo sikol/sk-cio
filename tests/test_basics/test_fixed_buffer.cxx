@@ -26,11 +26,15 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include <numeric>
+#include <cstring>
+
 #include <catch.hpp>
 
 #include "sk/buffer/fixed_buffer.hxx"
 
-TEST_CASE("small fixed_buffer") {
+TEST_CASE("small fixed_buffer")
+{
     // Our test subject.
     sk::fixed_buffer<char, 5> buf;
 
@@ -76,4 +80,90 @@ TEST_CASE("small fixed_buffer") {
 
     // Reset the buffer.
     buf.reset();
+}
+
+TEST_CASE("fixed_buffer read/write")
+{
+    static constexpr std::size_t buffer_size = 1024;
+    sk::fixed_buffer<char, buffer_size> buffer;
+
+    for (std::size_t nbytes = 2; nbytes <= buffer_size; nbytes += 2) {
+        buffer.reset();
+
+        // Write two strings to the buffer.
+        auto this_size = nbytes / 2;
+
+        INFO("nbytes = " + std::to_string(nbytes) +
+             ", this_size=" + std::to_string(this_size));
+        std::string input_a(this_size, 'X');
+        std::iota(input_a.begin(), input_a.end(), 'A');
+        std::string input_b(this_size, 'x');
+        std::iota(input_b.begin(), input_b.end(), 'a');
+
+        auto n = buffer_write(buffer, input_a);
+        REQUIRE(n == this_size);
+        n = buffer_write(buffer, input_b);
+        REQUIRE(n == this_size);
+
+        // Read the data back out.
+        std::string output(nbytes, 'X');
+        n = buffer_read(buffer, output);
+        REQUIRE(n == nbytes);
+        REQUIRE(output == (input_a + input_b));
+    }
+}
+
+TEST_CASE("fixed_buffer readable_ranges/writable_ranges")
+{
+    static constexpr std::size_t buffer_size = 1024;
+    sk::fixed_buffer<char, buffer_size> buffer;
+
+    for (std::size_t nbytes = 2; nbytes <= buffer_size; nbytes += 2) {
+        buffer.reset();
+
+        // Write two strings to the buffer.
+        auto this_size = nbytes / 2;
+
+        INFO("nbytes = " + std::to_string(nbytes) +
+             ", this_size=" + std::to_string(this_size));
+
+        std::string input_a(this_size, 'X');
+        std::iota(input_a.begin(), input_a.end(), 'A');
+        std::string input_b(this_size, 'x');
+        std::iota(input_b.begin(), input_b.end(), 'a');
+
+        // Write the data to the buffer.
+        auto all_input = input_a + input_b;
+        std::span wdata = all_input;
+
+        for (auto &&range : buffer.writable_ranges()) {
+            REQUIRE(!range.empty());
+
+            if (wdata.empty())
+                break;
+
+            auto *wdataptr = std::ranges::data(wdata);
+            auto wdatasz = std::ranges::size(wdata);
+            auto can_write = std::min(std::ranges::size(range), wdatasz);
+            std::memcpy(std::ranges::data(range), wdataptr, can_write);
+
+            wdata = wdata.subspan(can_write);
+        }
+        auto n = buffer.commit(all_input.size());
+        REQUIRE(n == all_input.size());
+
+        // Read the data back out.
+        std::string output_string;
+        for (auto &&range : buffer.readable_ranges()) {
+            REQUIRE(!range.empty());
+            output_string.insert(output_string.end(),
+                                 std::ranges::begin(range),
+                                 std::ranges::end(range));
+        }
+        n = buffer.discard(output_string.size());
+        REQUIRE(n == output_string.size());
+
+        REQUIRE(output_string.size() == nbytes);
+        REQUIRE(output_string == (input_a + input_b));
+    }
 }

@@ -38,6 +38,7 @@
 #include <type_traits>
 
 #include <sk/buffer/buffer.hxx>
+#include <sk/static_range.hxx>
 
 namespace sk {
 
@@ -59,13 +60,14 @@ namespace sk {
         using iterator = typename array_type::iterator;
         using size_type = typename array_type::size_type;
 
-        // Create a new, empty buffer.
-        fixed_buffer()
-            : data(data_array), read_window(std::ranges::begin(data), 0),
-              write_window(data)
-        {
-        }
+        // The data stored in this buffer.
+        array_type data;
+        typename array_type::iterator read_pointer = data.begin();
+        typename array_type::iterator write_pointer = data.begin();
 
+        // Create a new, empty buffer.
+        //NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
+        fixed_buffer() = default;
         ~fixed_buffer() = default;
 
         // fixed_buffer cannot be copied or moved, because the buffer contains
@@ -76,22 +78,6 @@ namespace sk {
         auto operator=(fixed_buffer const &) -> fixed_buffer & = delete;
         fixed_buffer(fixed_buffer &&) noexcept = delete;
         auto operator=(fixed_buffer &&) noexcept -> fixed_buffer & = delete;
-
-        // The data stored in this buffer.
-        std::array<Char, buffer_size> data_array;
-
-        // A span of the the entire data.
-        std::span<Char, buffer_size> data;
-
-        // The read_window is the area of this extent that could be
-        // read from.  If read_window.size() == 0, then this extent
-        // has been completely used and should be discarded.
-        std::span<Char> read_window;
-
-        // The write_window is the area of this extent that could be
-        // written to.
-        std::span<Char> write_window;
-
         // reset(): reset this extent to empty, discarding any data it contains.
         auto reset() -> void;
 
@@ -116,45 +102,30 @@ namespace sk {
         auto discard(size_type n) -> size_type;
 
         // Return our read window.
-        auto readable_ranges() -> std::vector<std::span<const_value_type>>;
+        auto readable_ranges() -> static_range<std::span<const_value_type>, 1>;
 
         // Return our write window.
-        auto writable_ranges() -> std::vector<std::span<value_type>>;
+        auto writable_ranges() -> static_range<std::span<value_type>, 1>;
     };
 
     template <typename Char, std::size_t buffer_size>
     auto fixed_buffer<Char, buffer_size>::reset() -> void
     {
-        data = std::span<Char, buffer_size>(data_array);
-
-        // No data to read.
-        read_window = data.subspan(0, 0);
-
-        // All space available for writes.
-        write_window = data;
+        read_pointer = data.begin();
+        write_pointer = data.begin();
     }
 
     template <typename Char, std::size_t buffer_size>
     auto fixed_buffer<Char, buffer_size>::write(const_value_type *dptr,
-                                                size_type size) -> size_type
+                                                size_type dsize) -> size_type
     {
-        // Determine how many objects we want to write.
-        auto can_write = std::min(size, write_window.size());
+        auto *cptr = dptr;
+        auto *cend = dptr + dsize;
 
-        // Create a subrange of the input buf for the data we want to write.
-        std::span will_write(dptr, can_write);
-        std::ranges::copy(will_write, write_window.begin());
+        while ((write_pointer < data.end()) && (cptr < cend))
+            *write_pointer++ = *cptr++;
 
-        // Remove the used space from the write window
-        write_window = write_window.subspan(can_write);
-
-        // Increase the read window to contain the new data.
-        auto read_offset = std::distance(data.data(), read_window.data());
-        read_window = std::span<Char>(data.data() + read_offset,
-                                      data.data() + read_offset +
-                                          read_window.size() + can_write);
-
-        return can_write;
+        return cptr - dptr;
     }
 
     /*
@@ -163,17 +134,11 @@ namespace sk {
     template <typename Char, std::size_t buffer_size>
     auto fixed_buffer<Char, buffer_size>::commit(size_type n) -> size_type
     {
-        auto can_commit = std::min(n, write_window.size());
-
-        // Remove the used space from the write window
-        write_window = write_window.subspan(can_commit);
-
-        // Increase the read window to contain the new data.
-        auto read_offset = std::distance(data.data(), read_window.data());
-        read_window = std::span<Char>(data.data() + read_offset,
-                                      data.data() + read_offset +
-                                          read_window.size() + can_commit);
-        return can_commit;
+        n = std::min(
+            n,
+            static_cast<size_type>(std::distance(write_pointer, data.end())));
+        write_pointer += n;
+        return n;
     }
 
     /*
@@ -183,12 +148,13 @@ namespace sk {
     auto fixed_buffer<Char, buffer_size>::read(value_type *dptr,
                                                size_type dsize) -> size_type
     {
-        auto can_read = std::min(dsize, read_window.size());
+        auto *cptr = dptr;
+        auto *cend = dptr + dsize;
 
-        auto will_read = read_window.subspan(0, can_read);
-        std::ranges::copy(will_read, dptr);
-        read_window = read_window.subspan(can_read);
-        return can_read;
+        while ((read_pointer < write_pointer) && (cptr < cend))
+            *cptr++ = *read_pointer++;
+
+        return cptr - dptr;
     }
 
     /*
@@ -197,9 +163,11 @@ namespace sk {
     template <typename Char, std::size_t buffer_size>
     auto fixed_buffer<Char, buffer_size>::discard(size_type n) -> size_type
     {
-        auto can_remove = std::min(n, read_window.size());
-        read_window = read_window.subspan(can_remove);
-        return can_remove;
+        n = std::min(
+            n,
+            static_cast<size_type>(std::distance(read_pointer, write_pointer)));
+        read_pointer += n;
+        return n;
     }
 
     /*
@@ -207,10 +175,9 @@ namespace sk {
      */
     template <typename Char, std::size_t buffer_size>
     auto fixed_buffer<Char, buffer_size>::readable_ranges()
-        -> std::vector<std::span<const_value_type>>
+        -> static_range<std::span<const_value_type>, 1>
     {
-
-        return {read_window};
+        return {std::span(read_pointer, write_pointer)};
     }
 
     /*
@@ -218,10 +185,9 @@ namespace sk {
      */
     template <typename Char, std::size_t buffer_size>
     auto fixed_buffer<Char, buffer_size>::writable_ranges()
-        -> std::vector<std::span<value_type>>
+        -> static_range<std::span<value_type>, 1>
     {
-
-        return {write_window};
+        return {std::span(write_pointer, data.end())};
     }
 
     // fixed_buffer is a buffer.

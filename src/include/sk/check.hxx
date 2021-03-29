@@ -34,20 +34,18 @@
  */
 
 #ifndef NDEBUG
-#    include <stdexcept>
+#    include <iostream>
 
 namespace sk::detail {
-
-    struct checked_error : std::logic_error {
-        explicit checked_error(std::string const &e) : std::logic_error(e)
-        {
-        }
-    };
-
-    inline constexpr void check(bool cond, char const *msg)
+    // noexcept because we want to terminate on check failure, but throw the
+    // exception so the debugger can see it.
+    // NOLINTNEXTLINE(bugprone-exception-escape)
+    inline constexpr void check(bool cond, char const *msg) noexcept
     {
-        if (!cond)
-            throw checked_error(msg);
+        if (!cond) {
+            std::cerr << msg;
+            std::abort();
+        }
     }
 
 } // namespace sk::detail
@@ -56,7 +54,7 @@ namespace sk::detail {
 
 namespace sk::detail {
 
-    inline constexpr void check(bool cond, char const *msg) {}
+    inline constexpr void check(bool cond, char const *msg) noexcept {}
 
 } // namespace sk::detail
 

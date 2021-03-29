@@ -175,23 +175,28 @@ namespace sk {
     auto circular_buffer<Char, buffer_size>::write(const_value_type *dptr,
                                                    size_type dsize) -> size_type
     {
-        size_type bytes_written = 0;
-        std::span<const_value_type> data_left(dptr, dsize);
+        auto cptr = dptr;
+        auto cend = dptr + dsize;
 
-        for (auto &&range : writable_ranges()) {
-            auto can_write =
-                std::min(data_left.size(), std::ranges::size(range));
-            std::ranges::copy(data_left.subspan(0, can_write),
-                              std::ranges::begin(range));
-            data_left = data_left.subspan(can_write);
-            bytes_written += can_write;
+        if (read_pointer <= write_pointer) {
+            auto wend = data.end();
 
-            if (data_left.empty())
-                break;
+            if (read_pointer == data.begin())
+                wend--;
+
+            while (write_pointer < wend && cptr < cend)
+                *write_pointer++ = *cptr++;
+
+            if (write_pointer == data.end())
+                write_pointer = data.begin();
         }
 
-        commit(bytes_written);
-        return bytes_written;
+        if (read_pointer > write_pointer) {
+            while ((cptr < cend) && write_pointer < (read_pointer - 1))
+                *write_pointer++ = *cptr++;
+        }
+
+        return cptr - dptr;
     }
 
     /*
@@ -312,22 +317,28 @@ namespace sk {
     auto circular_buffer<Char, buffer_size>::read(value_type *dptr,
                                                   size_type dsize) -> size_type
     {
+        auto cptr = dptr;
+        auto cend = dptr + dsize;
 
-        size_type bytes_read = 0;
-        std::span<value_type> data_left(dptr, dsize);
+        if (read_pointer > write_pointer) {
+            while ((cptr < cend) && (read_pointer < data.end()))
+                *cptr++ = *read_pointer++;
 
-        for (auto &&range : readable_ranges()) {
-            auto can_read = std::min(data_left.size(), range.size());
-            std::ranges::copy(range.subspan(0, can_read), data_left.begin());
-            data_left = data_left.subspan(can_read);
-            bytes_read += can_read;
-
-            if (data_left.empty())
-                break;
+            if (read_pointer == data.end())
+                read_pointer = data.begin();
         }
 
-        discard(bytes_read);
-        return bytes_read;
+        if (read_pointer < write_pointer) {
+            while ((cptr < cend) && (read_pointer < write_pointer))
+                *cptr++ = *read_pointer++;
+        }
+
+        sk::detail::check(
+            read_pointer < data.end(),
+            "INTERNAL ERROR: sk::circular_buffer::read() "
+            "pointer confusion");
+
+        return (cptr - dptr);
     }
 
     /*
@@ -390,6 +401,7 @@ namespace sk {
             theoretical_read_pointer < data.end(),
             "INTERNAL ERROR: sk::circular_buffer::readable_ranges() "
             "pointer confusion");
+
         return ret;
     }
 

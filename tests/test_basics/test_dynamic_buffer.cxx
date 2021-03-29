@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <catch.hpp>
 #include <ranges>
+#include <array>
 
 #include "sk/buffer/dynamic_buffer.hxx"
 
@@ -36,7 +37,7 @@ TEST_CASE("dynamic_buffer<>, small char buffer")
 {
     std::string input_string =
         "this is a long test string that will fill several extents";
-    sk::dynamic_buffer<char, 3> buf;
+    sk::dynamic_buffer<char, sk::dynamic_buffer_size(3)> buf;
 
     buffer_write(buf, input_string);
 
@@ -81,7 +82,7 @@ TEST_CASE("dynamic_buffer<>, small char buffer, commit/discard")
 {
     std::string input_string =
         "this is a long test string that will fill several extents";
-    sk::dynamic_buffer<char, 3> buf;
+    sk::dynamic_buffer<char, sk::dynamic_buffer_size(3)> buf;
 
     // Write into the buffer.
     std::span<char const> inbuf(input_string);
@@ -129,7 +130,7 @@ TEST_CASE("dynamic_buffer<>, small char buffer, single-byte writes")
 {
     std::string input_string =
         "this is a long test string that will fill several extents";
-    sk::dynamic_buffer<char, 3> buf;
+    sk::dynamic_buffer<char, sk::dynamic_buffer_size(3)> buf;
 
     for (char const &c : input_string)
         buf.write(&c, 1u);
@@ -147,7 +148,7 @@ TEST_CASE("dynamic_buffer<>, small char buffer, two-byte writes")
 {
     std::string input_string =
         "this is a long test string that will fill several extents";
-    sk::dynamic_buffer<char, 3> buf;
+    sk::dynamic_buffer<char, sk::dynamic_buffer_size(3)> buf;
 
     for (auto it = input_string.begin(), end = input_string.end(); it != end;) {
         if ((it + 1) == end) {
@@ -265,7 +266,7 @@ TEST_CASE("dynamic_buffer<>, small buffer discard")
 {
     std::string input_string =
         "this is a long test string that will fill several extents";
-    sk::dynamic_buffer<char, 3> buf;
+    sk::dynamic_buffer<char, sk::dynamic_buffer_size(3)> buf;
 
     buffer_write(buf, input_string);
     buf.discard(7);

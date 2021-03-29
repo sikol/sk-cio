@@ -26,12 +26,13 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <numeric>
 #include <catch.hpp>
+#include <numeric>
 
 #include "sk/buffer/circular_buffer.hxx"
 
-TEST_CASE("circular_buffer writes") {
+TEST_CASE("circular_buffer writes")
+{
     // Create a buffer that can hold 4 bytes; internal size is 5.
     sk::circular_buffer<char, 4> buf;
 
@@ -61,16 +62,92 @@ TEST_CASE("circular_buffer writes") {
     REQUIRE(n == 0);
 }
 
-TEST_CASE("circular_buffer reads") {
-    sk::circular_buffer<char, 4> buf;
+TEST_CASE("circular_buffer readable_ranges")
+{
+    // Write to the buffer and check readable_ranges() returns the data we
+    // wrote.
+    static constexpr std::size_t buffer_size = 6;
+    static constexpr std::size_t npasses = 400;
+    sk::circular_buffer<char, buffer_size> buf;
+
+    for (std::size_t write_size = 1; write_size < buffer_size; ++write_size) {
+        for (std::size_t pass = 0; pass < npasses; ++pass) {
+            std::string input_string(write_size, 'X');
+            std::iota(input_string.begin(), input_string.end(), 'A');
+
+            INFO("write_size=" + std::to_string(write_size) + ", pass=" +
+                 std::to_string(pass) + "/" + std::to_string(npasses));
+
+            auto n = buffer_write(buf, input_string);
+            REQUIRE(n == input_string.size());
+
+            std::string output_string;
+            for (auto &&range : buf.readable_ranges()) {
+                REQUIRE(!range.empty());
+                output_string.insert(output_string.end(),
+                                     std::ranges::begin(range),
+                                     std::ranges::end(range));
+            }
+            buf.discard(output_string.size());
+            REQUIRE(output_string == input_string);
+        }
+    }
+}
+
+TEST_CASE("circular_buffer writable_ranges")
+{
+    // Write to the buffer's writable_ranges() and check we can read the
+    // data we wrote.
+    static constexpr std::size_t buffer_size = 6;
+    static constexpr std::size_t npasses = 400;
+    sk::circular_buffer<char, buffer_size> buf;
+
+    for (std::size_t write_size = 1; write_size < buffer_size; ++write_size) {
+        for (std::size_t pass = 0; pass < npasses; ++pass) {
+            std::string input_string(write_size, 'X');
+            std::iota(input_string.begin(), input_string.end(), 'A');
+
+            INFO("write_size=" + std::to_string(write_size) + ", pass=" +
+                 std::to_string(pass) + "/" + std::to_string(npasses));
+
+            std::span wdata(input_string);
+            for (auto &&range: buf.writable_ranges()) {
+                REQUIRE(!range.empty());
+
+                if (wdata.empty())
+                    break;
+
+                auto *wdataptr = std::ranges::data(wdata);
+                auto wdatasz = std::ranges::size(wdata);
+                auto can_write = std::min(std::ranges::size(range),
+                                          wdatasz);
+                std::memcpy(std::ranges::data(range), wdataptr, can_write);
+
+                wdata = wdata.subspan(can_write);
+            }
+            buf.commit(input_string.size());
+            REQUIRE(wdata.empty());
+
+            std::string output_string(input_string.size(), 'X');
+            auto n = buffer_read(buf, output_string);
+            REQUIRE(n == input_string.size());
+            REQUIRE(output_string == input_string);
+        }
+    }
+}
+
+TEST_CASE("circular_buffer write+read")
+{
+    static constexpr std::size_t buffer_size = 6;
+    static constexpr std::size_t npasses = 400;
+    sk::circular_buffer<char, buffer_size> buf;
 
     /*
      * Try repeatedly writing and reading to the buffer with
      * various write sizes.
      */
-    for (std::size_t write_size = 1, end = 4; write_size <= end; ++write_size) {
-
-        for (std::size_t pass = 0, npasses = 400; pass < npasses; ++pass) {
+    for (std::size_t write_size = 1; write_size <= buffer_size; ++write_size) {
+        for (std::size_t pass = 0; pass < npasses; ++pass) {
             std::string input_string(write_size, 'X');
             std::iota(input_string.begin(), input_string.end(), 'A');
 
@@ -91,8 +168,8 @@ TEST_CASE("circular_buffer reads") {
     /*
      * Now do the same but vary the write size each time.
      */
-    for (std::size_t pass = 0, npasses = 400; pass < npasses; ++pass) {
-        for (std::size_t write_size = 1, end = 4; write_size <= end;
+    for (std::size_t pass = 0; pass < npasses; ++pass) {
+        for (std::size_t write_size = 1; write_size <= buffer_size;
              ++write_size) {
 
             std::string input_string(write_size, 'X');
