@@ -91,8 +91,8 @@ namespace sk::win32 {
 
         seqfilechannel(seqfilechannel const &) = delete;
         seqfilechannel(seqfilechannel &&) noexcept = default;
-        seqfilechannel &operator=(seqfilechannel const &) = delete;
-        seqfilechannel &operator=(seqfilechannel &&) noexcept = default;
+        auto operator=(seqfilechannel const &) -> seqfilechannel & = delete;
+        auto operator=(seqfilechannel &&) noexcept -> seqfilechannel & = default;
         ~seqfilechannel() = default;
     };
 

@@ -36,3 +36,7 @@ target_link_libraries(test_stress PRIVATE sk-cio catch fmt)
 
 add_test(NAME test_stress
     COMMAND $<TARGET_FILE:test_stress>)
+
+if(SK_CIO_ENABLE_TIDY)
+    set_target_properties(test_basics PROPERTIES CXX_CLANG_TIDY "${SK_CLANG_TIDY_COMMAND}" )
+endif()

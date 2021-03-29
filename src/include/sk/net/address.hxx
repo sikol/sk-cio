@@ -38,12 +38,19 @@
 
 #if defined(SK_CIO_PLATFORM_WINDOWS)
 #    include <sk/win32/windows.hxx>
+#    if __has_include(<afunix.h>)
+#        include <afunix.h>
+#        define SK_CIO_HAVE_AF_UNIX
+#    endif
 #elif defined(SK_CIO_PLATFORM_POSIX)
+#    define SK_CIO_HAVE_AF_UNIX
 #    include <sys/types.h>
 #    include <sys/socket.h>
+#    include <sys/un.h>
 #    include <netdb.h>
 #endif
 
+#include <sk/detail/safeint.hxx>
 #include <sk/expected.hxx>
 #include <sk/task.hxx>
 
@@ -73,15 +80,41 @@ namespace sk::net {
     namespace detail {
 
         struct resolver_errc_category : std::error_category {
-            [[nodiscard]] auto name() const noexcept -> char const * final;
-            [[nodiscard]] auto message(int c) const -> std::string final;
+            [[nodiscard]] auto name() const noexcept -> char const * final
+            {
+                return "cio:resolver";
+            }
+            [[nodiscard]] auto message(int c) const -> std::string final
+            {
+                return gai_strerror(c);
+            }
         };
 
+#ifdef NI_MAXHOST
+        constexpr std::size_t ni_maxhost = NI_MAXHOST;
+#else
+        constexpr std::size_t ni_maxhost = 1025;
+#endif
+
+#ifdef NI_MAXHOST
+        constexpr std::size_t ni_maxserv = NI_MAXSERV;
+#else
+        constexpr std::size_t ni_maxserv = 32;
+#endif
     } // namespace detail
 
-    [[nodiscard]] auto resolver_errc_category()
-        -> detail::resolver_errc_category const &;
-    [[nodiscard]] auto make_error_code(resolver_error e) -> std::error_code;
+    [[nodiscard]] inline auto resolver_errc_category()
+        -> detail::resolver_errc_category const &
+    {
+        static detail::resolver_errc_category c;
+        return c;
+    }
+
+    [[nodiscard]] inline auto make_error_code(resolver_error e)
+        -> std::error_code
+    {
+        return {static_cast<int>(e), resolver_errc_category()};
+    }
 
     /*************************************************************************
      *
@@ -90,11 +123,11 @@ namespace sk::net {
      *
      */
     struct address {
-        sockaddr_storage native_address;
+        sockaddr_storage native_address{};
 
         // Some systems provide this in sockaddr, but others don't.
         // For consistency, store it ourselves.
-        socklen_t native_address_length;
+        socklen_t native_address_length = AF_UNSPEC;
 
         [[nodiscard]] auto address_family() const -> int
         {
@@ -102,70 +135,207 @@ namespace sk::net {
         }
 
         // Construct an address from a sockaddr.
-        address(sockaddr_storage const *ss, socklen_t len)
-            : native_address_length(len)
-        {
-            if (len > sizeof(native_address))
-                throw std::domain_error("address is too large");
-
-            std::memcpy(&native_address, ss, len);
-        }
-
-        address(sockaddr const *ss, socklen_t len) : native_address_length(len)
-        {
-            if (len > sizeof(native_address))
-                throw std::domain_error("address is too large");
-
-            std::memcpy(&native_address, ss, len);
-        }
-
-        // Return the zero address for an address family.
-        [[nodiscard]] static auto zero_address(int af)
+        [[nodiscard]] static auto make(sockaddr const *ss, socklen_t len)
             -> expected<address, std::error_code>
         {
-            switch (af) {
-            case AF_INET: {
-                sockaddr_in sin{};
-                sin.sin_family = AF_INET;
-                return address(reinterpret_cast<sockaddr *>(&sin), sizeof(sin));
-            }
+            if (static_cast<std::size_t>(len) > sizeof(native_address))
+                return make_unexpected(
+                    std::make_error_code(std::errc::value_too_large));
 
-            case AF_INET6: {
-                sockaddr_in6 sin6{};
-                sin6.sin6_family = AF_INET6;
-                return address(reinterpret_cast<sockaddr *>(&sin6),
-                               sizeof(sin6));
-            }
-
-            default:
-                return make_unexpected(std::make_error_code(
-                    std::errc::address_family_not_supported));
-            }
+            address ret;
+            std::memcpy(&ret.native_address, ss, len);
+            ret.native_address_length = len;
+            return ret;
         }
+
+    private:
+        address() = default;
     };
 
-    // Create an address from an address and service string.
-    //
-    // This does not attempt to resolve either argument, so they should
-    // be literal strings.
-    //
-    // If only host is specified, the host in the return address will be
-    // the "any" address.
-    [[nodiscard]] auto make_address(std::string const &host,
-                                    std::string const &service)
-        -> expected<address, std::error_code>;
+    inline auto operator<<(std::ostream &strm, address const &addr)
+        -> std::ostream &
+    {
+        std::array<char, detail::ni_maxhost> host; // NOLINT
+        std::array<char, detail::ni_maxserv> serv; // NOLINT
 
-    std::ostream &operator<<(std::ostream &strm, address const &addr);
+        auto ret = getnameinfo(
+            reinterpret_cast<sockaddr const *>(&addr.native_address),
+            addr.native_address_length,
+            host.data(),
+            sk::detail::int_cast<unsigned>(host.size()),
+            serv.data(),
+            sk::detail::int_cast<unsigned>(serv.size()),
+            NI_NUMERICHOST | NI_NUMERICSERV);
+
+        if (ret) {
+            strm << "<unable to translate address>";
+            return strm;
+        }
+
+        if (serv[0] != '\0' && (std::ranges::find(host, ':') != host.end())) {
+            strm << '[';
+            strm.write(host.data(), host.size());
+            strm << ']';
+        } else {
+            strm.write(host.data(), host.size());
+        }
+
+        if (!(serv[0] == '0' && serv[1] == '\0')) {
+            strm << ":";
+            strm.write(serv.data(), serv.size());
+        }
+
+        return strm;
+    }
+
+    /*************************************************************************
+     * make_address(sockaddr_in)
+     */
+    [[nodiscard]] inline auto make_address(sockaddr_in const *saddr)
+    {
+        return address::make(reinterpret_cast<sockaddr const *>(saddr),
+                             sizeof(*saddr));
+    }
+
+    /*************************************************************************
+     * make_address(sockaddr_in6)
+     */
+    [[nodiscard]] inline auto make_address(sockaddr_in6 const *saddr)
+    {
+        return address::make(reinterpret_cast<sockaddr const *>(saddr),
+                             sizeof(*saddr));
+    }
+
+    /*************************************************************************
+     * make_address(sockaddr_un)
+     */
+#ifdef SK_CIO_HAVE_AF_UNIX
+    [[nodiscard]] inline auto make_address(sockaddr_un const *saddr)
+    {
+        return address::make(reinterpret_cast<sockaddr const *>(saddr),
+                             sizeof(*saddr));
+    }
+#endif
+
+    /*************************************************************************
+     * make_address(sockaddr_storage)
+     */
+    [[nodiscard]] inline auto make_address(sockaddr_storage const *saddr)
+    {
+        return address::make(reinterpret_cast<sockaddr const *>(saddr),
+                             sizeof(*saddr));
+    }
+
+    /*************************************************************************
+     * make_address(sockaddr, addrlen)
+     */
+    [[nodiscard]] inline auto make_address(sockaddr const *saddr,
+                                           socklen_t addrlen)
+    {
+        return address::make(saddr, addrlen);
+    }
+
+    /*************************************************************************
+     * make_zero_address - return the zero address for an AF.
+     */
+    [[nodiscard]] inline auto make_zero_address(int af)
+        -> expected<address, std::error_code>
+    {
+        switch (af) {
+        case AF_INET: {
+            sockaddr_in sin{};
+            sin.sin_family = AF_INET;
+            return make_address(&sin);
+        }
+
+        case AF_INET6: {
+            sockaddr_in6 sin6{};
+            sin6.sin6_family = AF_INET6;
+            return make_address(&sin6);
+        }
+
+        default:
+            return make_unexpected(
+                std::make_error_code(std::errc::address_family_not_supported));
+        }
+    }
+
+    /*************************************************************************
+     * Create an address from an address and service string.
+     *
+     * This does not attempt to resolve either argument, so they should
+     * be literal strings.
+     *
+     * If only service is specified, the host in the return address will be
+     * the "any" address.
+     */
+    [[nodiscard]] inline auto make_address(std::string const &host,
+                                           std::string const &service)
+        -> expected<address, std::error_code>
+    {
+        addrinfo hints{};
+        addrinfo *gai_result{};
+        hints.ai_flags = AI_NUMERICHOST;
+
+        auto ret = ::getaddrinfo(host.c_str(),
+                                 service.empty() ? nullptr : service.c_str(),
+                                 &hints,
+                                 &gai_result);
+
+        if (ret)
+            return make_unexpected(
+                make_error_code(static_cast<resolver_error>(ret)));
+
+        auto addr =
+            address::make(gai_result->ai_addr,
+                          // On Windows, ai_addrlen is a size_t.
+                          static_cast<socklen_t>(gai_result->ai_addrlen));
+
+        freeaddrinfo(gai_result);
+        return addr;
+    }
 
     /*************************************************************************
      *
      * async_resolve_address(): resolve a hostname to a list of addresses
-     * using the operating system's resolver.
+     * using the operating system's resolver.  This is a naive implementation
+     * that just uses spawns getaddrinfo() on another thread.
      *
      */
-    [[nodiscard]] auto async_resolve_address(std::string const &hostname,
-                                             std::string const &port)
-        -> task<expected<std::vector<address>, std::error_code>>;
+    [[nodiscard]] inline auto async_resolve_address(std::string const &hostname,
+                                                    std::string const &port)
+        -> task<expected<std::vector<address>, std::error_code>>
+    {
+        addrinfo hints{};
+        addrinfo *gai_result{};
+
+        auto ret = co_await async_invoke([&] {
+            return ::getaddrinfo(hostname.c_str(),
+                                 port.empty() ? nullptr : port.c_str(),
+                                 &hints,
+                                 &gai_result);
+        });
+
+        if (ret)
+            co_return make_unexpected(
+                make_error_code(static_cast<resolver_error>(ret)));
+
+        std::unique_ptr<addrinfo, void (*)(addrinfo *)> gai_result_(
+            gai_result, freeaddrinfo);
+
+        std::vector<address> addresses;
+        for (auto *p = gai_result; p; p = p->ai_next) {
+            auto addr = address::make(p->ai_addr,
+                                      // On Windows, ai_addrlen is a size_t.
+                                      static_cast<socklen_t>(p->ai_addrlen));
+            if (!addr)
+                co_return make_unexpected(addr.error());
+
+            addresses.push_back(*addr);
+        }
+
+        co_return addresses;
+    }
 
 } // namespace sk::net
 

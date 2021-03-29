@@ -43,10 +43,10 @@ namespace sk::win32::detail {
 
     struct iocp_coro_state : OVERLAPPED {
         iocp_coro_state() : OVERLAPPED({}) {}
-        bool was_pending;
-        BOOL success;
-        DWORD error;
-        DWORD bytes_transferred;
+        bool was_pending = false;
+        BOOL success = 0;
+        DWORD error = 0;
+        DWORD bytes_transferred = 0;
         coroutine_handle<> coro_handle;
         std::mutex mutex;
     };

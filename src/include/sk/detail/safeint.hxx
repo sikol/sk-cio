@@ -36,7 +36,7 @@
 namespace sk::detail {
 
     template <std::unsigned_integral To, std::unsigned_integral From>
-    To int_cast(From v)
+    [[nodiscard]] auto int_cast(From v) -> To
     {
         if (v > std::numeric_limits<To>::max())
             v = std::numeric_limits<To>::max();
@@ -47,7 +47,7 @@ namespace sk::detail {
     template <std::unsigned_integral R,
               std::unsigned_integral T,
               std::unsigned_integral U>
-    R clamped_max(T a, U b)
+    [[nodiscard]] auto clamped_max(T a, U b) -> R
     {
         auto a_ = int_cast<R>(a);
         auto b_ = int_cast<R>(b);
@@ -55,7 +55,7 @@ namespace sk::detail {
     }
 
     template <std::unsigned_integral T, std::unsigned_integral U>
-    bool can_add(T a, U b) requires std::same_as<T, U>
+    [[nodiscard]] auto can_add(T a, U b) -> bool requires std::same_as<T, U>
     {
         T could_add = std::numeric_limits<T>::max() - a;
         return b <= could_add;
@@ -64,12 +64,13 @@ namespace sk::detail {
     // clang-format off
     template <std::unsigned_integral T, std::unsigned_integral U,
               std::unsigned_integral R>
-    bool safe_add(T a, U b, R *r)
+    [[nodiscard]] auto safe_add(T a, U b, R *r) -> bool
         requires std::same_as<T, U> && std::same_as<T, R> {
         // clang-format on
 
         if (!can_add(a, b))
             return false;
+
         *r = a + b;
         return true;
     }

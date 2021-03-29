@@ -29,30 +29,31 @@
 #include <catch.hpp>
 
 #include <cstring>
-#include <sk/cio.hxx>
 
-using namespace sk;
+#include "sk/cio.hxx"
 
 TEST_CASE("iseqcharchannel<char> read_some") {
-    char const inbuf[] = { 'A', 'B', 'C' };
-    auto mchan = make_imemchannel(inbuf);
-    auto cchan = make_iseqcharchannel<char>(mchan);
+    std::array const inbuf{ 'A', 'B', 'C' };
+    auto mchan = sk::make_imemchannel(inbuf);
+    auto cchan = sk::make_iseqcharchannel<char>(mchan);
 
-    char outbuf[4] = {};
-    auto r = read_some(cchan, outbuf, sizeof(outbuf));
+    std::array<char, 4> outbuf{};
+
+    auto r = sk::read_some(cchan, outbuf);
     REQUIRE(r);
     REQUIRE(*r == 3);
-    REQUIRE(!std::strcmp(outbuf, "ABC"));
+    REQUIRE(outbuf == std::array{'A', 'B', 'C', '\0'});
 }
 
 TEST_CASE("iseqcharchannel<char> async_read_some") {
-    char const inbuf[] = { 'A', 'B', 'C' };
-    auto mchan = make_imemchannel(inbuf);
-    auto cchan = make_iseqcharchannel<char>(mchan);
+    std::array const inbuf{ 'A', 'B', 'C' };
+    auto mchan = sk::make_imemchannel(inbuf);
+    auto cchan = sk::make_iseqcharchannel<char>(mchan);
 
-    char outbuf[4] = {};
-    auto r = wait(async_read_some(cchan, outbuf, sizeof(outbuf)));
+    std::array<char, 4> outbuf{};
+
+    auto r = sk::wait(sk::async_read_some(cchan, outbuf));
     REQUIRE(r);
     REQUIRE(*r == 3);
-    REQUIRE(!std::strcmp(outbuf, "ABC"));
+    REQUIRE(outbuf == std::array{'A', 'B', 'C', '\0'});
 }

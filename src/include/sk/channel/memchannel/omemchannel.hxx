@@ -47,10 +47,12 @@ namespace sk {
         {
         }
 
+        ~omemchannel() = default;
+
         omemchannel(omemchannel &&other) = default;
-        omemchannel &operator=(omemchannel &&) = default;
+        auto operator=(omemchannel &&) -> omemchannel & = default;
         omemchannel(omemchannel const &) = delete;
-        omemchannel &operator=(omemchannel const &) = delete;
+        auto operator=(omemchannel const &) -> omemchannel & = delete;
 
         [[nodiscard]] auto
         write_some_at(io_offset_t loc, std::byte const *buf, io_size_t n)
@@ -94,7 +96,7 @@ namespace sk {
     template <std::ranges::contiguous_range Range>
     [[nodiscard]] auto make_omemchannel(Range &&r)
     {
-        auto data = std::ranges::data(r);
+        auto *data = std::ranges::data(r);
         auto size = std::ranges::size(r);
 
         return make_omemchannel(data, data + size);

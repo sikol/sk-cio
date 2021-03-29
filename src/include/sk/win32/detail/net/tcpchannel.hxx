@@ -51,8 +51,8 @@ namespace sk::win32::detail {
         explicit tcpchannel(unique_socket &&);
         tcpchannel(tcpchannel const &) = delete;
         tcpchannel(tcpchannel &&) noexcept = default;
-        tcpchannel &operator=(tcpchannel const &) = delete;
-        tcpchannel &operator=(tcpchannel &&) noexcept = default;
+        auto operator=(tcpchannel const &) -> tcpchannel & = delete;
+        auto operator=(tcpchannel &&) noexcept -> tcpchannel & = default;
         ~tcpchannel() = default;
 
         /*
@@ -148,7 +148,6 @@ namespace sk::win32::detail {
     inline auto tcpchannel::async_close()
         -> task<expected<void, std::error_code>>
     {
-
         auto err =
             co_await async_invoke([&]() { return _native_handle.close(); });
 
@@ -165,7 +164,7 @@ namespace sk::win32::detail {
         -> task<expected<void, std::error_code>>
     {
 
-        SK_CHECK(!is_open(), "attempt to re-connect an open channel");
+        sk::detail::check(!is_open(), "attempt to re-connect an open channel");
 
         auto sock = ::WSASocketW(addr.address_family(),
                                  SOCK_STREAM,
@@ -181,8 +180,7 @@ namespace sk::win32::detail {
 
         // Winsock requires binding the socket before we can use ConnectEx().
         // Bind it to the all-zeroes address.
-        auto zero_address =
-            sk::net::address::zero_address(addr.address_family());
+        auto zero_address = sk::net::make_zero_address(addr.address_family());
         if (!zero_address)
             co_return make_unexpected(zero_address.error());
 
@@ -216,7 +214,7 @@ namespace sk::win32::detail {
         -> expected<void, std::error_code>
     {
 
-        SK_CHECK(is_open(), "attempt to connect on a closed channel");
+        sk::detail::check(is_open(), "attempt to connect on a closed channel");
 
         auto sock = ::WSASocketW(addr.address_family(),
                                  SOCK_STREAM,
@@ -232,8 +230,7 @@ namespace sk::win32::detail {
 
         // Winsock requires binding the socket before we can use ConnectEx().
         // Bind it to the all-zeroes address.
-        auto zero_address =
-            sk::net::address::zero_address(addr.address_family());
+        auto zero_address = sk::net::make_zero_address(addr.address_family());
         if (!zero_address)
             return make_unexpected(zero_address.error());
 
@@ -266,18 +263,18 @@ namespace sk::win32::detail {
      */
 
     // clang-format off
-    inline auto tcpchannel::async_read_some(value_type *buffer, io_size_t nobjs)
+    inline auto tcpchannel::async_read_some(value_type *buf, io_size_t nobjs)
         -> task<expected<io_size_t, std::error_code>>
     {
         // clang-format on
-        SK_CHECK(is_open(), "attempt to read on a closed channel");
+        sk::detail::check(is_open(), "attempt to read on a closed channel");
 
         auto dwbytes = sk::detail::int_cast<DWORD>(nobjs);
 
         DWORD bytes_read = 0;
         auto ret = co_await win32::AsyncReadFile(
             reinterpret_cast<HANDLE>(_native_handle.native_socket()),
-            buffer,
+            buf,
             dwbytes,
             &bytes_read,
             0);
@@ -298,12 +295,12 @@ namespace sk::win32::detail {
      */
 
     // clang-format off
-    inline auto tcpchannel::read_some(value_type *buffer, io_size_t nobjs)
+    inline auto tcpchannel::read_some(value_type *buf, io_size_t nobjs)
         -> expected<io_size_t, std::error_code>
     {
         // clang-format on
 
-        SK_CHECK(is_open(), "attempt to read on a closed channel");
+        sk::detail::check(is_open(), "attempt to read on a closed channel");
 
         DWORD bytes_read = 0;
         auto dwbytes = sk::detail::int_cast<DWORD>(nobjs);
@@ -328,7 +325,7 @@ namespace sk::win32::detail {
 
         auto ret =
             ::ReadFile(reinterpret_cast<HANDLE>(_native_handle.native_socket()),
-                       buffer,
+                       buf,
                        dwbytes,
                        &bytes_read,
                        &overlapped);
@@ -356,19 +353,19 @@ namespace sk::win32::detail {
      */
 
     // clang-format off
-    inline auto tcpchannel::async_write_some(value_type const *buffer,
+    inline auto tcpchannel::async_write_some(value_type const *buf,
                                              io_size_t nobjs)
         -> task<expected<io_size_t, std::error_code>>
     {
         // clang-format on
-        SK_CHECK(is_open(), "attempt to write on a closed channel");
+        sk::detail::check(is_open(), "attempt to write on a closed channel");
 
         DWORD bytes_written = 0;
         auto dwbytes = sk::detail::int_cast<DWORD>(nobjs);
 
         auto ret = co_await win32::AsyncWriteFile(
             reinterpret_cast<HANDLE>(_native_handle.native_socket()),
-            buffer,
+            buf,
             dwbytes,
             &bytes_written,
             0);
@@ -385,11 +382,11 @@ namespace sk::win32::detail {
      */
 
     // clang-format off
-    inline auto tcpchannel::write_some(value_type const *buffer, io_size_t nobjs)
+    inline auto tcpchannel::write_some(value_type const *buf, io_size_t nobjs)
         -> expected<io_size_t, std::error_code>
     {
         // clang-format on
-        SK_CHECK(is_open(), "attempt to write on a closed channel");
+        sk::detail::check(is_open(), "attempt to write on a closed channel");
 
         auto dwbytes = sk::detail::int_cast<DWORD>(nobjs);
 
@@ -414,7 +411,7 @@ namespace sk::win32::detail {
         DWORD bytes_written = 0;
         auto ret = ::WriteFile(
             reinterpret_cast<HANDLE>(_native_handle.native_socket()),
-            buffer,
+            buf,
             dwbytes,
             &bytes_written,
             &overlapped);

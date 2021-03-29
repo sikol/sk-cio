@@ -26,16 +26,16 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_MEMCHANNEL_ISEQMEMCHANNEL_HXX_INCLUDED
-#define SK_CIO_MEMCHANNEL_ISEQMEMCHANNEL_HXX_INCLUDED
+#ifndef SK_CHANNEL_MEMCHANNEL_ISEQMEMCHANNEL_HXX_INCLUDED
+#define SK_CHANNEL_MEMCHANNEL_ISEQMEMCHANNEL_HXX_INCLUDED
 
 #include <cstddef>
 #include <system_error>
 
+#include <sk/channel/memchannel/detail/memchannel_base.hxx>
+#include <sk/channel/types.hxx>
 #include <sk/expected.hxx>
 #include <sk/task.hxx>
-#include <sk/channel/types.hxx>
-#include <sk/channel/memchannel/detail/memchannel_base.hxx>
 
 namespace sk {
 
@@ -49,22 +49,22 @@ namespace sk {
         }
 
         imemchannel(imemchannel &&) = default;
-        imemchannel &operator=(imemchannel &&) = default;
+        auto operator=(imemchannel &&) -> imemchannel & = default;
         imemchannel(imemchannel const &) = delete;
-        imemchannel &operator=(imemchannel const &) = delete;
+        auto operator=(imemchannel const &) -> imemchannel & = delete;
         ~imemchannel() = default;
 
         [[nodiscard]] auto
-        read_some_at(io_offset_t loc, std::byte *buffer, io_size_t n) noexcept
+        read_some_at(io_offset_t loc, std::byte *buf, io_size_t n) noexcept
             -> expected<io_size_t, std::error_code>
         {
-            return _read_some_at(loc, buffer, n);
+            return _read_some_at(loc, buf, n);
         }
 
-        [[nodiscard]] auto read_some(std::byte *buffer, io_size_t n) noexcept
+        [[nodiscard]] auto read_some(std::byte *buf, io_size_t n) noexcept
             -> expected<io_size_t, std::error_code>
         {
-            auto ret = read_some_at(_read_position, buffer, n);
+            auto ret = read_some_at(_read_position, buf, n);
             if (ret)
                 _read_position += *ret;
             return ret;
@@ -72,13 +72,13 @@ namespace sk {
 
         [[nodiscard]] auto async_read_some_at(io_offset_t loc,
                                               std::byte *buf,
-                                              io_size_t n) noexcept
+                                              io_size_t n)
             -> task<expected<io_size_t, std::error_code>>
         {
             co_return read_some_at(loc, buf, n);
         }
 
-        [[nodiscard]] auto async_read_some(std::byte *buf, io_size_t n) noexcept
+        [[nodiscard]] auto async_read_some(std::byte *buf, io_size_t n)
             -> task<expected<io_size_t, std::error_code>>
         {
             co_return read_some(buf, n);
@@ -97,7 +97,7 @@ namespace sk {
     template <std::ranges::contiguous_range Range>
     [[nodiscard]] auto make_imemchannel(Range &&r)
     {
-        auto data = std::ranges::data(r);
+        auto *data = std::ranges::data(r);
         auto size = std::ranges::size(r);
 
         return make_imemchannel(data, data + size);
@@ -105,4 +105,4 @@ namespace sk {
 
 } // namespace sk
 
-#endif // SK_CIO_MEMCHANNEL_ISEQMEMCHANNEL_HXX_INCLUDED
+#endif // SK_CHANNEL_MEMCHANNEL_ISEQMEMCHANNEL_HXX_INCLUDED

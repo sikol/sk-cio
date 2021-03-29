@@ -57,7 +57,7 @@ namespace sk {
         // When opening a file, allowing opening an existing file.
         // This can be specified for input files, but it's implied anyway.
         inline constexpr fileflags_t open_existing = 0x20;
-    }; // namespace fileflags
+    } // namespace fileflags
 
 } // namespace sk
 

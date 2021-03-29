@@ -77,13 +77,15 @@ namespace sk {
             }
 
             charchannel_base(charchannel_base const &) noexcept = delete;
-            charchannel_base &
-            operator=(charchannel_base const &) noexcept = delete;
+            auto
+            operator=(charchannel_base const &) noexcept -> charchannel_base & = delete;
 
         protected:
             explicit charchannel_base(Channel *base) : _base(base) {}
+            ~charchannel_base() = default;
+
             charchannel_base(charchannel_base &&) noexcept = default;
-            charchannel_base &operator=(charchannel_base &&) noexcept = default;
+            auto operator=(charchannel_base &&) noexcept -> charchannel_base & = default;
 
             Channel *_base;
         };
@@ -97,17 +99,17 @@ namespace sk {
         {
         }
 
-        [[nodiscard]] auto async_read_some(Char *buffer, io_size_t nobjs)
+        [[nodiscard]] auto async_read_some(Char *buf, io_size_t nobjs)
             -> task<expected<io_size_t, std::error_code>>
         {
             return this->_base->async_read_some(
-                reinterpret_cast<std::byte *>(buffer), nobjs);
+                reinterpret_cast<std::byte *>(buf), nobjs);
         }
 
-        [[nodiscard]] auto read_some(Char *buffer, io_size_t nobjs)
+        [[nodiscard]] auto read_some(Char *buf, io_size_t nobjs)
             -> expected<io_size_t, std::error_code>
         {
-            return this->_base->read_some(reinterpret_cast<std::byte *>(buffer),
+            return this->_base->read_some(reinterpret_cast<std::byte *>(buf),
                                           nobjs);
         }
     };
@@ -125,18 +127,18 @@ namespace sk {
         {
         }
 
-        [[nodiscard]] auto write_some(Char const *buffer, io_size_t n)
+        [[nodiscard]] auto write_some(Char const *buf, io_size_t n)
             -> expected<io_size_t, std::error_code>
         {
             return this->_base->write_some(
-                reinterpret_cast<std::byte const *>(buffer), n);
+                reinterpret_cast<std::byte const *>(buf), n);
         }
 
-        [[nodiscard]] auto async_write_some(Char const *buffer, io_size_t n)
+        [[nodiscard]] auto async_write_some(Char const *buf, io_size_t n)
             -> task<expected<io_size_t, std::error_code>>
         {
             return this->_base->async_write_some(
-                reinterpret_cast<std::byte const *>(buffer), n);
+                reinterpret_cast<std::byte const *>(buf), n);
         }
     };
 
@@ -153,32 +155,32 @@ namespace sk {
         {
         }
 
-        [[nodiscard]] auto async_read_some(Char *buffer, io_size_t nobjs)
+        [[nodiscard]] auto async_read_some(Char *buf, io_size_t nobjs)
             -> task<expected<io_size_t, std::error_code>>
         {
             return this->_base->async_read_some(
-                reinterpret_cast<std::byte *>(buffer), nobjs);
+                reinterpret_cast<std::byte *>(buf), nobjs);
         }
 
-        [[nodiscard]] auto read_some(Char *buffer, io_size_t nobjs)
+        [[nodiscard]] auto read_some(Char *buf, io_size_t nobjs)
             -> expected<io_size_t, std::error_code>
         {
-            return this->_base->read_some(reinterpret_cast<std::byte *>(buffer),
+            return this->_base->read_some(reinterpret_cast<std::byte *>(buf),
                                           nobjs);
         }
 
-        [[nodiscard]] auto write_some(Char const *buffer, io_size_t n)
+        [[nodiscard]] auto write_some(Char const *buf, io_size_t n)
             -> expected<io_size_t, std::error_code>
         {
             return this->_base->write_some(
-                reinterpret_cast<std::byte const *>(buffer), n);
+                reinterpret_cast<std::byte const *>(buf), n);
         }
 
-        [[nodiscard]] auto async_write_some(Char const *buffer, io_size_t n)
+        [[nodiscard]] auto async_write_some(Char const *buf, io_size_t n)
             -> task<expected<io_size_t, std::error_code>>
         {
             return this->_base->async_write_some(
-                reinterpret_cast<std::byte const *>(buffer), n);
+                reinterpret_cast<std::byte const *>(buf), n);
         }
     };
 

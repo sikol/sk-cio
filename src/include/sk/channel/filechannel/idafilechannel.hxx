@@ -52,11 +52,12 @@ namespace sk {
          * Create an idafilechannel which is closed.
          */
         idafilechannel() = default;
+        ~idafilechannel() = default;
 
         idafilechannel(idafilechannel const &) = delete;
         idafilechannel(idafilechannel &&) noexcept = default;
-        idafilechannel &operator=(idafilechannel const &) = delete;
-        idafilechannel &operator=(idafilechannel &&) noexcept = default;
+        auto operator=(idafilechannel const &) -> idafilechannel & = delete;
+        auto operator=(idafilechannel &&) noexcept -> idafilechannel & = default;
 
         /*
          * Open a file.

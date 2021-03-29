@@ -34,6 +34,7 @@
 #define SK_BUFFER_RANGE_BUFFER_HXX_INCLUDED
 
 #include <cstddef>
+#include <cstring>
 #include <ranges>
 #include <span>
 
@@ -63,38 +64,42 @@ namespace sk {
 
         std::span<const_value_type> read_window;
 
-        readable_range_buffer(Range const &range) : read_window(range) {}
+        explicit readable_range_buffer(Range const &range) : read_window(range)
+        {
+        }
 
-        template <std::ranges::contiguous_range InRange>
-        auto read(InRange &&buf) -> size_type
-            requires std::same_as<value_type,
-                                  std::ranges::range_value_t<InRange>> {
-            auto can_read =
-                std::min(std::ranges::size(buf), read_window.size());
+        auto read(value_type *dptr, size_type dsize) -> size_type
+        {
+            auto can_read = std::min(dsize, read_window.size());
 
             auto will_read = read_window.subspan(0, can_read);
-            std::ranges::copy(will_read, std::ranges::begin(buf));
+            auto const *read_data = std::ranges::data(will_read);
+            auto read_size = std::ranges::size(will_read);
+            std::memcpy(dptr, read_data, read_size);
+
             discard(can_read);
             return can_read;
         }
 
-        auto readable_ranges() -> std::vector<std::span<const_value_type>> {
+        auto readable_ranges() -> std::vector<std::span<const_value_type>>
+        {
             return {read_window};
         }
 
-        auto discard(size_type n) -> size_type {
+        auto discard(size_type n) -> size_type
+        {
             auto will_discard = std::min(n, read_window.size());
             read_window = read_window.subspan(will_discard);
             return will_discard;
         }
     };
 
-    static_assert(
-        readable_buffer_of<readable_range_buffer<std::span<char>>, char>);
+    static_assert(readable_buffer<readable_range_buffer<std::span<char>>>);
 
     // Create a readable_range_buffer from a range.
     template <std::ranges::contiguous_range Range>
-    auto make_readable_range_buffer(Range &&range) {
+    auto make_readable_range_buffer(Range &&range)
+    {
         using range_type = std::remove_reference_t<decltype(range)>;
         return readable_range_buffer<range_type>(range);
     }
@@ -112,30 +117,25 @@ namespace sk {
 
         std::span<value_type> write_window;
 
-        writable_range_buffer(Range &range) : write_window(range) {}
+        explicit writable_range_buffer(Range &range) : write_window(range) {}
 
-        // clang-format off
-        template<std::ranges::contiguous_range InRange>
-        auto write(InRange &&buf) -> size_type
-            requires std::same_as<
-                const_value_type,
-                std::add_const_t<std::ranges::range_value_t<InRange>>
-            > {
-
+        auto write(const_value_type *dptr, size_type dsize) -> size_type
+        {
             auto can_write =
-                std::min(write_window.size(), std::ranges::size(buf));
-            auto will_write = buf | std::ranges::views::take(can_write);
+                std::min(write_window.size(), dsize);
+            std::span will_write(dptr, can_write);
             std::ranges::copy(will_write, write_window.begin());
             commit(can_write);
             return can_write;
         }
-        // clang-format on
 
-        auto writable_ranges() -> std::vector<std::span<value_type>> {
+        auto writable_ranges() -> std::vector<std::span<value_type>>
+        {
             return {write_window};
         }
 
-        auto commit(size_type n) -> size_type {
+        auto commit(size_type n) -> size_type
+        {
             auto will_commit = std::min(write_window.size(), n);
             write_window = write_window.subspan(will_commit);
             return will_commit;
@@ -146,7 +146,8 @@ namespace sk {
 
     // Create a writable_range_buffer from a range.
     template <std::ranges::contiguous_range Range>
-    auto make_writable_range_buffer(Range &&range) {
+    auto make_writable_range_buffer(Range &&range)
+    {
         using range_type = std::remove_reference_t<decltype(range)>;
         return writable_range_buffer<range_type>(range);
     }

@@ -74,14 +74,14 @@ namespace sk {
     namespace detail {
 
         struct cio_errc_category : std::error_category {
-            auto name() const noexcept -> char const * final;
-            auto message(int c) const -> std::string final;
+            [[nodiscard]] auto name() const noexcept -> char const * final;
+            [[nodiscard]] auto message(int c) const -> std::string final;
         };
 
     } // namespace detail
 
     auto cio_errc_category() -> detail::cio_errc_category const &;
-    std::error_code make_error_code(error e);
+    auto make_error_code(error e) -> std::error_code;
 
 } // namespace sk
 

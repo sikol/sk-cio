@@ -32,14 +32,12 @@
 
 #include <fmt/core.h>
 
-#include <sk/cio.hxx>
+#include "sk/cio.hxx"
 
-using namespace sk;
-
-task<void> resolve(std::string const &name) {
+auto resolve(std::string const &name) -> sk::task<void> {
     std::cout << name << ": ";
 
-    auto addresses = co_await net::async_resolve_address(name, "");
+    auto addresses = co_await sk::net::async_resolve_address(name, "");
     if (!addresses) {
         std::cout << addresses.error().message() << '\n';
         co_return;
@@ -56,12 +54,9 @@ task<void> resolve(std::string const &name) {
         std::cout << '\t' << address << '\n';
 
     std::cout << '\n';
-
 }
 
-int main(int argc, char **argv) {
-    using namespace std::chrono_literals;
-
+auto main(int argc, char **argv) -> int try {
     if (argc < 2) {
         fmt::print(stderr, "usage: {} <file> [file...]", argv[0]);
         return 1;
@@ -69,9 +64,11 @@ int main(int argc, char **argv) {
 
     sk::reactor_handle reactor;
 
-    for (auto &&name : std::span(argv + 1, argv + argc)) {
+    for (auto &&name : std::span(argv + 1, argv + argc))
         wait(resolve(name));
-    }
 
     return 0;
+} catch (std::exception const &e) {
+    std::cerr << "unexpected exception: " << e.what() << '\n';
+    return 1;
 }

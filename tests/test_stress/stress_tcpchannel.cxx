@@ -74,7 +74,7 @@ task<int> stress_task()
 
             // Generate random data.
             buflen = rnd_1_50(eng);
-            for (auto n = 0; n < buflen; ++n)
+            for (io_size_t n = 0; n < buflen; ++n)
                 outbuf[n] = std::byte(rnd_byte(eng));
 
             // std::span to work around MSVC bug
@@ -139,7 +139,6 @@ task<void> handle_client(net::tcpchannel client)
     }
 
     fmt::print(stderr, "handle_client() : return\n");
-    co_return;
 }
 
 task<void> server_task(net::tcpserverchannel &chnl)

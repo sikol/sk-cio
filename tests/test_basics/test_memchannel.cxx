@@ -28,22 +28,22 @@
 
 #include <catch.hpp>
 
+#include <array>
 #include <cstring>
 
-#include <sk/channel/memchannel/memchannel.hxx>
-#include <sk/channel/read.hxx>
-
-using namespace sk;
+#include "sk/channel/memchannel/memchannel.hxx"
+#include "sk/channel/read.hxx"
+#include "sk/channel/write.hxx"
 
 TEST_CASE("memchannel::write_some()")
 {
-    std::byte const buf[] = {std::byte('A'), std::byte('B'), std::byte('C')};
-    char out[4];
-    std::memset(out, 'X', sizeof out);
+    std::array buf{std::byte{'A'}, std::byte{'B'}, std::byte{'C'}};
+    std::array<char, 4> out{};
+    std::ranges::fill(out, 'X');
 
-    auto chnl = make_memchannel(out);
+    auto chnl = sk::make_memchannel(out);
 
-    auto nbytes = chnl.write_some(buf, 3);
+    auto nbytes = sk::write_some(chnl, buf, 3);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 3);
     REQUIRE(out[0] == 'A');
@@ -54,27 +54,28 @@ TEST_CASE("memchannel::write_some()")
 
 TEST_CASE("memchannel::write_some() single byte")
 {
-    std::byte const buf[] = {std::byte('A'), std::byte('B'), std::byte('C')};
-    char out[4];
-    std::memset(out, 'X', sizeof out);
+    std::array const buf{
+        std::byte{'A'}, std::byte{'B'}, std::byte{'C'}, std::byte{'X'}};
+    std::array<char, 4> out{};
+    std::ranges::fill(out, 'X');
 
-    auto chnl = make_memchannel(out, out + 3);
+    auto chnl = sk::make_memchannel(std::span(out).subspan(0, 3));
 
-    auto nbytes = chnl.write_some(buf, 1);
+    auto nbytes = chnl.write_some(&buf[0], 1);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.write_some(buf + 1, 1);
+    nbytes = chnl.write_some(&buf[1], 1);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.write_some(buf + 2, 1);
+    nbytes = chnl.write_some(&buf[2], 1);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.write_some(buf + 3, 1);
+    nbytes = chnl.write_some(&buf[2], 1);
     REQUIRE(!nbytes);
-    REQUIRE(nbytes.error() == error::end_of_file);
+    REQUIRE(nbytes.error() == sk::error::end_of_file);
 
     REQUIRE(out[0] == 'A');
     REQUIRE(out[1] == 'B');
@@ -84,27 +85,27 @@ TEST_CASE("memchannel::write_some() single byte")
 
 TEST_CASE("memchannel::write_some_at() single byte")
 {
-    std::byte const buf[] = {std::byte('A'), std::byte('B'), std::byte('C')};
-    char out[4];
-    std::memset(out, 'X', sizeof out);
+    std::array const buf{std::byte{'A'}, std::byte{'B'}, std::byte{'C'}};
+    std::array<char, 4> out{};
+    std::ranges::fill(out, 'X');
 
-    auto chnl = make_memchannel(out, out + 3);
+    auto chnl = sk::make_memchannel(std::span(out).subspan(0, 3));
 
-    auto nbytes = chnl.write_some_at(0, buf, 1);
+    auto nbytes = chnl.write_some_at(0, &buf[0], 1);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.write_some_at(1, buf + 1, 1);
+    nbytes = chnl.write_some_at(1, &buf[1], 1);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.write_some_at(2, buf + 2, 1);
+    nbytes = chnl.write_some_at(2, &buf[2], 1);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.write_some_at(3, buf + 3, 1);
+    nbytes = chnl.write_some_at(3, &buf[2], 1);
     REQUIRE(!nbytes);
-    REQUIRE(nbytes.error() == error::end_of_file);
+    REQUIRE(nbytes.error() == sk::error::end_of_file);
 
     REQUIRE(out[0] == 'A');
     REQUIRE(out[1] == 'B');
@@ -114,14 +115,14 @@ TEST_CASE("memchannel::write_some_at() single byte")
 
 TEST_CASE("memchannel::write_some() past the end")
 {
-    std::byte const buf[] = {
-        std::byte('A'), std::byte('B'), std::byte('C'), std::byte('D')};
-    char out[4];
-    std::memset(out, 'X', sizeof out);
+    std::array const buf{
+        std::byte{'A'}, std::byte{'B'}, std::byte{'C'}, std::byte{'D'}};
+    std::array<char, 4> out{};
+    std::ranges::fill(out, 'X');
 
-    auto chnl = make_memchannel(out, out + 3);
+    auto chnl = sk::make_memchannel(std::span(out).subspan(0, 3));
 
-    auto nbytes = chnl.write_some(buf, 4);
+    auto nbytes = sk::write_some(chnl, buf);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 3);
     REQUIRE(out[0] == 'A');
@@ -132,26 +133,26 @@ TEST_CASE("memchannel::write_some() past the end")
 
 TEST_CASE("memchannel::write_some() with an invalid location")
 {
-    std::byte const buf[] = {std::byte('A'), std::byte('B'), std::byte('C')};
-    char out[4];
-    std::memset(out, 'X', sizeof out);
+    std::array const buf{std::byte{'A'}, std::byte{'B'}, std::byte{'C'}};
+    std::array<char, 4> out{};
+    std::ranges::fill(out, 'X');
 
-    auto chnl = make_memchannel(out);
+    auto chnl = sk::make_memchannel(out);
 
-    auto nbytes = chnl.write_some_at(4, buf, 3);
+    auto nbytes = sk::write_some_at(chnl, 4, buf);
     REQUIRE(!nbytes);
-    REQUIRE(nbytes.error() == error::end_of_file);
+    REQUIRE(nbytes.error() == sk::error::end_of_file);
 }
 
-TEST_CASE("memchannel::read_some()")
+TEST_CASE("memchannel::read_some() partial buffer")
 {
-    char buf[20] = {'A', 'B', 'C'};
-    std::byte dat[4];
-    std::memset(dat, 'X', sizeof dat);
+    std::array<char, 20> buf{'A', 'B', 'C'}; // NOLINT
+    std::array<std::byte, 4> dat{};
+    std::ranges::fill(dat, std::byte{'X'});
 
-    auto chnl = make_memchannel(buf);
+    auto chnl = sk::make_memchannel(buf);
 
-    auto nbytes = chnl.read_some(dat, 3);
+    auto nbytes = sk::read_some(chnl, dat, 3);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 3);
     REQUIRE(dat[0] == std::byte{'A'});
@@ -162,27 +163,27 @@ TEST_CASE("memchannel::read_some()")
 
 TEST_CASE("memchannel::read_some() single-byte")
 {
-    char buf[3] = {'A', 'B', 'C'};
-    std::byte dat[4];
-    std::memset(dat, 'X', sizeof dat);
+    std::array buf{'A', 'B', 'C'};
+    std::array<std::byte, 4> dat{};
+    std::ranges::fill(dat, std::byte{'X'});
 
-    auto chnl = make_memchannel(buf);
+    auto chnl = sk::make_memchannel(buf);
 
-    auto nbytes = chnl.read_some(dat, 1);
+    auto nbytes = sk::read_some(chnl, dat, 1);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.read_some(dat + 1, 1);
+    nbytes = sk::read_some(chnl, std::span(dat).subspan(1), 1);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.read_some(dat + 2, 1);
+    nbytes = sk::read_some(chnl, std::span(dat).subspan(2), 1);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.read_some(dat, 1);
+    nbytes = sk::read_some(chnl, dat, 1);
     REQUIRE(!nbytes);
-    REQUIRE(nbytes.error() == error::end_of_file);
+    REQUIRE(nbytes.error() == sk::error::end_of_file);
 
     REQUIRE(dat[0] == std::byte{'A'});
     REQUIRE(dat[1] == std::byte{'B'});
@@ -192,27 +193,27 @@ TEST_CASE("memchannel::read_some() single-byte")
 
 TEST_CASE("memchannel::read_some_at() single-byte")
 {
-    char buf[3] = {'A', 'B', 'C'};
-    std::byte dat[4];
-    std::memset(dat, 'X', sizeof dat);
+    std::array buf{'A', 'B', 'C'};
+    std::array<std::byte, 4> dat{};
+    std::ranges::fill(dat, std::byte{'X'});
 
-    auto chnl = make_memchannel(buf);
+    auto chnl = sk::make_memchannel(buf);
 
-    auto nbytes = chnl.read_some_at(0, dat, 1);
+    auto nbytes = sk::read_some_at(chnl, 0, dat, 1);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.read_some_at(1, dat + 1, 1);
+    nbytes = sk::read_some_at(chnl, 1, std::span(dat).subspan(1), 1);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.read_some_at(2, dat + 2, 1);
+    nbytes = sk::read_some_at(chnl, 2, std::span(dat).subspan(2), 1);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.read_some_at(3, dat, 1);
+    nbytes = sk::read_some_at(chnl, 3, dat, 1);
     REQUIRE(!nbytes);
-    REQUIRE(nbytes.error() == error::end_of_file);
+    REQUIRE(nbytes.error() == sk::error::end_of_file);
 
     REQUIRE(dat[0] == std::byte{'A'});
     REQUIRE(dat[1] == std::byte{'B'});
@@ -222,13 +223,13 @@ TEST_CASE("memchannel::read_some_at() single-byte")
 
 TEST_CASE("memchannel::read_some() past the end")
 {
-    char buf[3] = {'A', 'B', 'C'};
-    std::byte dat[4];
-    std::memset(dat, 'X', sizeof dat);
+    std::array buf{'A', 'B', 'C'};
+    std::array<std::byte, 4> dat{};
+    std::ranges::fill(dat, std::byte{'X'});
 
-    auto chnl = make_memchannel(buf);
+    auto chnl = sk::make_memchannel(buf);
 
-    auto nbytes = chnl.read_some(dat, 4);
+    auto nbytes = sk::read_some(chnl, dat, 4);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 3);
     REQUIRE(dat[0] == std::byte{'A'});
@@ -239,13 +240,13 @@ TEST_CASE("memchannel::read_some() past the end")
 
 TEST_CASE("memchannel::read_some_at() with an invalid location")
 {
-    char buf[3] = {'A', 'B', 'C'};
-    std::byte dat[4];
-    std::memset(dat, 'X', sizeof dat);
+    std::array buf{'A', 'B', 'C'};
+    std::array<std::byte, 4> dat{};
+    std::ranges::fill(dat, std::byte{'X'});
 
-    auto chnl = make_memchannel(buf);
+    auto chnl = sk::make_memchannel(buf);
 
-    auto nbytes = chnl.read_some_at(4, dat, 1);
+    auto nbytes = sk::read_some_at(chnl, 4, dat, 1);
     REQUIRE(!nbytes);
-    REQUIRE(nbytes.error() == error::end_of_file);
+    REQUIRE(nbytes.error() == sk::error::end_of_file);
 }

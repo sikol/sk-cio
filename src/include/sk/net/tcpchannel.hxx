@@ -26,8 +26,8 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_NET_TCPCHANNEL_HXX_INCLUDED
-#define SK_CIO_NET_TCPCHANNEL_HXX_INCLUDED
+#ifndef SK_NET_TCPCHANNEL_HXX_INCLUDED
+#define SK_NET_TCPCHANNEL_HXX_INCLUDED
 
 #include <sk/detail/platform.hxx>
 
@@ -35,16 +35,20 @@
 #    include <sk/win32/detail/net/tcpchannel.hxx>
 
 namespace sk::net {
+
     using sk::win32::detail::tcpchannel;
-}
+
+} // namespace sk::net
 
 #elif defined(SK_CIO_PLATFORM_POSIX)
 
 #    include <sk/posix/detail/net/tcpchannel.hxx>
 
 namespace sk::net {
+
     using sk::posix::detail::tcpchannel;
-}
+
+} // namespace sk::net
 
 #else
 
@@ -52,4 +56,4 @@ namespace sk::net {
 
 #endif
 
-#endif // SK_CIO_NET_TCPCHANNEL_HXX_INCLUDED
+#endif // SK_NET_TCPCHANNEL_HXX_INCLUDED

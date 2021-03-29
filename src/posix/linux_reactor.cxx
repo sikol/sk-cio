@@ -32,10 +32,10 @@ namespace sk::posix::detail {
 
     linux_reactor::linux_reactor()
     {
-        _epoll = std::make_unique<epoll_reactor>(_workq);
+        _epoll = std::make_unique<epoll_reactor>(&_workq);
 
 #ifdef SK_CIO_HAVE_IO_URING
-        _uring = io_uring_reactor::make(_workq);
+        _uring = io_uring_reactor::make(&_workq);
 #endif
     }
 

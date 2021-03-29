@@ -26,23 +26,5 @@
 
 cmake_minimum_required(VERSION 3.12)
 
-add_executable(async_type async_type.cxx)
-target_link_libraries(async_type PRIVATE sk-cio fmt)
-
-if(SK_CIO_ENABLE_TIDY)
-    set_target_properties(async_type PROPERTIES CXX_CLANG_TIDY "${SK_CLANG_TIDY_COMMAND}" )
-endif()
-
-add_executable(async_resolve async_resolve.cxx)
-target_link_libraries(async_resolve PRIVATE sk-cio fmt)
-
-if(SK_CIO_ENABLE_TIDY)
-    set_target_properties(async_resolve PROPERTIES CXX_CLANG_TIDY "${SK_CLANG_TIDY_COMMAND}" )
-endif()
-
-add_executable(async_tcp_echo_server async_tcp_echo_server.cxx)
-target_link_libraries(async_tcp_echo_server PRIVATE sk-cio fmt)
-
-if(SK_CIO_ENABLE_TIDY)
-    set_target_properties(async_tcp_echo_server PROPERTIES CXX_CLANG_TIDY "${SK_CLANG_TIDY_COMMAND}" )
-endif()
+add_library(sk-thirdparty-tl-expected INTERFACE)
+target_include_directories(sk-thirdparty-tl-expected INTERFACE include)

@@ -28,59 +28,55 @@
 
 #include <catch.hpp>
 
-#include <cstring>
-#include <sk/cio.hxx>
+#include "sk/cio.hxx"
 
-using namespace sk;
-
-static_assert(iseqchannel<iseqcharchannel<char, imemchannel>>);
+static_assert(sk::iseqchannel<sk::iseqcharchannel<char, sk::imemchannel>>);
 
 TEST_CASE("seqcharchannel<char> write_some") {
-    char outbuf[4] = {};
-    auto mchan = make_memchannel(outbuf);
-    auto cchan = make_seqcharchannel<char>(mchan);
+    std::array<char, 4> outbuf{};
+    auto mchan = sk::make_memchannel(outbuf);
+    auto cchan = sk::make_seqcharchannel<char>(mchan);
 
-    char const inbuf[] = { 'A', 'B', 'C' };
-    auto r = write_some(cchan, inbuf);
+    std::array const inbuf{ 'A', 'B', 'C' };
+    auto r = sk::write_some(cchan, inbuf);
     REQUIRE(r);
     REQUIRE(*r == 3);
-    REQUIRE(std::strcmp(outbuf, "ABC") == 0);
+    REQUIRE(outbuf == std::array{'A', 'B', 'C', '\0'});
 }
 
-
 TEST_CASE("seqcharchannel<char> async_write_some") {
-    char outbuf[4] = {};
-    auto mchan = make_memchannel(outbuf);
-    auto cchan = make_seqcharchannel<char>(mchan);
+    std::array<char, 4> outbuf{};
+    auto mchan = sk::make_memchannel(outbuf);
+    auto cchan = sk::make_seqcharchannel<char>(mchan);
 
-    char const inbuf[] = { 'A', 'B', 'C' };
-    auto r = wait(async_write_some(cchan, std::span(inbuf)));
+    std::array const inbuf{ 'A', 'B', 'C' };
+    auto r = wait(sk::async_write_some(cchan, std::span(inbuf)));
     REQUIRE(r);
     REQUIRE(*r == 3);
-    REQUIRE(std::strcmp(outbuf, "ABC") == 0);
+    REQUIRE(outbuf == std::array{'A', 'B', 'C', '\0'});
 }
 
 
 TEST_CASE("seqcharchannel<char> read_some") {
-    char inbuf[] = { 'A', 'B', 'C' };
-    auto mchan = make_memchannel(inbuf);
-    auto cchan = make_seqcharchannel<char>(mchan);
+    std::array inbuf{ 'A', 'B', 'C' };
+    auto mchan = sk::make_memchannel(inbuf);
+    auto cchan = sk::make_seqcharchannel<char>(mchan);
 
-    char outbuf[4] = {};
+    std::array<char, 4> outbuf{};
     auto r = read_some(cchan, outbuf, sizeof(outbuf));
     REQUIRE(r);
     REQUIRE(*r == 3);
-    REQUIRE(!std::strcmp(outbuf, "ABC"));
+    REQUIRE(outbuf == std::array{'A', 'B', 'C', '\0'});
 }
 
 TEST_CASE("seqcharchannel<char> async_read_some") {
-    char inbuf[] = { 'A', 'B', 'C' };
-    auto mchan = make_memchannel(inbuf);
-    auto cchan = make_seqcharchannel<char>(mchan);
+    std::array inbuf{ 'A', 'B', 'C' };
+    auto mchan = sk::make_memchannel(inbuf);
+    auto cchan = sk::make_seqcharchannel<char>(mchan);
 
-    char outbuf[4] = {};
-    auto r = wait(async_read_some(cchan, outbuf, sizeof(outbuf)));
+    std::array<char, 4> outbuf{};
+    auto r = wait(sk::async_read_some(cchan, outbuf, sizeof(outbuf)));
     REQUIRE(r);
     REQUIRE(*r == 3);
-    REQUIRE(!std::strcmp(outbuf, "ABC"));
+    REQUIRE(outbuf == std::array{'A', 'B', 'C', '\0'});
 }

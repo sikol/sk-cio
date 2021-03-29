@@ -26,70 +26,86 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-
 #include <catch.hpp>
 
 #include <cstring>
+#include <iostream>
 #include <stdexcept>
 #include <string>
-#include <iostream>
 
+#include <sk/co_detach.hxx>
 #include <sk/task.hxx>
 #include <sk/wait.hxx>
-#include <sk/co_detach.hxx>
 
-using sk::task;
-
-auto get_int() -> task<int> {
+auto get_int() -> sk::task<int>
+{
     co_return 42;
 }
 
-TEST_CASE("task<int> works") {
-    int i = wait(get_int());
+TEST_CASE("task<int> works")
+{
+    int i = sk::wait(get_int());
     REQUIRE(i == 42);
 }
 
-auto set_int(int &i) -> task<void> {
-    i = 42;
+auto set_int(int *i) -> sk::task<void>
+{
+    *i = 42;
     co_return;
 }
 
-TEST_CASE("task<void> works") {
+TEST_CASE("task<void> works")
+{
     int i = 0;
-    wait(set_int(i));
+    sk::wait(set_int(&i));
     REQUIRE(i == 42);
 }
 
-task<void> detached1(std::promise<int> &p) {
-    p.set_value(42);
+auto detached1(std::promise<int> *p) -> sk::task<void>
+{
+    p->set_value(42);
     co_return;
 }
 
-task<void> detached2(std::promise<int> &p) {
-    co_detach(detached1(p));
+auto detached2(std::promise<int> *p) -> sk::task<void>
+{
+    sk::co_detach(detached1(p));
     co_return;
 }
 
-task<int> test_detached1() {
+auto test_detached1() -> sk::task<int>
+{
     std::promise<int> p;
     std::future f = p.get_future();
 
-    co_detach(detached1(p));
+    co_detach(detached1(&p));
     co_return f.get();
 }
 
-task<int> test_detached2() {
+auto test_detached2() -> sk::task<int>
+{
     std::promise<int> p;
     std::future f = p.get_future();
 
-    co_detach(detached2(p));
+    co_detach(detached2(&p));
     co_return f.get();
 }
 
-TEST_CASE("co_detach 1") {
+TEST_CASE("co_detach 1")
+{
     REQUIRE(wait(test_detached1()) == 42);
 }
 
-TEST_CASE("co_detach 2") {
+TEST_CASE("co_detach 2")
+{
     REQUIRE(wait(test_detached2()) == 42);
+}
+
+auto throw_runtime_error() -> sk::task<void> {
+    throw std::runtime_error("coro exception test");
+    co_return;
+}
+
+TEST_CASE("task<T> handles exceptions") {
+    REQUIRE_THROWS(wait(throw_runtime_error()));
 }

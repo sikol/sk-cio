@@ -53,8 +53,8 @@ namespace sk {
 
         dafilechannel(dafilechannel const &) = delete;
         dafilechannel(dafilechannel &&) noexcept = default;
-        dafilechannel &operator=(dafilechannel const &) = delete;
-        dafilechannel &operator=(dafilechannel &&) noexcept = default;
+        auto operator=(dafilechannel const &) -> dafilechannel & = delete;
+        auto operator=(dafilechannel &&) noexcept -> dafilechannel & = default;
         ~dafilechannel() = default;
 
         /*

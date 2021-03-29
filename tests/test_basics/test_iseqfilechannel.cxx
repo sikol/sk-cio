@@ -35,8 +35,6 @@
 #include <sk/channel/read.hxx>
 #include <sk/wait.hxx>
 
-using namespace sk;
-
 TEST_CASE("iseqfilechannel::read()")
 {
     std::string test_string("This is a test\n");
@@ -50,7 +48,7 @@ TEST_CASE("iseqfilechannel::read()")
         testfile.close();
     }
 
-    iseqfilechannel chnl;
+    sk::iseqfilechannel chnl;
     auto ret = chnl.open("test.txt");
     if (!ret) {
         INFO(ret.error().message());
@@ -59,7 +57,7 @@ TEST_CASE("iseqfilechannel::read()")
 
     for (int i = 0; i < 3; ++i) {
         std::vector<std::byte> buf(15);
-        auto nbytes = read_some(chnl, buf, unlimited);
+        auto nbytes = sk::read_some(chnl, buf);
         if (!nbytes) {
             INFO(nbytes.error().message());
             REQUIRE(false);
@@ -74,9 +72,9 @@ TEST_CASE("iseqfilechannel::read()")
     }
 
     std::vector<std::byte> buf(15);
-    auto nbytes = read_some(chnl, buf, unlimited);
+    auto nbytes = sk::read_some(chnl, buf);
     REQUIRE(!nbytes);
-    REQUIRE(nbytes.error() == error::end_of_file);
+    REQUIRE(nbytes.error() == sk::error::end_of_file);
 }
 
 TEST_CASE("iseqfilechannel::async_read()")
@@ -92,7 +90,7 @@ TEST_CASE("iseqfilechannel::async_read()")
         testfile.close();
     }
 
-    iseqfilechannel chnl;
+    sk::iseqfilechannel chnl;
     auto ret = wait(chnl.async_open("test.txt"));
     if (!ret) {
         INFO(ret.error().message());
@@ -101,7 +99,7 @@ TEST_CASE("iseqfilechannel::async_read()")
 
     for (int i = 0; i < 3; ++i) {
         std::vector<std::byte> buf(15);
-        auto nbytes = wait(async_read_some(chnl, buf, unlimited));
+        auto nbytes = sk::wait(sk::async_read_some(chnl, buf));
         if (!nbytes) {
             INFO(nbytes.error().message());
             REQUIRE(false);
@@ -116,7 +114,7 @@ TEST_CASE("iseqfilechannel::async_read()")
     }
 
     std::vector<std::byte> buf(15);
-    auto nbytes = wait(async_read_some(chnl, buf, unlimited));
+    auto nbytes = sk::wait(sk::async_read_some(chnl, buf));
     REQUIRE(!nbytes);
-    REQUIRE(nbytes.error() == error::end_of_file);
+    REQUIRE(nbytes.error() == sk::error::end_of_file);
 }

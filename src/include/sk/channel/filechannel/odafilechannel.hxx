@@ -70,8 +70,8 @@ namespace sk {
 
         odafilechannel(odafilechannel const &) = delete;
         odafilechannel(odafilechannel &&) noexcept = default;
-        odafilechannel &operator=(odafilechannel const &) = delete;
-        odafilechannel &operator=(odafilechannel &&) noexcept = default;
+        auto operator=(odafilechannel const &) -> odafilechannel & = delete;
+        auto operator=(odafilechannel &&) noexcept -> odafilechannel & = default;
         ~odafilechannel() = default;
 
         /*

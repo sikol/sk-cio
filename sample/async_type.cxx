@@ -32,12 +32,10 @@
 
 #include <fmt/core.h>
 
-#include <sk/cio.hxx>
+#include "sk/cio.hxx"
 
-using namespace sk;
-
-task<void> print_file(std::string const &name) {
-    iseqfilechannel chnl;
+auto print_file(std::string const &name) -> sk::task<void> {
+    sk::iseqfilechannel chnl;
 
     auto err = co_await chnl.async_open(name);
     if (!err) {
@@ -46,8 +44,8 @@ task<void> print_file(std::string const &name) {
     }
 
     for (;;) {
-        sk::fixed_buffer<std::byte, 1024> buffer;
-        auto nbytes = co_await async_read_some(chnl, buffer, unlimited);
+        sk::fixed_buffer<std::byte, 1024> buf;
+        auto nbytes = co_await sk::async_read_some(chnl, buf);
 
         if (!nbytes) {
             if (nbytes.error() != sk::error::end_of_file)
@@ -55,18 +53,18 @@ task<void> print_file(std::string const &name) {
             break;
         }
 
-        for (auto &&range : buffer.readable_ranges())
+        for (auto &&range : buf.readable_ranges())
             std::cout.write(
                 reinterpret_cast<char const *>(std::ranges::data(range)),
                 std::ranges::size(range));
 
-        buffer.discard(*nbytes);
+        buf.discard(*nbytes);
     }
 
     co_await chnl.async_close();
 }
 
-int main(int argc, char **argv) {
+auto main(int argc, char **argv) -> int try {
     using namespace std::chrono_literals;
 
     if (argc < 2) {
@@ -81,4 +79,7 @@ int main(int argc, char **argv) {
     }
 
     return 0;
+} catch (std::exception const &e) {
+    std::cerr << "unexpected exception: " << e.what() << '\n';
+    return 1;
 }

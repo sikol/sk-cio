@@ -45,7 +45,7 @@ namespace sk {
      */
 
     struct workq {
-        typedef std::function<void()> work_type;
+        using work_type = std::function<void()>;
 
         // Post work to the queue
         auto post(work_type &&work) -> void;
@@ -111,7 +111,7 @@ namespace sk {
         if (nthreads == 0)
             nthreads = 1;
 
-        while (nthreads--)
+        while (nthreads-- > 0u)
             _threads.emplace_back(&workq::run, this);
     }
 

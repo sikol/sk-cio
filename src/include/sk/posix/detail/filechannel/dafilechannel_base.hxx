@@ -62,8 +62,8 @@ namespace sk::posix::detail {
 
         dafilechannel_base(dafilechannel_base const &) = delete;
         dafilechannel_base(dafilechannel_base &&) noexcept = default;
-        dafilechannel_base &operator=(dafilechannel_base const &) = delete;
-        dafilechannel_base &operator=(dafilechannel_base &&) noexcept = default;
+        auto operator=(dafilechannel_base const &) -> dafilechannel_base & = delete;
+        auto operator=(dafilechannel_base &&) noexcept -> dafilechannel_base & = default;
 
     protected:
         /*
@@ -101,9 +101,9 @@ namespace sk::posix::detail {
                                                         io_size_t nobjs)
         -> task<expected<io_size_t, std::error_code>>
     {
-        SK_CHECK(is_open(), "attempt to read on a closed channel");
+        sk::detail::check(is_open(), "attempt to read on a closed channel");
 
-        auto ret = co_await async_fd_pread(_fd.fd(), buffer, nobjs, loc);
+        auto ret = co_await async_fd_pread(*_fd, buffer, nobjs, loc);
 
         if (!ret)
             co_return make_unexpected(ret.error());
@@ -123,9 +123,9 @@ namespace sk::posix::detail {
                                                   io_size_t nobjs)
         -> expected<io_size_t, std::error_code>
     {
-        SK_CHECK(is_open(), "attempt to read on a closed channel");
+        sk::detail::check(is_open(), "attempt to read on a closed channel");
 
-        auto ret = ::pread(_fd.fd(), buffer, nobjs, loc);
+        auto ret = ::pread(*_fd, buffer, nobjs, loc);
 
         if (ret == -1)
             return make_unexpected(get_errno());
@@ -144,9 +144,9 @@ namespace sk::posix::detail {
         io_offset_t loc, std::byte const *buffer, io_size_t nobjs)
         -> task<expected<io_size_t, std::error_code>>
     {
-        SK_CHECK(is_open(), "attempt to read on a closed channel");
+        sk::detail::check(is_open(), "attempt to read on a closed channel");
 
-        auto ret = co_await async_fd_pwrite(_fd.fd(), buffer, nobjs, loc);
+        auto ret = co_await async_fd_pwrite(*_fd, buffer, nobjs, loc);
 
         if (!ret)
             co_return make_unexpected(ret.error());
@@ -163,11 +163,11 @@ namespace sk::posix::detail {
                                                    io_size_t nobjs)
         -> expected<io_size_t, std::error_code>
     {
-        SK_CHECK(is_open(), "attempt to read on a closed channel");
+        sk::detail::check(is_open(), "attempt to read on a closed channel");
 
-        auto ret = ::pwrite(_fd.fd(), buffer, nobjs, loc);
+        auto ret = ::pwrite(*_fd, buffer, nobjs, loc);
 
-        if (!ret)
+        if (ret < 0)
             return make_unexpected(get_errno());
 
         return ret;

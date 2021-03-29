@@ -33,58 +33,57 @@
 
 namespace sk {
 
-    struct wait_promise {
-        std::promise<void> promise;
-
-        auto get_return_object()
-        {
-            return coroutine_handle<wait_promise>::from_promise(*this);
-        }
-
-        suspend_always initial_suspend()
-        {
-            return {};
-        }
-
-        struct final_awaiter {
-            bool await_ready() noexcept
-            {
-                return false;
-            }
-
-            void await_resume() noexcept {}
-
-            void await_suspend(coroutine_handle<wait_promise> h) noexcept
-            {
-                h.promise().promise.set_value();
-            }
-        };
-
-        final_awaiter final_suspend() noexcept
-        {
-            return {};
-        }
-
-        void unhandled_exception()
-        {
-            throw;
-        }
-
-        void return_void() noexcept {}
-    };
-
     struct wait_task {
-        using promise_type = wait_promise;
-        coroutine_handle<wait_promise> coro_handle;
+        struct promise_type {
+            std::promise<void> promise;
 
-        wait_task(coroutine_handle<wait_promise> coro_handle_)
+            auto get_return_object()
+            {
+                return wait_task(
+                    coroutine_handle<promise_type>::from_promise(*this));
+            }
+
+            auto initial_suspend() -> suspend_always
+            {
+                return {};
+            }
+
+            struct final_awaiter {
+                auto await_ready() noexcept -> bool
+                {
+                    return false;
+                }
+
+                void await_resume() noexcept {}
+
+                void await_suspend(coroutine_handle<promise_type> h) noexcept
+                {
+                    h.promise().promise.set_value();
+                }
+            };
+
+            auto final_suspend() noexcept -> final_awaiter
+            {
+                return {};
+            }
+
+            void unhandled_exception()
+            {
+                throw;
+            }
+
+            void return_void() noexcept {}
+        };
+        coroutine_handle<promise_type> coro_handle;
+
+        explicit wait_task(coroutine_handle<promise_type> coro_handle_)
             : coro_handle(coro_handle_)
         {
         }
 
         wait_task(wait_task const &) = delete;
-        wait_task &operator=(wait_task const &) = delete;
-        wait_task &operator=(wait_task &&other) = delete;
+        auto operator=(wait_task const &) -> wait_task & = delete;
+        auto operator=(wait_task &&other) -> wait_task & = delete;
 
         wait_task(wait_task &&other) noexcept
             : coro_handle(std::exchange(other.coro_handle, {}))
@@ -93,8 +92,13 @@ namespace sk {
 
         ~wait_task()
         {
-            if (coro_handle)
-                coro_handle.destroy();
+            if (coro_handle) {
+                try {
+                    coro_handle.destroy();
+                } catch (...) {
+                    std::terminate();
+                }
+            }
         }
 
         void start()
@@ -115,7 +119,7 @@ namespace sk {
     }
 
     template <typename T>
-    T wait(task<T> &&task_)
+    auto wait(task<T> &&task_) -> T
     {
         T ret;
 
@@ -125,11 +129,12 @@ namespace sk {
         waitable.start();
         future.wait();
 
-        return std::move(ret);
+        return ret;
     }
 
     template <typename T>
-    T wait(task<T> &task_) {
+    auto wait(task<T> &task_) -> T
+    {
         return wait(std::move(task_));
     }
 
@@ -143,7 +148,8 @@ namespace sk {
     }
 
     template <>
-    inline void wait(task<void> &task_) {
+    inline void wait(task<void> &task_)
+    {
         return wait(std::move(task_));
     }
 

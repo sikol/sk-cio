@@ -81,8 +81,8 @@ namespace sk {
 
         oseqfilechannel(oseqfilechannel const &) = delete;
         oseqfilechannel(oseqfilechannel &&) noexcept = default;
-        oseqfilechannel &operator=(oseqfilechannel const &) = delete;
-        oseqfilechannel &operator=(oseqfilechannel &&) noexcept = default;
+        auto operator=(oseqfilechannel const &) -> oseqfilechannel & = delete;
+        auto operator=(oseqfilechannel &&) noexcept -> oseqfilechannel & = default;
         ~oseqfilechannel() = default;
     };
 

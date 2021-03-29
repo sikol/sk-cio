@@ -41,9 +41,9 @@ namespace sk {
         }
 
         memchannel(memchannel &&) = default;
-        memchannel &operator=(memchannel &&) = default;
+        auto operator=(memchannel &&) -> memchannel & = default;
         memchannel(memchannel const &) = delete;
-        memchannel &operator=(memchannel const &) = delete;
+        auto operator=(memchannel const &) -> memchannel & = delete;
         ~memchannel() = default;
 
         [[nodiscard]] auto
@@ -118,7 +118,7 @@ namespace sk {
     template <std::ranges::contiguous_range Range>
     [[nodiscard]] auto make_memchannel(Range &&r)
     {
-        auto data = std::ranges::data(r);
+        auto *data = std::ranges::data(r);
         auto size = std::ranges::size(r);
 
         return make_memchannel(data, data + size);

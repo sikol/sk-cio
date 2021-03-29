@@ -38,8 +38,6 @@
 #include <sk/channel/write.hxx>
 #include <sk/task.hxx>
 
-using namespace sk;
-
 #if 0
 TEST_CASE("odafilechannel::write_some_at()") {
     std::string test_string("This is a test.\n");

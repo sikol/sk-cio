@@ -44,9 +44,9 @@ namespace sk::detail {
         using value_type = std::byte;
 
         memchannel_base(memchannel_base &&) = default;
-        memchannel_base &operator=(memchannel_base &&) = default;
+        auto operator=(memchannel_base &&) -> memchannel_base & = default;
         memchannel_base(memchannel_base const &) = delete;
-        memchannel_base &operator=(memchannel_base const &) = delete;
+        auto operator=(memchannel_base const &) -> memchannel_base & = delete;
 
         [[nodiscard]] auto is_open() const -> bool
         {
@@ -68,14 +68,13 @@ namespace sk::detail {
 
     protected:
         [[nodiscard]] auto
-        _read_some_at(io_offset_t loc, std::byte *buffer, io_size_t n)
+        _read_some_at(io_offset_t loc, std::byte *buf, io_size_t n)
             -> expected<io_size_t, std::error_code>
         {
-
             if (loc > static_cast<std::uintptr_t>(_end - _begin))
                 return make_unexpected(sk::error::end_of_file);
 
-            auto begin = _begin + loc;
+            auto *begin = _begin + loc;
 
             if (n > static_cast<std::uintptr_t>(_end - begin))
                 n = _end - begin;
@@ -83,18 +82,19 @@ namespace sk::detail {
             if (n == 0)
                 return make_unexpected(sk::error::end_of_file);
 
-            std::memcpy(buffer, begin, n);
+            std::memcpy(buf, begin, n);
             return n;
         }
 
-        [[nodiscard]] auto
-        _write_some_at(io_offset_t loc, std::byte const *buf, io_size_t n)
+        [[nodiscard]] auto _write_some_at(io_offset_t loc,
+                                          std::byte const *buf,
+                                          io_size_t n)
             -> expected<io_size_t, std::error_code>
         {
             if (loc > static_cast<std::uintptr_t>(_end - _begin))
                 return make_unexpected(sk::error::end_of_file);
 
-            auto begin = _begin + loc;
+            auto *begin = _begin + loc;
 
             if (begin > (_end - n))
                 n = _end - begin;
@@ -106,15 +106,17 @@ namespace sk::detail {
             return n;
         }
 
-        [[nodiscard]] auto
-        _async_read_some_at(io_offset_t loc, std::byte *buf, io_size_t n)
+        [[nodiscard]] auto _async_read_some_at(io_offset_t loc,
+                                               std::byte *buf,
+                                               io_size_t n)
             -> task<expected<io_size_t, std::error_code>>
         {
             co_return _read_some_at(loc, buf, n);
         }
 
-        [[nodiscard]] auto
-        _async_write_some_at(io_offset_t loc, std::byte const *buf, io_size_t n)
+        [[nodiscard]] auto _async_write_some_at(io_offset_t loc,
+                                                std::byte const *buf,
+                                                io_size_t n)
             -> task<expected<io_size_t, std::error_code>>
         {
             co_return _write_some_at(loc, buf, n);
@@ -123,7 +125,7 @@ namespace sk::detail {
         memchannel_base() = default;
         ~memchannel_base() = default;
 
-        memchannel_base(void *ptr, void *end)
+        memchannel_base(void *ptr, void *end) noexcept
             : _begin(static_cast<std::byte *>(ptr)),
               _end(static_cast<std::byte *>(end))
         {

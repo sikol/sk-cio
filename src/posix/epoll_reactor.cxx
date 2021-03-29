@@ -37,23 +37,22 @@
 
 namespace sk::posix::detail {
 
-    epoll_reactor::epoll_reactor(workq &q) : _workq(q)
+    epoll_reactor::epoll_reactor(workq *q) : _workq(*q)
     {
-        ::pipe(shutdown_pipe);
+        ::pipe(_shutdown_pipe.data());
 
         auto epoll_fd_ = ::epoll_create(64);
         epoll_fd.assign(epoll_fd_);
 
-        epoll_event shutdown_ev;
-        std::memset(&shutdown_ev, 0, sizeof(shutdown_ev));
-        shutdown_ev.data.fd = shutdown_pipe[0];
+        epoll_event shutdown_ev{};
+        shutdown_ev.data.fd = _shutdown_pipe[0];
         shutdown_ev.events = EPOLLET | EPOLLONESHOT | EPOLLIN;
-        ::epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, shutdown_pipe[0], &shutdown_ev);
+        ::epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, _shutdown_pipe[0], &shutdown_ev);
     }
 
     auto epoll_reactor::epoll_thread_fn() -> void
     {
-        auto ep = epoll_fd.fd();
+        auto ep = *epoll_fd;
 
         epoll_event events[16];
         int nevents;
@@ -69,7 +68,7 @@ namespace sk::posix::detail {
                 auto &event = events[i];
                 auto fd = event.data.fd;
 
-                if (fd == shutdown_pipe[0])
+                if (fd == _shutdown_pipe[0])
                     return;
 
                 auto &state = _state[fd];
@@ -111,17 +110,17 @@ namespace sk::posix::detail {
 
     auto epoll_reactor::start() -> void
     {
-        epoll_thread = std::thread(&epoll_reactor::epoll_thread_fn, this);
+        _epoll_thread = std::thread(&epoll_reactor::epoll_thread_fn, this);
         _workq.start_threads();
     }
 
     auto epoll_reactor::stop() -> void
     {
         // std::cerr << "epoll_reactor: requesting stop\n";
-        ::write(shutdown_pipe[1], "", 1);
+        ::write(_shutdown_pipe[1], "", 1);
         _workq.stop();
         epoll_fd.close();
-        epoll_thread.join();
+        _epoll_thread.join();
     }
 
     auto epoll_reactor::associate_fd(int fd) -> void
@@ -129,7 +128,9 @@ namespace sk::posix::detail {
         // std::cerr << "epoll_reactor : associate_fd " << fd << '\n';
         std::lock_guard lock(_state_mtx);
 
-        if (_state.size() < (fd + 1))
+        sk::detail::check(fd >= 0, "attempt to associate a negative fd");
+
+        if (_state.size() < static_cast<std::size_t>(fd + 1))
             _state.resize(fd + 1);
 
         if (!_state[fd])
@@ -139,7 +140,7 @@ namespace sk::posix::detail {
         fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 
         _state[fd]->event.events = EPOLLET | EPOLLONESHOT;
-        int r = epoll_ctl(epoll_fd.fd(), EPOLL_CTL_ADD, fd, &_state[fd]->event);
+        int r = epoll_ctl(*epoll_fd, EPOLL_CTL_ADD, fd, &_state[fd]->event);
         assert(r == 0);
     }
 
@@ -147,7 +148,9 @@ namespace sk::posix::detail {
     {
         std::lock_guard lock(_state_mtx);
 
-        int r = epoll_ctl(epoll_fd.fd(), EPOLL_CTL_DEL, fd, nullptr);
+        sk::detail::check(fd >= 0, "attempt to deassociate a negative fd");
+
+        int r = epoll_ctl(*epoll_fd, EPOLL_CTL_DEL, fd, nullptr);
         assert(r == 0);
         _state[fd].reset();
     }
@@ -160,10 +163,10 @@ namespace sk::posix::detail {
     auto epoll_reactor::register_read_interest(int fd, epoll_coro_state *cstate)
         -> void
     {
-        // std::cerr << "epoll_reactor : register_read_interest " << fd << '\n';
         std::lock_guard lock(_state_mtx);
 
-        assert(_state.size() > fd);
+        sk::detail::check(fd >= 0, "attempt to register a negative fd");
+        assert(_state.size() > static_cast<std::size_t>(fd));
 
         auto &state = _state[fd];
         assert(state);
@@ -172,7 +175,7 @@ namespace sk::posix::detail {
 
         state->read_waiter = cstate;
         state->event.events |= EPOLLIN;
-        int r = epoll_ctl(epoll_fd.fd(), EPOLL_CTL_MOD, fd, &state->event);
+        int r = epoll_ctl(*epoll_fd, EPOLL_CTL_MOD, fd, &state->event);
         assert(r == 0);
     }
 
@@ -184,7 +187,9 @@ namespace sk::posix::detail {
         // '\n';
         std::lock_guard lock(_state_mtx);
 
-        assert(_state.size() > fd);
+        sk::detail::check(fd >= 0, "attempt to register a negative fd");
+
+        assert(_state.size() > static_cast<std::size_t>(fd));
 
         auto &state = _state[fd];
         assert(state);
@@ -193,7 +198,7 @@ namespace sk::posix::detail {
 
         state->write_waiter = cstate;
         state->event.events |= EPOLLIN;
-        int r = epoll_ctl(epoll_fd.fd(), EPOLL_CTL_MOD, fd, &state->event);
+        int r = epoll_ctl(*epoll_fd, EPOLL_CTL_MOD, fd, &state->event);
         assert(r == 0);
     }
 
@@ -213,7 +218,7 @@ namespace sk::posix::detail {
         epoll_coro_state cstate;
 
         explicit co_fd_is_readable(epoll_reactor &reactor_, int fd_)
-            : fd(fd_), reactor(reactor_)
+            : reactor(reactor_), fd(fd_)
         {
         }
 
@@ -239,7 +244,7 @@ namespace sk::posix::detail {
         epoll_coro_state cstate;
 
         explicit co_fd_is_writable(epoll_reactor &reactor_, int fd_)
-            : fd(fd_), reactor(reactor_)
+            : reactor(reactor_), fd(fd_)
         {
         }
 

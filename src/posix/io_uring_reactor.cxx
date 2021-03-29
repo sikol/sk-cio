@@ -42,29 +42,6 @@
 #include <sk/posix/error.hxx>
 #include <sk/reactor.hxx>
 
-namespace {
-
-    int sk_io_uring_setup(unsigned entries, struct io_uring_params *p)
-    {
-        return (int)syscall(__NR_io_uring_setup, entries, p);
-    }
-
-    int sk_io_uring_enter(int ring_fd,
-                          unsigned int to_submit,
-                          unsigned int min_complete,
-                          unsigned int flags)
-    {
-        return (int)syscall(__NR_io_uring_enter,
-                            ring_fd,
-                            to_submit,
-                            min_complete,
-                            flags,
-                            nullptr,
-                            0);
-    }
-
-} // namespace
-
 namespace sk::posix::detail {
 
     struct co_sqe_wait final {
@@ -100,7 +77,7 @@ namespace sk::posix::detail {
         }
     };
 
-    auto io_uring_reactor::make(workq &q) -> std::unique_ptr<io_uring_reactor>
+    auto io_uring_reactor::make(workq *q) -> std::unique_ptr<io_uring_reactor>
     {
         // Create the ring.
         auto reactor_ = new io_uring_reactor(q);
@@ -112,7 +89,7 @@ namespace sk::posix::detail {
             return nullptr;
 
         // Check the ring supports the features we need.
-        int required_features = IORING_FEAT_NODROP | IORING_FEAT_RW_CUR_POS;
+        unsigned required_features = IORING_FEAT_NODROP | IORING_FEAT_RW_CUR_POS;
         if ((reactor->ring.features & required_features) != required_features)
             return nullptr;
 
@@ -166,11 +143,11 @@ namespace sk::posix::detail {
             _pending.push_back(newsqe);
     }
 
-    io_uring_reactor::io_uring_reactor(workq &q) : _workq(q) {}
+    io_uring_reactor::io_uring_reactor(workq *q) : _workq(*q) {}
 
     auto io_uring_reactor::io_uring_thread_fn() -> void
     {
-        io_uring_cqe *cqe;
+        io_uring_cqe *cqe{};
 
         for (;;) {
             int did_requests = 0;
@@ -223,7 +200,6 @@ namespace sk::posix::detail {
     {
         std::cerr << "stopping reactor\n";
 
-        char c;
         io_uring_sqe shutdown_sqe{};
         io_uring_prep_nop(&shutdown_sqe);
         shutdown_sqe.fd = -1;

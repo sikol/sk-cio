@@ -30,13 +30,13 @@
 
 namespace sk {
 
-    int reactor_handle::refs = 0;
-    std::mutex reactor_handle::mutex;
+    int reactor_handle::_refs = 0;
+    std::mutex reactor_handle::_mutex;
 
     reactor_handle::reactor_handle()
     {
-        std::lock_guard<std::mutex> lock(mutex);
-        if (++refs > 1)
+        std::lock_guard<std::mutex> lock(_mutex);
+        if (++_refs > 1)
             return;
 
         get_global_reactor().start();
@@ -44,8 +44,8 @@ namespace sk {
 
     reactor_handle::~reactor_handle()
     {
-        std::lock_guard<std::mutex> lock(mutex);
-        if (--refs)
+        std::lock_guard<std::mutex> lock(_mutex);
+        if (--_refs > 0)
             return;
 
         get_global_reactor().stop();

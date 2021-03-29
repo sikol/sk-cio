@@ -31,31 +31,29 @@
 #include <cstring>
 #include <sk/cio.hxx>
 
-using namespace sk;
-
-static_assert(iseqchannel<iseqcharchannel<char, imemchannel>>);
+static_assert(sk::iseqchannel<sk::iseqcharchannel<char, sk::imemchannel>>);
 
 TEST_CASE("oseqcharchannel<char> write_some") {
-    char outbuf[4] = {};
-    auto mchan = make_omemchannel(outbuf);
-    auto cchan = make_oseqcharchannel<char>(mchan);
+    std::array<char, 4> outbuf{};
+    auto mchan = sk::make_omemchannel(outbuf);
+    auto cchan = sk::make_oseqcharchannel<char>(mchan);
 
-    char const inbuf[] = { 'A', 'B', 'C' };
+    std::array const inbuf{ 'A', 'B', 'C' };
     auto r = write_some(cchan, inbuf);
     REQUIRE(r);
     REQUIRE(*r == 3);
-    REQUIRE(std::strcmp(outbuf, "ABC") == 0);
+    REQUIRE(outbuf == std::array{'A', 'B', 'C', '\0'});
 }
 
 
 TEST_CASE("oseqcharchannel<char> async_write_some") {
-    char outbuf[4] = {};
-    auto mchan = make_omemchannel(outbuf);
-    auto cchan = make_oseqcharchannel<char>(mchan);
+    std::array<char, 4> outbuf{};
+    auto mchan = sk::make_omemchannel(outbuf);
+    auto cchan = sk::make_oseqcharchannel<char>(mchan);
 
-    char const inbuf[] = { 'A', 'B', 'C' };
+    std::array const inbuf{ 'A', 'B', 'C' };
     auto r = wait(async_write_some(cchan, std::span(inbuf)));
     REQUIRE(r);
     REQUIRE(*r == 3);
-    REQUIRE(std::strcmp(outbuf, "ABC") == 0);
+    REQUIRE(outbuf == std::array{'A', 'B', 'C', '\0'});
 }

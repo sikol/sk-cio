@@ -39,9 +39,17 @@ add_executable(test_basics
     test_iseqcharchannel.cxx
     test_oseqcharchannel.cxx
     test_seqcharchannel.cxx
+    test_circular_buffer.cxx
+    test_dynamic_buffer.cxx
+    test_fixed_buffer.cxx
+    test_pmr_buffer.cxx
     )
 
 target_link_libraries(test_basics PRIVATE sk-cio catch fmt)
 
 add_test(NAME test_basics
     COMMAND $<TARGET_FILE:test_basics>)
+
+if(SK_CIO_ENABLE_TIDY)
+    set_target_properties(test_basics PROPERTIES CXX_CLANG_TIDY "${SK_CLANG_TIDY_COMMAND}")
+endif()

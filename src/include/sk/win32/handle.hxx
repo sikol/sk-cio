@@ -26,8 +26,8 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_WIN32_HANDLE_HXX_INCLUDED
-#define SK_CIO_WIN32_HANDLE_HXX_INCLUDED
+#ifndef SK_WIN32_HANDLE_HXX_INCLUDED
+#define SK_WIN32_HANDLE_HXX_INCLUDED
 
 #include <system_error>
 
@@ -49,26 +49,26 @@ namespace sk::win32 {
     struct unique_handle {
         // Create an empty unique_handle.
         unique_handle() noexcept
-            : _native_handle(INVALID_HANDLE_VALUE), _is_valid(false)
+            : _is_valid(false), _native_handle(INVALID_HANDLE_VALUE)
         {
         }
 
         // Create a unique_handle from a native handle.
         explicit unique_handle(HANDLE handle_value_) noexcept
-            : _native_handle(handle_value_), _is_valid(true)
+            : _is_valid(true), _native_handle(handle_value_)
         {
         }
 
         // Move construction.
         unique_handle(unique_handle &&other) noexcept
-            : _native_handle(other._native_handle), _is_valid(true)
+            : _is_valid(true), _native_handle(other._native_handle)
         {
 
             other._is_valid = false;
         }
 
         // Move assignment.
-        unique_handle &operator=(unique_handle &&other) noexcept
+        auto operator=(unique_handle &&other) noexcept -> unique_handle &
         {
             if (this == &other)
                 return *this;
@@ -88,7 +88,7 @@ namespace sk::win32 {
 
         // Not copyable.
         unique_handle(unique_handle const &) = delete;
-        unique_handle &operator=(unique_handle const &) = delete;
+        auto operator=(unique_handle const &) -> unique_handle & = delete;
 
         // Assign a new value to this handle.
         auto assign(HANDLE native_handle) noexcept -> void
@@ -105,10 +105,9 @@ namespace sk::win32 {
                 return win32::error::success;
 
             _is_valid = false;
-            if (::CloseHandle(_native_handle))
+            if (::CloseHandle(_native_handle) == TRUE)
                 return win32::error::success;
-            else
-                return win32::get_last_error();
+            return win32::get_last_error();
         }
 
         // Test if we have a valid handle.
@@ -120,7 +119,7 @@ namespace sk::win32 {
         // Return the Win32 handle.
         auto native_handle() -> HANDLE
         {
-            SK_CHECK(_is_valid, "attempt to access invalid handle");
+            sk::detail::check(_is_valid, "attempt to access invalid handle");
             return _native_handle;
         }
 
@@ -148,7 +147,7 @@ namespace sk::win32 {
         {
         }
 
-        unique_socket &operator=(unique_socket &&other) noexcept
+        auto operator=(unique_socket &&other) noexcept -> unique_socket &
         {
             if (this == &other)
                 return *this;
@@ -167,7 +166,7 @@ namespace sk::win32 {
 
         // Not copyable.
         unique_socket(unique_socket const &) = delete;
-        unique_socket &operator=(unique_socket const &) = delete;
+        auto operator=(unique_socket const &) -> unique_socket & = delete;
 
         // Assign a new value to this socket.
         auto assign(SOCKET native_socket) noexcept -> void
@@ -187,8 +186,7 @@ namespace sk::win32 {
 
             if (ret == 0)
                 return win32::error::success;
-            else
-                return win32::get_last_winsock_error();
+            return win32::get_last_winsock_error();
         }
 
         // Test if we have a valid socket.
@@ -200,7 +198,7 @@ namespace sk::win32 {
         // Return the socket.
         auto native_socket() -> SOCKET
         {
-            SK_CHECK(*this, "attempt to access invalid socket");
+            sk::detail::check(*this, "attempt to access invalid socket");
             return _native_socket;
         }
 
@@ -210,4 +208,4 @@ namespace sk::win32 {
 
 } // namespace sk::win32
 
-#endif // SK_CIO_WIN32_HANDLE_HXX_INCLUDED
+#endif // SK_WIN32_HANDLE_HXX_INCLUDED

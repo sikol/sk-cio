@@ -47,14 +47,14 @@ namespace sk {
         std::mutex mtx;
         coroutine_handle<> coro_handle;
 
-        co_async_invoke_awaiter(Callable &&c_) : c(std::move(c_)) {}
+        explicit co_async_invoke_awaiter(Callable &&c_) : c(std::move(c_)) {}
 
-        bool await_ready()
+        auto await_ready() -> bool
         {
             return false;
         }
 
-        bool await_suspend(coroutine_handle<> coro_handle_)
+        auto await_suspend(coroutine_handle<> coro_handle_) -> bool
         {
             coro_handle = coro_handle_;
             std::lock_guard lock(mtx);
@@ -66,13 +66,13 @@ namespace sk {
                     lock_.unlock();
                     coro_handle.resume();
                 });
-                return std::move(ret);
+                return ret;
             });
 
             return true;
         }
 
-        result_type await_resume()
+        auto await_resume() -> result_type
         {
             return std::move(future.get());
         }
@@ -81,7 +81,7 @@ namespace sk {
     template <typename Callable>
     auto async_invoke(Callable &&c) -> task<std::invoke_result_t<Callable>>
     {
-        co_return co_await co_async_invoke_awaiter(std::move(c));
+        co_return co_await co_async_invoke_awaiter(std::forward<Callable>(c));
     }
 
 } // namespace sk

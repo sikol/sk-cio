@@ -26,8 +26,8 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_POSIX_LINUX_REACTOR_HXX_INCLUDED
-#define SK_CIO_POSIX_LINUX_REACTOR_HXX_INCLUDED
+#ifndef SK_POSIX_DETAIL_LINUX_REACTOR_HXX_INCLUDED
+#define SK_POSIX_DETAIL_LINUX_REACTOR_HXX_INCLUDED
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -62,12 +62,12 @@ namespace sk::posix::detail {
     struct linux_reactor final {
         linux_reactor();
         linux_reactor(linux_reactor &&) noexcept = delete;
-        linux_reactor &operator=(linux_reactor &&) noexcept = delete;
+        auto operator=(linux_reactor &&) noexcept -> linux_reactor & = delete;
         virtual ~linux_reactor() = default;
 
         // Not copyable.
         linux_reactor(linux_reactor const &) = delete;
-        linux_reactor &operator=(linux_reactor const &) = delete;
+        auto operator=(linux_reactor const &) -> linux_reactor & = delete;
 
         // Associate a new fd with our epoll.
         auto associate_fd(int) -> void;
@@ -122,4 +122,4 @@ namespace sk::posix::detail {
 
 } // namespace sk::posix::detail
 
-#endif // SK_CIO_POSIX_LINUX_REACTOR_HXX_INCLUDED
+#endif // SK_POSIX_DETAIL_LINUX_REACTOR_HXX_INCLUDED

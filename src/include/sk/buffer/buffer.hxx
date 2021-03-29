@@ -42,84 +42,56 @@
 
 namespace sk {
 
-    /*
-     * Utility concept to require a range of a particular type.
-     */
-
-    // clang-format off
-
-    template <typename T, typename Value>
-    concept range_of = 
-        // Identical type is acceptable
-        std::is_same_v<std::ranges::range_value_t<T>, Value>
-        // If Value is const, then a range of non-const Value is also acceptable.
-        or (std::is_const_v<Value> and
-            std::same_as<
-                typename std::remove_const<std::ranges::range_value_t<T>>::type,
-                Value>); 
-
-    template <typename T, typename Value>
-    concept contiguous_range_of = 
-        std::ranges::contiguous_range<T>
-        and range_of<T, Value>;
-
     /*************************************************************************
-     * 
+     *
      * Concept of a buffer that holds objects of type Char.
      */
     template<typename Buffer>
-    concept basic_buffer = 
+    concept basic_buffer =
         requires() {
             typename Buffer::value_type;
             typename Buffer::const_value_type;
             typename Buffer::size_type;
         };
 
-    template<typename Buffer, typename Char>
-    concept basic_buffer_of = basic_buffer<Buffer>
-        and std::same_as<typename Buffer::value_type, Char>;
-    
+
     /*************************************************************************
-     * 
+     *
      * Concept of a buffer that can be read from.
      */
     template<typename Buffer>
     concept readable_buffer =
         basic_buffer<Buffer>
         and requires(Buffer &b,
-                 typename Buffer::size_type nbytes,
-                 std::span<typename Buffer::value_type> &data) {
+                     typename Buffer::value_type *data,
+                     typename Buffer::size_type n) {
 
             // Copy data out of the buffer.
-            { b.read(data) } -> std::same_as<typename Buffer::size_type>;
+            { b.read(data, n) } -> std::same_as<typename Buffer::size_type>;
 
             // Get the buffer's readable extents.
-            { b.readable_ranges() } 
+            { b.readable_ranges() }
                 -> std::same_as<
                     std::vector<
                         std::span<typename Buffer::const_value_type>>>;
 
             // Remove data from the start of the buffer.
-            { b.discard(nbytes) } -> std::same_as<typename Buffer::size_type>;
+            { b.discard(n) } -> std::same_as<typename Buffer::size_type>;
         };
 
-    template<typename Buffer, typename Char>
-    concept readable_buffer_of = readable_buffer<Buffer>
-        and std::same_as<typename Buffer::value_type, Char>;
-
     /*************************************************************************
-     * 
+     *
      * Concept of a buffer that can be written to.
      */
     template<typename Buffer>
     concept writable_buffer =
         basic_buffer<Buffer>
         and requires(Buffer &b,
-                 typename Buffer::size_type nbytes,
-                 std::span<std::add_const_t<typename Buffer::value_type>> &data) {
+                     typename Buffer::value_type const *data,
+                     typename Buffer::size_type n) {
 
             // Copy data into the buffer.
-            { b.write(data) } -> std::same_as<typename Buffer::size_type>;
+            { b.write(data, n) } -> std::same_as<typename Buffer::size_type>;
 
             // Get the buffer's writable extents.
             { b.writable_ranges() }
@@ -128,28 +100,19 @@ namespace sk {
                         std::span<typename Buffer::value_type>>>;
 
             // Mark empty space as readable.
-            { b.commit(nbytes) } -> std::same_as<typename Buffer::size_type>;
+            { b.commit(n) } -> std::same_as<typename Buffer::size_type>;
 
         };
 
-    template<typename Buffer, typename Char>
-    concept writable_buffer_of = writable_buffer<Buffer>
-        and std::same_as<typename Buffer::value_type, Char>;
-
     /*************************************************************************
-     * 
+     *
      * buffer: concept of a buffer that can be both read from and written to.
      */
 
     template<typename Buffer>
-    concept buffer = 
+    concept buffer =
         readable_buffer<Buffer>
         and writable_buffer<Buffer>;
-
-    template<typename Buffer, typename Char>
-    concept buffer_of = buffer<Buffer>
-        and readable_buffer_of<Buffer, Char>
-        and writable_buffer_of<Buffer, Char>;
 
     // clang-format on
 
@@ -173,38 +136,58 @@ namespace sk {
 
     /*************************************************************************
      *
-     * An extent is a contiguous byte region which I/O can be done
-     * directly into or out of.
+     * buffer_write(): append data to a buffer.
+     *
      */
-    template <typename T> concept extent = contiguous_range_of<T, std::byte>;
+
+    template<writable_buffer Buffer, std::ranges::contiguous_range Range>
+    auto buffer_write(Buffer &buf, Range const &range) {
+        auto const *data = std::ranges::data(range);
+        auto size = std::ranges::size(range);
+
+        return buf.write(data, size);
+    }
 
     /*************************************************************************
      *
-     * Buffer utility functions.
+     * buffer_read(): read data from a buffer.
      *
      */
 
-    /**
+    template<readable_buffer Buffer, std::ranges::contiguous_range Range>
+    auto buffer_read(Buffer &buf, Range &&range) {
+        auto size = std::ranges::size(range);
+        auto *data = std::ranges::data(range);
+
+        return buf.read(data, size);
+    }
+
+    /*************************************************************************
      * buffer_copy(from, to): append all of the data in `from` to `to`, as if
      * calling from.read(buf) then to.write(buf).
      */
-    template <typename Char>
-    auto buffer_copy(readable_buffer_of<Char> auto const &from,
-                     writable_buffer_of<Char> auto &to) {
+    // clang-format off
+    template <readable_buffer From, readable_buffer To>
+    auto buffer_copy(From const &from, To &to) -> void
+        requires std::same_as<buffer_value_t<From>, buffer_value_t<To>>
+    // clang-format on
+    {
         for (auto &&range : from.readable_ranges()) {
             to.write(range);
         }
     }
 
-    /**
+    /*************************************************************************
      * buffer_move(from, to): append all of the data in `from` to `to`, then
      * remove all the data in `from`, as if calling buffer_copy(from, to)
      * followed by from.clear();
      */
+    // clang-format off
     template <readable_buffer From, writable_buffer To>
-    auto buffer_move(From &from, To &to) requires std::same_as<
-        buffer_value_t<From>, buffer_value_t<To>> {
-
+    auto buffer_move(From &from, To &to) -> void
+        requires std::same_as<buffer_value_t<From>, buffer_value_t<To>>
+    // clang-format on
+    {
         for (auto &&range : from.readable_ranges()) {
             to.write(range);
         }

@@ -54,12 +54,13 @@ namespace sk::posix::detail {
 
         // Try to create a new io_uring_reactor; returns NULL if we can't
         // use io_uring on this system.
-        static auto make(workq &) -> std::unique_ptr<io_uring_reactor>;
+        static auto make(workq *) -> std::unique_ptr<io_uring_reactor>;
 
         io_uring_reactor(io_uring_reactor const &) = delete;
-        io_uring_reactor &operator=(io_uring_reactor const &) = delete;
+        auto operator=(io_uring_reactor const &) -> io_uring_reactor & = delete;
         io_uring_reactor(io_uring_reactor &&) noexcept = delete;
-        io_uring_reactor &operator=(io_uring_reactor &&) noexcept = delete;
+        auto operator=(io_uring_reactor &&) noexcept
+            -> io_uring_reactor & = delete;
         ~io_uring_reactor() = default;
 
         // Start this reactor.
@@ -97,7 +98,7 @@ namespace sk::posix::detail {
         auto _put_sq(io_uring_sqe *sqe) -> void;
 
     private:
-        explicit io_uring_reactor(workq &);
+        explicit io_uring_reactor(workq *);
 
         std::mutex _sq_mutex;
 
@@ -115,6 +116,6 @@ namespace sk::posix::detail {
         std::deque<io_uring_sqe *> _pending;
     };
 
-}; // namespace sk::posix
+} // namespace sk::posix::detail
 
 #endif // SK_CIO_POSIX_IO_URING_REACTOR_HXX_INCLUDED

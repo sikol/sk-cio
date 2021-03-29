@@ -53,8 +53,8 @@ namespace sk::posix::detail {
         explicit tcpchannel(sk::posix::unique_fd &&);
         tcpchannel(tcpchannel const &) = delete;
         tcpchannel(tcpchannel &&) noexcept = default;
-        tcpchannel &operator=(tcpchannel const &) = delete;
-        tcpchannel &operator=(tcpchannel &&) noexcept = default;
+        auto operator=(tcpchannel const &) -> tcpchannel & = delete;
+        auto operator=(tcpchannel &&) noexcept -> tcpchannel & = default;
         ~tcpchannel() = default;
 
         /*
@@ -158,7 +158,7 @@ namespace sk::posix::detail {
         -> task<expected<void, std::error_code>>
     {
 
-        SK_CHECK(!is_open(), "attempt to re-connect an open channel");
+        sk::detail::check(!is_open(), "attempt to re-connect an open channel");
 
         auto sock = ::socket(addr.address_family(), SOCK_STREAM, IPPROTO_TCP);
 
@@ -196,10 +196,10 @@ namespace sk::posix::detail {
     inline auto tcpchannel::async_read_some(value_type *buffer, io_size_t nobjs)
         -> task<expected<io_size_t, std::error_code>>
     {
-        SK_CHECK(is_open(), "attempt to read on a closed channel");
+        sk::detail::check(is_open(), "attempt to read on a closed channel");
 
         auto bytes_read =
-            co_await sk::posix::async_fd_recv(_fd.fd(), buffer, nobjs, 0);
+            co_await sk::posix::async_fd_recv(*_fd, buffer, nobjs, 0);
 
         if (!bytes_read)
             co_return make_unexpected(bytes_read.error());
@@ -218,7 +218,7 @@ namespace sk::posix::detail {
     inline auto tcpchannel::read_some(value_type *buffer, io_size_t nobjs)
         -> expected<io_size_t, std::error_code>
     {
-        SK_CHECK(is_open(), "attempt to read on a closed channel");
+        sk::detail::check(is_open(), "attempt to read on a closed channel");
         return wait(async_read_some(buffer, nobjs));
     }
 
@@ -230,10 +230,10 @@ namespace sk::posix::detail {
                                              io_size_t nobjs)
         -> task<expected<io_size_t, std::error_code>>
     {
-        SK_CHECK(is_open(), "attempt to write on a closed channel");
+        sk::detail::check(is_open(), "attempt to write on a closed channel");
 
         auto bytes_read =
-            co_await sk::posix::async_fd_send(_fd.fd(), buffer, nobjs, 0);
+            co_await sk::posix::async_fd_send(*_fd, buffer, nobjs, 0);
 
         if (!bytes_read)
             co_return make_unexpected(bytes_read.error());

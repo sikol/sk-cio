@@ -35,17 +35,15 @@
 #include <sk/channel/write.hxx>
 #include <sk/wait.hxx>
 
-using namespace sk;
-
 TEST_CASE("omemchannel::write_some()")
 {
-    std::byte const buf[] = {std::byte('A'), std::byte('B'), std::byte('C')};
-    char out[4];
-    std::memset(out, 'X', sizeof out);
+    std::array buf{std::byte{'A'}, std::byte{'B'}, std::byte{'C'}};
+    std::array<char, 4> out{};
+    std::ranges::fill(out, 'X');
 
-    auto chnl = make_omemchannel(out);
+    auto chnl = sk::make_omemchannel(out);
 
-    auto nbytes = write_some(chnl, buf);
+    auto nbytes = sk::write_some(chnl, buf, 3);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 3);
     REQUIRE(out[0] == 'A');
@@ -56,13 +54,13 @@ TEST_CASE("omemchannel::write_some()")
 
 TEST_CASE("omemchannel::async_write_some()")
 {
-    std::byte const buf[] = {std::byte('A'), std::byte('B'), std::byte('C')};
-    char out[4];
-    std::memset(out, 'X', sizeof out);
+    std::array buf{std::byte{'A'}, std::byte{'B'}, std::byte{'C'}};
+    std::array<char, 4> out{};
+    std::ranges::fill(out, 'X');
 
-    auto chnl = make_omemchannel(out);
+    auto chnl = sk::make_omemchannel(out);
 
-    auto nbytes = wait(async_write_some(chnl, std::span(buf)));
+    auto nbytes = sk::wait(sk::async_write_some(chnl, buf, 3));
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 3);
     REQUIRE(out[0] == 'A');
@@ -73,27 +71,28 @@ TEST_CASE("omemchannel::async_write_some()")
 
 TEST_CASE("omemchannel::write_some() single byte")
 {
-    std::byte const buf[] = {std::byte('A'), std::byte('B'), std::byte('C')};
-    char out[4];
-    std::memset(out, 'X', sizeof out);
+    std::array const buf{
+        std::byte{'A'}, std::byte{'B'}, std::byte{'C'}, std::byte{'X'}};
+    std::array<char, 4> out{};
+    std::ranges::fill(out, 'X');
 
-    auto chnl = make_omemchannel(out, out + 3);
+    auto chnl = sk::make_omemchannel(std::span(out).subspan(0, 3));
 
-    auto nbytes = write_some(chnl, buf, 1);
+    auto nbytes = chnl.write_some(&buf[0], 1);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = write_some(chnl, std::span(buf + 1, 1));
+    nbytes = chnl.write_some(&buf[1], 1);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = write_some(chnl, std::span(buf + 2, 1));
+    nbytes = chnl.write_some(&buf[2], 1);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = write_some(chnl, std::span(buf + 3, 1));
+    nbytes = chnl.write_some(&buf[2], 1);
     REQUIRE(!nbytes);
-    REQUIRE(nbytes.error() == error::end_of_file);
+    REQUIRE(nbytes.error() == sk::error::end_of_file);
 
     REQUIRE(out[0] == 'A');
     REQUIRE(out[1] == 'B');
@@ -103,27 +102,28 @@ TEST_CASE("omemchannel::write_some() single byte")
 
 TEST_CASE("omemchannel::async_write_some() single byte")
 {
-    std::byte const buf[] = {std::byte('A'), std::byte('B'), std::byte('C')};
-    char out[4];
-    std::memset(out, 'X', sizeof out);
+    std::array const buf{
+        std::byte{'A'}, std::byte{'B'}, std::byte{'C'}, std::byte{'X'}};
+    std::array<char, 4> out{};
+    std::ranges::fill(out, 'X');
 
-    auto chnl = make_omemchannel(out, out + 3);
+    auto chnl = sk::make_omemchannel(std::span(out).subspan(0, 3));
 
-    auto nbytes = wait(async_write_some(chnl, std::span(buf), 1));
+    auto nbytes = sk::wait(sk::async_write_some(chnl, buf, 1));
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = wait(async_write_some(chnl, std::span(buf + 1, 1)));
+    nbytes = sk::wait(sk::async_write_some(chnl, std::span(buf).subspan(1), 1));
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = wait(async_write_some(chnl, std::span(buf + 2, 1)));
+    nbytes = sk::wait(sk::async_write_some(chnl, std::span(buf).subspan(2), 1));
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = wait(async_write_some(chnl, std::span(buf + 3, 1)));
+    nbytes = sk::wait(sk::async_write_some(chnl, std::span(buf).subspan(2), 1));
     REQUIRE(!nbytes);
-    REQUIRE(nbytes.error() == error::end_of_file);
+    REQUIRE(nbytes.error() == sk::error::end_of_file);
 
     REQUIRE(out[0] == 'A');
     REQUIRE(out[1] == 'B');
@@ -133,27 +133,27 @@ TEST_CASE("omemchannel::async_write_some() single byte")
 
 TEST_CASE("omemchannel::write_some_at() single byte")
 {
-    std::byte const buf[] = {std::byte('A'), std::byte('B'), std::byte('C')};
-    char out[4];
-    std::memset(out, 'X', sizeof out);
+    std::array const buf{std::byte{'A'}, std::byte{'B'}, std::byte{'C'}};
+    std::array<char, 4> out{};
+    std::ranges::fill(out, 'X');
 
-    auto chnl = make_omemchannel(out, out + 3);
+    auto chnl = sk::make_omemchannel(std::span(out).subspan(0, 3));
 
-    auto nbytes = chnl.write_some_at(0, buf, 1);
+    auto nbytes = chnl.write_some_at(0, &buf[0], 1);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.write_some_at(1, buf + 1, 1);
+    nbytes = chnl.write_some_at(1, &buf[1], 1);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.write_some_at(2, buf + 2, 1);
+    nbytes = chnl.write_some_at(2, &buf[2], 1);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.write_some_at(3, buf + 3, 1);
+    nbytes = chnl.write_some_at(3, &buf[2], 1);
     REQUIRE(!nbytes);
-    REQUIRE(nbytes.error() == error::end_of_file);
+    REQUIRE(nbytes.error() == sk::error::end_of_file);
 
     REQUIRE(out[0] == 'A');
     REQUIRE(out[1] == 'B');
@@ -163,14 +163,14 @@ TEST_CASE("omemchannel::write_some_at() single byte")
 
 TEST_CASE("omemchannel::write_some() past the end")
 {
-    std::byte const buf[] = {
-        std::byte('A'), std::byte('B'), std::byte('C'), std::byte('D')};
-    char out[4];
-    std::memset(out, 'X', sizeof out);
+    std::array const buf{
+        std::byte{'A'}, std::byte{'B'}, std::byte{'C'}, std::byte{'D'}};
+    std::array<char, 4> out{};
+    std::ranges::fill(out, 'X');
 
-    auto chnl = make_omemchannel(out, out + 3);
+    auto chnl = sk::make_omemchannel(std::span(out).subspan(0, 3));
 
-    auto nbytes = chnl.write_some(buf, 4);
+    auto nbytes = sk::write_some(chnl, buf);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 3);
     REQUIRE(out[0] == 'A');
@@ -181,13 +181,13 @@ TEST_CASE("omemchannel::write_some() past the end")
 
 TEST_CASE("omemchannel::write_some() with an invalid location")
 {
-    std::byte const buf[] = {std::byte('A'), std::byte('B'), std::byte('C')};
-    char out[4];
-    std::memset(out, 'X', sizeof out);
+    std::array const buf{std::byte{'A'}, std::byte{'B'}, std::byte{'C'}};
+    std::array<char, 4> out{};
+    std::ranges::fill(out, 'X');
 
-    auto chnl = make_omemchannel(out);
+    auto chnl = sk::make_omemchannel(out);
 
-    auto nbytes = chnl.write_some_at(4, buf, 3);
+    auto nbytes = sk::write_some_at(chnl, 4, buf);
     REQUIRE(!nbytes);
-    REQUIRE(nbytes.error() == error::end_of_file);
+    REQUIRE(nbytes.error() == sk::error::end_of_file);
 }

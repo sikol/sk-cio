@@ -26,56 +26,51 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_DETACH_TASK_HXX_INCLUDED
-#define SK_CIO_DETACH_TASK_HXX_INCLUDED
+#ifndef SK_CO_DETACH_HXX_INCLUDED
+#define SK_CO_DETACH_HXX_INCLUDED
 
-#include <sk/reactor.hxx>
 #include <sk/detail/coroutine.hxx>
+#include <sk/reactor.hxx>
 
 namespace sk {
 
-    struct detach_promise {
-        auto get_return_object()
-        {
-            return coroutine_handle<detach_promise>::from_promise(
-                *this);
-        }
-
-        suspend_always initial_suspend()
-        {
-            //std::cerr << "task_promise<void> initial_suspend\n";
-            return {};
-        }
-
-        suspend_never final_suspend() noexcept
-        {
-            //std::cerr << "task_promise<void> final_suspend\n";
-            return {};
-        }
-
-        void unhandled_exception()
-        {
-            throw;
-        }
-
-        void return_void() noexcept
-        {
-            //std::cerr << "task_promise<void>: return_void\n";
-        }
-    };
-
     struct detach_task {
-        using promise_type = detach_promise;
+        struct promise_type {
+            auto get_return_object() -> detach_task
+            {
+                return detach_task(
+                    coroutine_handle<promise_type>::from_promise(*this));
+            }
+
+            auto initial_suspend() -> suspend_always
+            {
+                return {};
+            }
+
+            auto final_suspend() noexcept -> suspend_never
+            {
+                return {};
+            }
+
+            void unhandled_exception()
+            {
+                throw;
+            }
+
+            void return_void() noexcept {}
+        };
+
         coroutine_handle<promise_type> coro_handle;
 
-        detach_task(coroutine_handle<promise_type> coro_handle_)
+        explicit detach_task(
+            coroutine_handle<promise_type> coro_handle_) noexcept
             : coro_handle(coro_handle_)
         {
         }
 
-        detach_task(detach_task const &) = delete;
-        detach_task &operator=(detach_task const &) = delete;
-        detach_task &operator=(detach_task &&other) = delete;
+        explicit detach_task(detach_task const &) = delete;
+        auto operator=(detach_task const &) -> detach_task & = delete;
+        auto operator=(detach_task &&other) -> detach_task & = delete;
 
         detach_task(detach_task &&other) noexcept
             : coro_handle(std::exchange(other.coro_handle, {}))
@@ -84,18 +79,25 @@ namespace sk {
 
         ~detach_task()
         {
-            //if (coro_handle)
-            //    coro_handle.destroy();
+            if (coro_handle) {
+                try {
+                    coro_handle.destroy();
+                } catch (...) {
+                    std::terminate();
+                }
+            }
         }
 
         void start()
         {
-            coro_handle.resume();
+            auto h = std::exchange(coro_handle, {});
+            h.resume();
         }
     };
 
-    template<typename T>
-    auto _internal_detach(task<T> &&task_) -> detach_task {
+    template <typename T>
+    auto _internal_detach(task<T> &&task_) -> detach_task
+    {
         task<T> taskp(std::move(task_));
         taskp.coro_handle.promise().previous = {};
         co_await taskp;
@@ -108,6 +110,6 @@ namespace sk {
         detach_task.start();
     }
 
-} // namespace sk::cio
+} // namespace sk
 
-#endif // SK_CIO_WIN32_SPAWN_HXX_INCLUDED
+#endif // SK_CO_DETACH_HXX_INCLUDED

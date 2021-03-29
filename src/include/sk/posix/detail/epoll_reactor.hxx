@@ -54,7 +54,8 @@ namespace sk::posix::detail {
     };
 
     struct fd_state final {
-        fd_state(int fd_) : fd(fd_), read_waiter(nullptr), write_waiter(nullptr)
+        explicit fd_state(int fd_)
+            : fd(fd_), read_waiter(nullptr), write_waiter(nullptr)
         {
             std::memset(&event, 0, sizeof(event));
             event.data.fd = fd;
@@ -62,22 +63,23 @@ namespace sk::posix::detail {
         }
 
         int fd;
-        struct epoll_event event;
+        epoll_event event{};
         epoll_coro_state *read_waiter;
         epoll_coro_state *write_waiter;
     };
 
     struct epoll_reactor final {
 
-        explicit epoll_reactor(workq &);
+        explicit epoll_reactor(workq *);
+        ~epoll_reactor() = default;
 
         // Not copyable.
         epoll_reactor(epoll_reactor const &) = delete;
-        epoll_reactor &operator=(epoll_reactor const &) = delete;
+        auto operator=(epoll_reactor const &) -> epoll_reactor & = delete;
 
         // Not movable.
         epoll_reactor(epoll_reactor &&) noexcept = delete;
-        epoll_reactor &operator=(epoll_reactor &&) noexcept = delete;
+        auto operator=(epoll_reactor &&) noexcept -> epoll_reactor & = delete;
 
         unique_fd epoll_fd;
 
@@ -142,10 +144,10 @@ namespace sk::posix::detail {
         std::vector<std::unique_ptr<fd_state>> _state;
 
         void epoll_thread_fn();
-        std::thread epoll_thread;
-        int shutdown_pipe[2];
+        std::thread _epoll_thread;
+        std::array<int, 2> _shutdown_pipe;
     };
 
-}; // namespace sk::posix
+} // namespace sk::posix::detail
 
 #endif // SK_CIO_POSIX_EPOLL_REACTOR_HXX_INCLUDED

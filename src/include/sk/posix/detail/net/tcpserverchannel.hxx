@@ -48,11 +48,11 @@ namespace sk::posix::detail {
     struct tcpserverchannel {
         using value_type = std::byte;
 
-        tcpserverchannel(unique_fd &&);
+        explicit tcpserverchannel(unique_fd &&);
         tcpserverchannel(tcpserverchannel const &) = delete;
         tcpserverchannel(tcpserverchannel &&) noexcept = default;
-        tcpserverchannel &operator=(tcpserverchannel const &) = delete;
-        tcpserverchannel &operator=(tcpserverchannel &&) noexcept = default;
+        auto operator=(tcpserverchannel const &) -> tcpserverchannel & = delete;
+        auto operator=(tcpserverchannel &&) noexcept -> tcpserverchannel & = default;
         ~tcpserverchannel() = default;
 
         /*
@@ -111,8 +111,7 @@ namespace sk::posix::detail {
     inline auto tcpserverchannel::listen(net::address const &addr)
         -> expected<tcpserverchannel, std::error_code>
     {
-        int listener;
-        listener = ::socket(addr.address_family(), SOCK_STREAM, IPPROTO_TCP);
+        int listener = ::socket(addr.address_family(), SOCK_STREAM, IPPROTO_TCP);
 
         if (listener == -1)
             return make_unexpected(sk::posix::get_errno());
@@ -170,7 +169,7 @@ namespace sk::posix::detail {
         -> task<expected<tcpchannel, std::error_code>>
     {
         auto client =
-            co_await sk::posix::async_fd_accept(_fd.fd(), nullptr, nullptr);
+            co_await sk::posix::async_fd_accept(*_fd, nullptr, nullptr);
         if (!client)
             co_return make_unexpected(client.error());
 
@@ -186,7 +185,7 @@ namespace sk::posix::detail {
     inline auto tcpserverchannel::accept()
         -> expected<tcpchannel, std::error_code>
     {
-        auto client = ::accept(_fd.fd(), nullptr, nullptr);
+        auto client = ::accept(*_fd, nullptr, nullptr);
         if (client < 0)
             return make_unexpected(get_errno());
 

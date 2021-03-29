@@ -32,15 +32,13 @@
 
 #include <fmt/core.h>
 
-#include <sk/cio.hxx>
+#include "sk/cio.hxx"
 
-using namespace sk;
-
-task<void> handle_client(net::tcpchannel client) {
+auto handle_client(sk::net::tcpchannel client) -> sk::task<void> {
     for (;;) {
         sk::fixed_buffer<std::byte, 1024> buf;
 
-        auto ret = co_await async_read_some(client, buf, unlimited);
+        auto ret = co_await sk::async_read_some(client, buf);
         if (!ret) {
             fmt::print(stderr, "read err: {}\n", ret.error().message());
             co_await client.async_close();
@@ -53,7 +51,7 @@ task<void> handle_client(net::tcpchannel client) {
                 std::ranges::size(range));
         }
 
-        auto wret = co_await async_write_all(client, buf, unlimited);
+        auto wret = co_await sk::async_write_all(client, buf);
         if (wret.second) {
             co_await client.async_close();
             co_return;
@@ -61,18 +59,17 @@ task<void> handle_client(net::tcpchannel client) {
     }
 
     fmt::print(stderr, "handle_client() : return\n");
-    co_return;
 }
 
-task<void> run(std::string const &addr, std::string const &port) {
-    auto netaddr = net::make_address(addr, port);
+auto run(std::string const &addr, std::string const &port) -> sk::task<void> {
+    auto netaddr = sk::net::make_address(addr, port);
     if (!netaddr) {
         fmt::print(stderr, "{}:{}: {}\n", addr, port,
                    netaddr.error().message());
         co_return;
     }
 
-    auto server = net::tcpserverchannel::listen(*netaddr);
+    auto server = sk::net::tcpserverchannel::listen(*netaddr);
 
     for (;;) {
         auto client = co_await server->async_accept();
@@ -82,12 +79,12 @@ task<void> run(std::string const &addr, std::string const &port) {
             co_return;
         }
 
-        co_detach(handle_client(std::move(*client)));
+        sk::co_detach(handle_client(std::move(*client)));
     }
 }
 
 
-int main(int argc, char **argv) {
+auto main(int argc, char **argv) -> int try {
     using namespace std::chrono_literals;
 
     if (argc != 3) {
@@ -98,4 +95,7 @@ int main(int argc, char **argv) {
     sk::reactor_handle reactor;
     wait(run(argv[1], argv[2]));
     return 0;
+} catch (std::exception const &e) {
+    std::cerr << "unexpected exception: " << e.what() << '\n';
+    return 1;
 }

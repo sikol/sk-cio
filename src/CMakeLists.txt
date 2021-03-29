@@ -41,7 +41,6 @@ target_link_libraries(sk-cio PUBLIC Threads::Threads)
 target_sources(sk-cio PRIVATE
     error.cxx
     reactor.cxx
-    net/resolve.cxx
 
     include/sk/channel/concepts.hxx
     include/sk/channel/error.hxx
@@ -136,8 +135,6 @@ if (UNIX)
     endif ()
 
     target_sources(sk-cio PRIVATE
-        posix/async_api.cxx
-
         include/sk/posix/detail/filechannel/dafilechannel_base.hxx
         include/sk/posix/detail/net/tcpchannel.hxx
         include/sk/posix/detail/net/tcpserverchannel.hxx
@@ -155,6 +152,7 @@ if (UNIX)
 endif ()
 
 target_include_directories(sk-cio PUBLIC include)
+target_link_libraries(sk-cio PUBLIC sk-thirdparty-tl-expected)
 
 if (WIN32)
     target_link_libraries(sk-cio PUBLIC wsock32 ws2_32)

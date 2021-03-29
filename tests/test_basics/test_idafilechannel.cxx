@@ -36,10 +36,8 @@
 
 #include <sk/channel/filechannel/idafilechannel.hxx>
 #include <sk/channel/read.hxx>
-#include <sk/wait.hxx>
 #include <sk/task.hxx>
-
-using namespace sk;
+#include <sk/wait.hxx>
 
 TEST_CASE("idafilechannel::read()")
 {
@@ -54,7 +52,7 @@ TEST_CASE("idafilechannel::read()")
         testfile.close();
     }
 
-    idafilechannel chnl;
+    sk::idafilechannel chnl;
     auto ret = chnl.open("test.txt");
     if (!ret) {
         INFO(ret.error().message());
@@ -69,7 +67,7 @@ TEST_CASE("idafilechannel::read()")
             REQUIRE(false);
         }
 
-        REQUIRE(*nbytes == 15 - i);
+        REQUIRE(*nbytes == static_cast<sk::io_size_t>(15 - i));
         auto expected = std::vector<std::byte>(
             reinterpret_cast<std::byte *>(test_string.data() + i),
             reinterpret_cast<std::byte *>(test_string.data() +
@@ -78,9 +76,9 @@ TEST_CASE("idafilechannel::read()")
     }
 
     std::vector<std::byte> buf(15);
-    auto nbytes = read_some_at(chnl, 50, buf, unlimited);
+    auto nbytes = read_some_at(chnl, 50, buf);
     REQUIRE(!nbytes);
-    REQUIRE(nbytes.error() == error::end_of_file);
+    REQUIRE(nbytes.error() == sk::error::end_of_file);
 }
 
 TEST_CASE("idafilechannel::async_read()")
@@ -96,22 +94,24 @@ TEST_CASE("idafilechannel::async_read()")
         testfile.close();
     }
 
-    idafilechannel chnl;
+    sk::idafilechannel chnl;
     auto ret = wait(chnl.async_open("test.txt"));
     if (!ret) {
         INFO(ret.error().message());
         REQUIRE(false);
     }
 
+    constexpr sk::io_size_t test_buf_size = 15;
+
     for (int i = 3; i >= 0; --i) {
-        std::vector<std::byte> buf(15 - i);
-        auto nbytes = wait(async_read_some_at(chnl, i, buf, 15 - i));
+        std::vector<std::byte> buf(test_buf_size - i);
+        auto nbytes = wait(async_read_some_at(chnl, i, buf, test_buf_size - i));
         if (!nbytes) {
             INFO(nbytes.error().message());
             REQUIRE(false);
         }
 
-        REQUIRE(*nbytes == 15 - i);
+        REQUIRE(*nbytes == static_cast<sk::io_size_t>(test_buf_size - i));
         auto expected = std::vector<std::byte>(
             reinterpret_cast<std::byte *>(test_string.data() + i),
             reinterpret_cast<std::byte *>(test_string.data() +
@@ -119,8 +119,8 @@ TEST_CASE("idafilechannel::async_read()")
         REQUIRE(buf == expected);
     }
 
-    std::vector<std::byte> buf(15);
-    auto nbytes = wait(async_read_some_at(chnl, 50, buf, unlimited));
+    std::vector<std::byte> buf(test_buf_size);
+    auto nbytes = wait(async_read_some_at(chnl, 50, buf));
     REQUIRE(!nbytes);
-    REQUIRE(nbytes.error() == error::end_of_file);
+    REQUIRE(nbytes.error() == sk::error::end_of_file);
 }

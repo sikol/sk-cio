@@ -37,15 +37,19 @@
 #    include <sk/win32/detail/iocp_reactor.hxx>
 
 namespace sk {
+
     using system_reactor_type = win32::detail::iocp_reactor;
-}
+
+} // namespace sk
 
 #elif defined(SK_CIO_PLATFORM_LINUX)
 #    include <sk/posix/detail/linux_reactor.hxx>
 
 namespace sk {
+
     using system_reactor_type = posix::detail::linux_reactor;
-}
+
+} // namespace sk
 
 #else
 
@@ -61,15 +65,15 @@ namespace sk {
 
         reactor_handle(reactor_handle const &) = delete;
         reactor_handle(reactor_handle &&) = delete;
-        reactor_handle &operator=(reactor_handle const &) = delete;
-        reactor_handle &operator=(reactor_handle &&) = delete;
+        auto operator=(reactor_handle const &) -> reactor_handle & = delete;
+        auto operator=(reactor_handle &&) -> reactor_handle & = delete;
 
         // Fetch the global reactor handle.
         static auto get_global_reactor() -> system_reactor_type &;
 
     private:
-        static int refs;
-        static std::mutex mutex;
+        static int _refs;
+        static std::mutex _mutex;
     };
 
 } // namespace sk

@@ -30,19 +30,19 @@
 
 #include <cstring>
 
-#include <sk/channel/read.hxx>
-#include <sk/channel/memchannel/imemchannel.hxx>
+#include "sk/channel/memchannel/imemchannel.hxx"
+#include "sk/channel/read.hxx"
+#include "sk/wait.hxx"
 
-using namespace sk;
+TEST_CASE("imemchannel::read_some() partial buffer")
+{
+    std::array<char, 20> buf{'A', 'B', 'C'};
+    std::array<std::byte, 4> dat{};
+    std::ranges::fill(dat, std::byte{'X'});
 
-TEST_CASE("imemchannel::read_some() partial buffer") {
-    char buf[20] = {'A', 'B', 'C'};
-    std::byte dat[4];
-    std::memset(dat, 'X', sizeof dat);
+    auto chnl = sk::make_imemchannel(buf);
 
-    auto chnl = make_imemchannel(buf);
-
-    auto nbytes = read_some(chnl, dat, 3);
+    auto nbytes = sk::read_some(chnl, dat, 3);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 3);
     REQUIRE(dat[0] == std::byte{'A'});
@@ -51,12 +51,30 @@ TEST_CASE("imemchannel::read_some() partial buffer") {
     REQUIRE(dat[3] == std::byte{'X'});
 }
 
-TEST_CASE("imemchannel::read_some() entire buffer") {
-    char inbuf[] = {'A', 'B', 'C' };
-    std::byte outbuf[10];
-    std::memset(outbuf, 'X', sizeof outbuf);
+TEST_CASE("imemchannel::async_read_some() partial buffer")
+{
+    std::array<char, 20> buf{'A', 'B', 'C'};
+    std::array<std::byte, 4> dat{};
+    std::ranges::fill(dat, std::byte{'X'});
 
-    auto chnl = make_imemchannel(inbuf);
+    auto chnl = sk::make_imemchannel(buf);
+
+    auto nbytes = sk::wait(sk::async_read_some(chnl, dat, 3));
+    REQUIRE(nbytes);
+    REQUIRE(*nbytes == 3);
+    REQUIRE(dat[0] == std::byte{'A'});
+    REQUIRE(dat[1] == std::byte{'B'});
+    REQUIRE(dat[2] == std::byte{'C'});
+    REQUIRE(dat[3] == std::byte{'X'});
+}
+
+TEST_CASE("imemchannel::read_some() entire buffer")
+{
+    std::array const inbuf{'A', 'B', 'C'};
+    std::array<std::byte, 10> outbuf{};
+    std::ranges::fill(outbuf, std::byte{'X'});
+
+    auto chnl = sk::make_imemchannel(inbuf);
 
     auto nbytes = read_some(chnl, outbuf);
     REQUIRE(nbytes);
@@ -67,28 +85,46 @@ TEST_CASE("imemchannel::read_some() entire buffer") {
     REQUIRE(outbuf[3] == std::byte{'X'});
 }
 
-TEST_CASE("imemchannel::read_some() single-byte") {
-    char buf[3] = {'A', 'B', 'C'};
-    std::byte dat[4];
-    std::memset(dat, 'X', sizeof dat);
+TEST_CASE("imemchannel::async_read_some() entire buffer")
+{
+    std::array const inbuf{'A', 'B', 'C'};
+    std::array<std::byte, 10> outbuf{};
+    std::ranges::fill(outbuf, std::byte{'X'});
 
-    auto chnl = make_imemchannel(buf);
+    auto chnl = sk::make_imemchannel(inbuf);
 
-    auto nbytes = read_some(chnl, dat, 1);
+    auto nbytes = sk::wait(sk::async_read_some(chnl, outbuf));
+    REQUIRE(nbytes);
+    REQUIRE(*nbytes == 3);
+    REQUIRE(outbuf[0] == std::byte{'A'});
+    REQUIRE(outbuf[1] == std::byte{'B'});
+    REQUIRE(outbuf[2] == std::byte{'C'});
+    REQUIRE(outbuf[3] == std::byte{'X'});
+}
+
+TEST_CASE("imemchannel::read_some() single-byte")
+{
+    std::array const buf{'A', 'B', 'C'};
+    std::array<std::byte, 4> dat{};
+    std::ranges::fill(dat, std::byte{'X'});
+
+    auto chnl = sk::make_imemchannel(buf);
+
+    auto nbytes = sk::read_some(chnl, dat, 1);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = read_some(chnl, std::span(dat + 1, 1));
+    nbytes = sk::read_some(chnl, std::span(dat).subspan(1), 1);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = read_some(chnl, std::span(dat + 2, 1));
+    nbytes = sk::read_some(chnl, std::span(dat).subspan(2), 1);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = read_some(chnl, dat, 1);
+    nbytes = sk::read_some(chnl, dat, 1);
     REQUIRE(!nbytes);
-    REQUIRE(nbytes.error() == error::end_of_file);
+    REQUIRE(nbytes.error() == sk::error::end_of_file);
 
     REQUIRE(dat[0] == std::byte{'A'});
     REQUIRE(dat[1] == std::byte{'B'});
@@ -96,28 +132,29 @@ TEST_CASE("imemchannel::read_some() single-byte") {
     REQUIRE(dat[3] == std::byte{'X'});
 }
 
-TEST_CASE("imemchannel::read_some_at() single-byte") {
-    char buf[3] = {'A', 'B', 'C'};
-    std::byte dat[4];
-    std::memset(dat, 'X', sizeof dat);
+TEST_CASE("imemchannel::async_read_some() single-byte")
+{
+    std::array const buf{'A', 'B', 'C'};
+    std::array<std::byte, 4> dat{};
+    std::ranges::fill(dat, std::byte{'X'});
 
-    auto chnl = make_imemchannel(buf);
+    auto chnl = sk::make_imemchannel(buf);
 
-    auto nbytes = chnl.read_some_at(0, dat, 1);
+    auto nbytes = sk::wait(sk::async_read_some(chnl, dat, 1));
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.read_some_at(1, dat + 1, 1);
+    nbytes = sk::wait(sk::async_read_some(chnl, std::span(dat).subspan(1), 1));
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.read_some_at(2, dat + 2, 1);
+    nbytes = sk::wait(sk::async_read_some(chnl, std::span(dat).subspan(2), 1));
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.read_some_at(3, dat, 1);
+    nbytes = sk::wait(sk::async_read_some(chnl, dat, 1));
     REQUIRE(!nbytes);
-    REQUIRE(nbytes.error() == error::end_of_file);
+    REQUIRE(nbytes.error() == sk::error::end_of_file);
 
     REQUIRE(dat[0] == std::byte{'A'});
     REQUIRE(dat[1] == std::byte{'B'});
@@ -125,14 +162,77 @@ TEST_CASE("imemchannel::read_some_at() single-byte") {
     REQUIRE(dat[3] == std::byte{'X'});
 }
 
-TEST_CASE("imemchannel::read_some() past the end") {
-    char buf[3] = {'A', 'B', 'C'};
-    std::byte dat[4];
-    std::memset(dat, 'X', sizeof dat);
+TEST_CASE("imemchannel::read_some_at() single-byte")
+{
+    std::array buf{'A', 'B', 'C'};
+    std::array<std::byte, 4> dat{};
+    std::ranges::fill(dat, std::byte{'X'});
 
-    auto chnl = make_imemchannel(buf);
+    auto chnl = sk::make_imemchannel(buf);
 
-    auto nbytes = chnl.read_some(dat, 4);
+    auto nbytes = sk::read_some_at(chnl, 0, dat, 1);
+    REQUIRE(nbytes);
+    REQUIRE(*nbytes == 1);
+
+    nbytes = sk::read_some_at(chnl, 1, std::span(dat).subspan(1), 1);
+    REQUIRE(nbytes);
+    REQUIRE(*nbytes == 1);
+
+    nbytes = sk::read_some_at(chnl, 2, std::span(dat).subspan(2), 1);
+    REQUIRE(nbytes);
+    REQUIRE(*nbytes == 1);
+
+    nbytes = sk::read_some_at(chnl, 3, dat, 1);
+    REQUIRE(!nbytes);
+    REQUIRE(nbytes.error() == sk::error::end_of_file);
+
+    REQUIRE(dat[0] == std::byte{'A'});
+    REQUIRE(dat[1] == std::byte{'B'});
+    REQUIRE(dat[2] == std::byte{'C'});
+    REQUIRE(dat[3] == std::byte{'X'});
+}
+
+TEST_CASE("imemchannel::async_read_some_at() single-byte")
+{
+    std::array buf{'A', 'B', 'C'};
+    std::array<std::byte, 4> dat{};
+    std::ranges::fill(dat, std::byte{'X'});
+
+    auto chnl = sk::make_imemchannel(buf);
+
+    auto nbytes = sk::wait(sk::async_read_some_at(chnl, 0, dat, 1));
+    REQUIRE(nbytes);
+    REQUIRE(*nbytes == 1);
+
+    nbytes =
+        sk::wait(sk::async_read_some_at(chnl, 1, std::span(dat).subspan(1), 1));
+    REQUIRE(nbytes);
+    REQUIRE(*nbytes == 1);
+
+    nbytes =
+        sk::wait(sk::async_read_some_at(chnl, 2, std::span(dat).subspan(2), 1));
+    REQUIRE(nbytes);
+    REQUIRE(*nbytes == 1);
+
+    nbytes = sk::wait(sk::async_read_some_at(chnl, 3, dat, 1));
+    REQUIRE(!nbytes);
+    REQUIRE(nbytes.error() == sk::error::end_of_file);
+
+    REQUIRE(dat[0] == std::byte{'A'});
+    REQUIRE(dat[1] == std::byte{'B'});
+    REQUIRE(dat[2] == std::byte{'C'});
+    REQUIRE(dat[3] == std::byte{'X'});
+}
+
+TEST_CASE("imemchannel::read_some() past the end")
+{
+    std::array const buf{'A', 'B', 'C'};
+    std::array<std::byte, 4> dat{};
+    std::ranges::fill(dat, std::byte{'X'});
+
+    auto chnl = sk::make_imemchannel(buf);
+
+    auto nbytes = sk::read_some(chnl, dat, 4);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 3);
     REQUIRE(dat[0] == std::byte{'A'});
@@ -141,14 +241,15 @@ TEST_CASE("imemchannel::read_some() past the end") {
     REQUIRE(dat[3] == std::byte{'X'});
 }
 
-TEST_CASE("imemchannel::read_some_at() with an invalid location") {
-    char buf[3] = {'A', 'B', 'C'};
-    std::byte dat[4];
-    std::memset(dat, 'X', sizeof dat);
+TEST_CASE("imemchannel::read_some_at() with an invalid location")
+{
+    std::array const buf{'A', 'B', 'C'};
+    std::array<std::byte, 4> dat{};
+    std::ranges::fill(dat, std::byte{'X'});
 
-    auto chnl = make_imemchannel(buf);
+    auto chnl = sk::make_imemchannel(buf);
 
-    auto nbytes = chnl.read_some_at(4, dat, 1);
+    auto nbytes = sk::read_some_at(chnl, 4, dat, 1);
     REQUIRE(!nbytes);
-    REQUIRE(nbytes.error() == error::end_of_file);
+    REQUIRE(nbytes.error() == sk::error::end_of_file);
 }

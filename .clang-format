@@ -11,6 +11,7 @@ BraceWrapping:
   AfterFunction: true
 BinPackParameters: false
 BinPackArguments: false
+FixNamespaceComments: true
 IncludeCategories:
   - Regex:      '^<sys/types.h>$'
     Priority:   1

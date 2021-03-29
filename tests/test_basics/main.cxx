@@ -31,7 +31,7 @@
 
 #include <sk/reactor.hxx>
 
-int main(int argc, char **argv)
+auto main(int argc, char **argv) -> int
 {
     sk::reactor_handle reactor;
 

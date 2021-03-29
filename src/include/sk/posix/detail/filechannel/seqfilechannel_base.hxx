@@ -62,9 +62,9 @@ namespace sk::posix::detail {
 
         seqfilechannel_base(seqfilechannel_base const &) = delete;
         seqfilechannel_base(seqfilechannel_base &&) noexcept = default;
-        seqfilechannel_base &operator=(seqfilechannel_base const &) = delete;
-        seqfilechannel_base &
-        operator=(seqfilechannel_base &&) noexcept = default;
+        auto operator=(seqfilechannel_base const &) -> seqfilechannel_base & = delete;
+        auto
+        operator=(seqfilechannel_base &&) noexcept -> seqfilechannel_base & = default;
 
     protected:
         /*
@@ -97,15 +97,15 @@ namespace sk::posix::detail {
                                                       io_size_t nobjs)
         -> task<expected<io_size_t, std::error_code>>
     {
-        SK_CHECK(is_open(), "attempt to read on a closed channel");
+        sk::detail::check(is_open(), "attempt to read on a closed channel");
 
-        auto ret = co_await async_fd_read(_fd.fd(), buffer, nobjs);
+        auto ret = co_await async_fd_read(*_fd, buffer, nobjs);
 
-        if (ret == -1)
-            co_return make_unexpected(get_errno());
+        if (!ret)
+            co_return make_unexpected(ret.error());
 
-        if (ret == 0)
-            co_return make_unexpected(sk::error::end_of_file);
+        if (*ret == 0)
+            co_return make_unexpected(error::end_of_file);
 
         co_return ret;
     }
@@ -118,15 +118,15 @@ namespace sk::posix::detail {
                                                 io_size_t nobjs)
         -> expected<io_size_t, std::error_code>
     {
-        SK_CHECK(is_open(), "attempt to read on a closed channel");
+        sk::detail::check(is_open(), "attempt to read on a closed channel");
 
-        auto ret = ::read(_fd.fd(), buffer, nobjs);
-
-        if (ret == -1)
-            return make_unexpected(get_errno());
+        auto ret = ::read(*_fd, buffer, nobjs);
 
         if (ret == 0)
             return make_unexpected(error::end_of_file);
+
+        if (ret < 0)
+            return make_unexpected(get_errno());
 
         return ret;
     }
@@ -139,11 +139,11 @@ namespace sk::posix::detail {
                                                        io_size_t nobjs)
         -> task<expected<io_size_t, std::error_code>>
     {
-        SK_CHECK(is_open(), "attempt to read on a closed channel");
+        sk::detail::check(is_open(), "attempt to read on a closed channel");
 
-        auto ret = co_await async_fd_write(_fd.fd(), buffer, nobjs);
+        auto ret = co_await async_fd_write(*_fd, buffer, nobjs);
 
-        if (ret == -1)
+        if (!ret)
             co_return make_unexpected(get_errno());
 
         co_return ret;
@@ -157,11 +157,11 @@ namespace sk::posix::detail {
                                                  io_size_t nobjs)
         -> expected<io_size_t, std::error_code>
     {
-        SK_CHECK(is_open(), "attempt to read on a closed channel");
+        sk::detail::check(is_open(), "attempt to read on a closed channel");
 
-        auto ret = ::write(_fd.fd(), buffer, nobjs);
+        auto ret = ::write(*_fd, buffer, nobjs);
 
-        if (!ret)
+        if (ret < 0)
             return make_unexpected(get_errno());
 
         return ret;

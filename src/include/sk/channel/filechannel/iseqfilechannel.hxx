@@ -65,8 +65,8 @@ namespace sk {
 
         explicit iseqfilechannel(iseqfilechannel const &) = delete;
         iseqfilechannel(iseqfilechannel &&) noexcept = default;
-        iseqfilechannel &operator=(iseqfilechannel const &) = delete;
-        iseqfilechannel &operator=(iseqfilechannel &&) noexcept = default;
+        auto operator=(iseqfilechannel const &) -> iseqfilechannel & = delete;
+        auto operator=(iseqfilechannel &&) noexcept -> iseqfilechannel & = default;
         ~iseqfilechannel() = default;
 
         /*

@@ -40,65 +40,13 @@
 #include <sk/detail/coroutine.hxx>
 
 namespace sk {
-
-    template <typename P>
-    struct task_final_awaiter {
-        bool await_ready() noexcept
-        {
-            return false;
-        }
-
-        void await_resume() noexcept {}
-
-#ifdef SK_HAS_STD_COROUTINES
-        coroutine_handle<> await_suspend(coroutine_handle<P> h) noexcept
-        {
-            auto &previous = h.promise().previous;
-            if (previous)
-                return previous;
-
-            return std::noop_coroutine();
-        }
-#else
-        void await_suspend(coroutine_handle<P> h) noexcept
-        {
-            auto &promise = h.promise();
-
-            if (!promise.previous)
-                return;
-
-            if (promise.ready.exchange(true, std::memory_order_acq_rel))
-                promise.previous.resume();
-        }
-#endif
-    };
+    /*************************************************************************
+     *
+     * promise_base
+     */
 
     template <typename T>
-    struct task_promise {
-#ifndef SK_HAS_CPP20_COROUTINES
-        std::atomic<bool> ready = false;
-#endif
-
-        auto get_return_object()
-        {
-            return coroutine_handle<task_promise<T>>::from_promise(*this);
-        }
-
-        suspend_always initial_suspend()
-        {
-            return {};
-        }
-
-        task_final_awaiter<task_promise<T>> final_suspend() noexcept
-        {
-            return {};
-        }
-
-        void unhandled_exception()
-        {
-            throw;
-        }
-
+    struct promise_base {
         void return_value(T const &value) noexcept(
             std::is_nothrow_copy_constructible_v<T>)
         {
@@ -111,54 +59,99 @@ namespace sk {
             result = std::move(value);
         }
 
+        auto await_resume() -> T
+        {
+            return std::move(result);
+        }
         T result{};
-        coroutine_handle<> previous;
     };
 
     template <>
-    struct task_promise<void> {
-#ifndef SK_HAS_STD_COROUTINES
-        std::atomic<bool> ready = false;
-#endif
-
-        auto get_return_object()
-        {
-            return coroutine_handle<task_promise<void>>::from_promise(*this);
-        }
-
-        suspend_always initial_suspend()
-        {
-            return {};
-        }
-
-        task_final_awaiter<task_promise<void>> final_suspend() noexcept
-        {
-            return {};
-        }
-
-        void unhandled_exception()
-        {
-            throw;
-        }
-
+    struct promise_base<void> {
         void return_void() noexcept {}
-
-        coroutine_handle<> previous;
+        auto await_resume() -> void {}
     };
+
+    /*************************************************************************
+     *
+     * task
+     */
 
     template <typename T>
     struct task {
-        using promise_type = task_promise<T>;
+        struct promise_type : promise_base<T> {
+#ifndef SK_HAS_CPP20_COROUTINES
+            std::atomic<bool> ready = false;
+#endif
+            coroutine_handle<> previous;
+            std::exception_ptr exception{nullptr};
+
+            auto get_return_object()
+            {
+                return task(
+                    coroutine_handle<promise_type>::from_promise(*this));
+            }
+
+            auto initial_suspend() -> suspend_always
+            {
+                return {};
+            }
+
+            struct final_awaiter {
+                auto await_ready() noexcept -> bool
+                {
+                    return false;
+                }
+
+                void await_resume() noexcept {}
+
+#ifdef SK_HAS_STD_COROUTINES
+                // NOLINTNEXTLINE(bugprone-exception-escape)
+                coroutine_handle<>
+                await_suspend(coroutine_handle<promise_type> h) noexcept
+                {
+                    auto &prev = h.promise().previous;
+                    if (prev)
+                        return prev;
+
+                    return std::noop_coroutine();
+                }
+#else
+                // NOLINTNEXTLINE(bugprone-exception-escape)
+                void await_suspend(coroutine_handle<promise_type> h) noexcept
+                {
+                    auto &promise = h.promise();
+
+                    if (!promise.previous)
+                        return;
+
+                    if (promise.ready.exchange(true, std::memory_order_acq_rel))
+                        promise.previous.resume();
+                }
+#endif
+            };
+
+            auto final_suspend() noexcept -> final_awaiter
+            {
+                return {};
+            }
+
+            void unhandled_exception()
+            {
+                exception = std::current_exception();
+            }
+        };
+
         coroutine_handle<promise_type> coro_handle;
 
-        task(coroutine_handle<promise_type> coro_handle_)
+        explicit task(coroutine_handle<promise_type> coro_handle_) noexcept
             : coro_handle(coro_handle_)
         {
         }
 
         task(task const &) = delete;
-        task &operator=(task const &) = delete;
-        task &operator=(task &&other) = delete;
+        auto operator=(task const &) -> task & = delete;
+        auto operator=(task &&other) -> task & = delete;
 
         task(task &&other) noexcept
             : coro_handle(std::exchange(other.coro_handle, {}))
@@ -167,28 +160,30 @@ namespace sk {
 
         ~task()
         {
-            // if (coro_handle)
-            //    coro_handle.destroy();
+            if (coro_handle) {
+                try {
+                    coro_handle.destroy();
+                } catch (...) {
+                    std::terminate();
+                }
+            }
         }
 
-        bool await_ready()
+        auto await_ready() noexcept -> bool
         {
             return false;
         }
 
-        T await_resume()
-        {
-            return std::move(coro_handle.promise().result);
-        }
-
 #ifdef SK_HAS_STD_COROUTINES
-        auto await_suspend(coroutine_handle<> h)
+        // NOLINTNEXTLINE(bugprone-exception-escape)
+        auto await_suspend(coroutine_handle<> h) noexcept
         {
             coro_handle.promise().previous = h;
             return coro_handle;
         }
 #else
-        bool await_suspend(coroutine_handle<> h)
+        // NOLINTNEXTLINE(bugprone-exception-escape)
+        auto await_suspend(coroutine_handle<> h) noexcept -> bool
         {
             auto &promise = coro_handle.promise();
             promise.previous = h;
@@ -197,59 +192,13 @@ namespace sk {
         }
 #endif
 
-        void start()
-        {
-            coro_handle.resume();
-        }
-    };
-
-    template <>
-    struct task<void> {
-        using promise_type = task_promise<void>;
-        coroutine_handle<promise_type> coro_handle;
-
-        task(coroutine_handle<promise_type> coro_handle_)
-            : coro_handle(coro_handle_)
-        {
-        }
-
-        task(task const &) = delete;
-        task &operator=(task const &) = delete;
-        task &operator=(task &&other) = delete;
-
-        task(task &&other) noexcept
-            : coro_handle(std::exchange(other.coro_handle, {}))
-        {
-        }
-
-        ~task()
-        {
-            // if (coro_handle)
-            //    coro_handle.destroy();
-        }
-
-        bool await_ready()
-        {
-            return false;
-        }
-
-        void await_resume() {}
-
-#ifdef SK_HAS_STD_COROUTINES
-        auto await_suspend(coroutine_handle<> h)
-        {
-            coro_handle.promise().previous = h;
-            return coro_handle;
-        }
-#else
-        bool await_suspend(coroutine_handle<> h)
+        auto await_resume() -> T
         {
             auto &promise = coro_handle.promise();
-            promise.previous = h;
-            coro_handle.resume();
-            return !promise.ready.exchange(true, std::memory_order_acq_rel);
+            if (promise.exception)
+                std::rethrow_exception(promise.exception);
+            return coro_handle.promise().await_resume();
         }
-#endif
 
         void start()
         {

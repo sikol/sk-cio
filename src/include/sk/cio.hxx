@@ -36,9 +36,9 @@
 #include <sk/wait.hxx>
 
 #include <sk/channel/charchannel.hxx>
+#include <sk/channel/error.hxx>
 #include <sk/channel/filechannel.hxx>
 #include <sk/channel/memchannel.hxx>
-#include <sk/channel/error.hxx>
 #include <sk/channel/read.hxx>
 #include <sk/channel/write.hxx>
 

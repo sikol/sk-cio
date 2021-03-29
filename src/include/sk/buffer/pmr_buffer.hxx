@@ -53,12 +53,18 @@ namespace sk {
     /*
      * pmr_basic_buffer: basic types and virtual dtor for the pmr buffers.
      */
-    template <typename Char> struct pmr_basic_buffer {
+    template <typename Char>
+    struct pmr_basic_buffer {
+        pmr_basic_buffer() = default;
+        pmr_basic_buffer(pmr_basic_buffer &) = delete;
+        pmr_basic_buffer(pmr_basic_buffer &&) = delete;
+        auto operator=(pmr_basic_buffer &) -> pmr_basic_buffer & = delete;
+        auto operator=(pmr_basic_buffer &&) -> pmr_basic_buffer & = delete;
         virtual ~pmr_basic_buffer() = default;
 
-        typedef std::size_t size_type;
-        typedef Char value_type;
-        typedef std::add_const_t<value_type> const_value_type;
+        using size_type = std::size_t;
+        using value_type = Char;
+        using const_value_type = std::add_const_t<value_type>;
     };
 
     /*
@@ -67,7 +73,8 @@ namespace sk {
     template <typename Char>
     struct pmr_readable_buffer : pmr_basic_buffer<Char> {
         virtual auto
-        read(std::span<typename pmr_basic_buffer<Char>::value_type> const &) ->
+        read(typename pmr_basic_buffer<Char>::value_type *dptr,
+             typename pmr_basic_buffer<Char>::size_type dsize) ->
             typename pmr_basic_buffer<Char>::size_type = 0;
 
         virtual auto readable_ranges() -> std::vector<
@@ -77,14 +84,16 @@ namespace sk {
             typename pmr_basic_buffer<Char>::size_type = 0;
     };
 
-    static_assert(readable_buffer_of<pmr_readable_buffer<char>, char>);
+    static_assert(readable_buffer<pmr_readable_buffer<char>>);
 
     /*
      * pmr_writable_buffer: interface for pmr writable_buffer<>.
      */
     template <typename Char>
     struct pmr_writable_buffer : pmr_basic_buffer<Char> {
-        virtual auto write(std::span<std::add_const_t<Char>> const &) ->
+        virtual auto
+        write(typename pmr_basic_buffer<Char>::const_value_type const *dptr,
+              typename pmr_basic_buffer<Char>::size_type dsize) ->
             typename pmr_basic_buffer<Char>::size_type = 0;
 
         virtual auto writable_ranges() -> std::vector<
@@ -94,13 +103,14 @@ namespace sk {
             typename pmr_basic_buffer<Char>::size_type = 0;
     };
 
-    static_assert(writable_buffer_of<pmr_writable_buffer<char>, char>);
+    static_assert(writable_buffer<pmr_writable_buffer<char>>);
 
     /*
      * pmr_buffer: interface for pmr buffer<>.
      */
     template <typename Char>
-    struct pmr_buffer : pmr_readable_buffer<Char>, pmr_writable_buffer<Char> {};
+    struct pmr_buffer : pmr_readable_buffer<Char>, pmr_writable_buffer<Char> {
+    };
 
     /*************************************************************************
      *
@@ -118,24 +128,33 @@ namespace sk {
         Buffer &buffer_base;
 
         explicit pmr_readable_buffer_adapter(Buffer &buffer_base_)
-            : buffer_base(buffer_base_) {}
+            : buffer_base(buffer_base_)
+        {
+        }
 
-        auto read(std::span<buffer_value_t<Buffer>> const &buf) ->
+        auto
+        read(typename pmr_readable_buffer<
+                 buffer_value_t<Buffer>>::value_type *dptr,
+             typename pmr_readable_buffer<buffer_value_t<Buffer>>::size_type
+                 dsize) ->
             typename pmr_readable_buffer<buffer_value_t<Buffer>>::size_type
-            final {
-            return buffer_base.read(buf);
+            final
+        {
+            return buffer_base.read(dptr, dsize);
         }
 
         auto readable_ranges()
             -> std::vector<std::span<typename pmr_readable_buffer<
-                buffer_value_t<Buffer>>::const_value_type>> final {
+                buffer_value_t<Buffer>>::const_value_type>> final
+        {
             return buffer_base.readable_ranges();
         }
 
         auto discard(
             typename pmr_readable_buffer<buffer_value_t<Buffer>>::size_type n)
             -> typename pmr_readable_buffer<buffer_value_t<Buffer>>::size_type
-            final {
+            final
+        {
             return buffer_base.discard(n);
         }
     };
@@ -149,25 +168,33 @@ namespace sk {
         Buffer &buffer_base;
 
         explicit pmr_writable_buffer_adapter(Buffer &buffer_base_)
-            : buffer_base(buffer_base_) {}
+            : buffer_base(buffer_base_)
+        {
+        }
 
         auto
-        write(std::span<std::add_const_t<buffer_value_t<Buffer>>> const &buf) ->
-            typename pmr_writable_buffer<buffer_value_t<Buffer>>::size_type
-            final {
-            return buffer_base.write(buf);
+        write(typename pmr_readable_buffer<
+                  buffer_const_value_t<Buffer>>::value_type const *dptr,
+              typename pmr_readable_buffer<buffer_value_t<Buffer>>::size_type
+                  dsize) ->
+            typename pmr_readable_buffer<buffer_value_t<Buffer>>::size_type
+            final
+        {
+            return buffer_base.write(dptr, dsize);
         }
 
         auto writable_ranges()
             -> std::vector<std::span<typename pmr_writable_buffer<
-                buffer_value_t<Buffer>>::value_type>> final {
+                buffer_value_t<Buffer>>::value_type>> final
+        {
             return buffer_base.writable_ranges();
         }
 
         auto commit(
             typename pmr_writable_buffer<buffer_value_t<Buffer>>::size_type n)
             -> typename pmr_writable_buffer<buffer_value_t<Buffer>>::size_type
-            final {
+            final
+        {
             return buffer_base.commit(n);
         }
     };
@@ -181,9 +208,11 @@ namespace sk {
     struct pmr_buffer_adapter : pmr_readable_buffer_adapter<Buffer>,
                                 pmr_writable_buffer_adapter<Buffer> {
 
-        pmr_buffer_adapter(Buffer &buffer_base_)
+        explicit pmr_buffer_adapter(Buffer &buffer_base_)
             : pmr_readable_buffer_adapter<Buffer>(buffer_base_),
-              pmr_writable_buffer_adapter<Buffer>(buffer_base_) {}
+              pmr_writable_buffer_adapter<Buffer>(buffer_base_)
+        {
+        }
     };
 
     /*
@@ -192,19 +221,22 @@ namespace sk {
 
     template <buffer Buffer,
               typename std::enable_if_t<buffer<Buffer>, bool> = true>
-    auto make_pmr_buffer_adapter(Buffer &buf) {
+    auto make_pmr_buffer_adapter(Buffer &buf)
+    {
         return pmr_buffer_adapter<Buffer>(buf);
     }
 
     template <readable_buffer Buffer,
               typename std::enable_if_t<!writable_buffer<Buffer>, bool> = true>
-    auto make_pmr_buffer_adapter(Buffer &buf) {
+    auto make_pmr_buffer_adapter(Buffer &buf)
+    {
         return pmr_readable_buffer_adapter<Buffer>(buf);
     }
 
     template <writable_buffer Buffer,
               typename std::enable_if_t<!readable_buffer<Buffer>, bool> = true>
-    auto make_pmr_buffer_adapter(Buffer &buf) {
+    auto make_pmr_buffer_adapter(Buffer &buf)
+    {
         return pmr_writable_buffer_adapter<Buffer>(buf);
     }
 

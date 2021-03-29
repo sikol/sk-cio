@@ -48,7 +48,7 @@ namespace sk {
                 std::integral<T> &&
                 sizeof(T) == sizeof(std::byte);
 
-    }
+    } // namespace detail
 
     /*************************************************************************
      *

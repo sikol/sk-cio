@@ -100,8 +100,8 @@ TEST_CASE("idafilechannel stress test")
     int errors = 0;
 
     for (auto &&future : futures) {
-        auto ret = future.get();
-        errors += ret;
+        auto res = future.get();
+        errors += res;
     }
 
     REQUIRE(errors == 0);

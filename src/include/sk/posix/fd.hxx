@@ -63,7 +63,7 @@ namespace sk::posix {
         }
 
         // Move assignment.
-        unique_fd &operator=(unique_fd &&other) noexcept
+        auto operator=(unique_fd &&other) noexcept -> unique_fd &
         {
             if (this == &other)
                 return *this;
@@ -81,7 +81,7 @@ namespace sk::posix {
 
         // Not copyable.
         unique_fd(unique_fd const &) = delete;
-        unique_fd &operator=(unique_fd const &) = delete;
+        auto operator=(unique_fd const &) -> unique_fd & = delete;
 
         // Assign a new value to this fd.
         auto assign(int fd) noexcept -> void
@@ -91,15 +91,16 @@ namespace sk::posix {
         }
 
         // Close the handle.
+        // NOLINTNEXTLINE(readability-make-member-function-const)
         auto close() noexcept -> std::error_code
         {
             if (_fd == invalid_fd)
                 return {};
 
-            if (::close(_fd))
+            if (::close(_fd) == 0)
                 return {};
-            else
-                return {errno, std::system_category()};
+
+            return {errno, std::system_category()};
         }
 
         // Test if we have a valid handle.
@@ -108,10 +109,18 @@ namespace sk::posix {
             return _fd != invalid_fd;
         }
 
-        // Return the fd.
-        auto fd() -> int
+        // NOLINTNEXTLINE(readability-make-member-function-const)
+        auto operator*() -> int
         {
-            SK_CHECK(_fd != invalid_fd, "attempt to access invalid handle");
+            return value();
+        }
+
+        // Return the fd.
+        // NOLINTNEXTLINE(readability-make-member-function-const)
+        [[nodiscard]] auto value() const -> int
+        {
+            detail::check(_fd != invalid_fd,
+                          "attempt to access invalid handle");
             return _fd;
         }
 

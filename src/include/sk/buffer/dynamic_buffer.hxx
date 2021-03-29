@@ -38,6 +38,7 @@
 
 #include <sk/buffer/buffer.hxx>
 #include <sk/buffer/fixed_buffer.hxx>
+#include <sk/check.hxx>
 
 namespace sk {
 
@@ -58,7 +59,9 @@ namespace sk {
     // Calculate how large a buffer extent should be if we want to use
     // a specific number of bytes.
 
-    template <typename Char> constexpr auto extent_size_from_bytes(int nbytes) {
+    template <typename Char>
+    constexpr auto extent_size_from_bytes(int nbytes)
+    {
         return nbytes / sizeof(Char);
     }
 
@@ -81,12 +84,14 @@ namespace sk {
 
         // Create a new, empty buffer with a single extent.
         dynamic_buffer() = default;
+        ~dynamic_buffer() = default;
 
         // dynamic_buffer is not copyable, but can be moved.
         dynamic_buffer(dynamic_buffer const &) = delete;
-        dynamic_buffer &operator=(dynamic_buffer const &) = delete;
-        dynamic_buffer(dynamic_buffer &&) = default;
-        dynamic_buffer &operator=(dynamic_buffer &&) = default;
+        auto operator=(dynamic_buffer const &) -> dynamic_buffer & = delete;
+        dynamic_buffer(dynamic_buffer &&) noexcept = default;
+        auto operator=(dynamic_buffer &&) noexcept
+            -> dynamic_buffer & = default;
 
         // The extents in this buffer.
         extent_list_type extents;
@@ -96,19 +101,13 @@ namespace sk {
 
         // Write data to the buffer.  All of the data will be written, and the
         // buffer will be expanded to fit the data if necessary.
-        template <std::ranges::contiguous_range Range>
-        auto write(Range &&) -> size_type requires std::same_as<
-            const_value_type,
-            std::add_const_t<std::ranges::range_value_t<Range>>>;
+        auto write(const_value_type *dptr, size_type dsize) -> size_type;
 
         // Read data from the buffer.  As much data will be read as possible,
         // and the number of objects read will be returned.  If the return value
         // is less than the requested number of objects, the buffer is now
         // empty.
-        template <std::ranges::contiguous_range Range>
-        auto read(Range &&) -> size_type
-            requires std::same_as<value_type,
-                                  std::ranges::range_value_t<Range>>;
+        auto read(value_type *dptr, size_type dsize) -> size_type;
 
         // Return a list of ranges which represent data in the buffer
         // which can be read.  Writing data to the buffer will not invalidate
@@ -131,19 +130,20 @@ namespace sk {
         auto commit(size_type n) -> size_type;
 
         // Ensure that at least minfree objects of write space is available.
-        auto ensure_minfree() -> void {
+        auto ensure_minfree() -> void
+        {
             // Add more space if needed.
             if (extents.empty() ||
                 extents.back().write_window.size() < minfree) {
 
                 extents.emplace_back();
                 // Make sure write_pointer doesn't point at an empty extent.
-                if (extents[write_pointer].write_window.size() == 0)
+                if (extents[write_pointer].write_window.empty())
                     ++write_pointer;
             }
         }
 
-      private:
+    private:
         // Remove the first element of the buffer.
         auto remove_front() -> void;
     };
@@ -151,9 +151,15 @@ namespace sk {
     static_assert(buffer<dynamic_buffer<char>>);
 
     template <typename Char, std::size_t extent_size>
-    auto dynamic_buffer<Char, extent_size>::remove_front() -> void {
-        assert(!extents.empty());
-        assert(write_pointer > 0 || extents.front().write_window.size() == 0);
+    auto dynamic_buffer<Char, extent_size>::remove_front() -> void
+    {
+        sk::detail::check(
+            !extents.empty(),
+            "INTERNAL ERROR: dynamic_buffer remove_front() but no extents");
+        sk::detail::check(write_pointer > 0 ||
+                              extents.front().write_window.empty(),
+                          "INTERNAL ERROR: dynamic_buffer remove_front() "
+                          "removing extent with data");
 
         if (write_pointer > 0)
             --write_pointer;
@@ -163,23 +169,32 @@ namespace sk {
 
     template <typename Char, std::size_t extent_size>
     auto dynamic_buffer<Char, extent_size>::writable_ranges()
-        -> std::vector<std::span<Char>> {
+        -> std::vector<std::span<Char>>
+    {
         std::vector<std::span<Char>> ret;
 
         // Make sure we always return a reasonable amount of writable space.
         ensure_minfree();
 
-        assert(write_pointer >= 0 && write_pointer < extents.size());
+        sk::detail::check(write_pointer >= 0 && write_pointer < extents.size(),
+                          "INTERNAL ERROR: dynamic_buffer writable_ranges() "
+                          "invalid write_pointer");
 
         for (auto i = write_pointer, end = extents.size(); i < end; ++i) {
             // Every extent from write_pointer onwards must have free space.
-            assert(extents[i].write_window.size() > 0);
+            sk::detail::check(
+                !extents[i].write_window.empty(),
+                "INTERNAL ERROR: dynamic_buffer writable_ranges() "
+                "unexpected full extent");
 
             // Every extent aside from the current write pointer must be empty,
             // or else we have written data in front of the pointer without
             // adjusting it, which is a bug.
-            assert(i == write_pointer ||
-                   (extents[i].write_window.size() == extent_size));
+            sk::detail::check(
+                i == write_pointer ||
+                    (extents[i].write_window.size() == extent_size),
+                "INTERNAL ERROR: dynamic_buffer writable_ranges() data in "
+                "front of write pointer");
 
             // Add this extent to the range list.
             ret.push_back(extents[i].write_window);
@@ -189,32 +204,41 @@ namespace sk {
     }
 
     template <typename Char, std::size_t extent_size>
-    auto dynamic_buffer<Char, extent_size>::commit(std::size_t n) -> size_type {
+    auto dynamic_buffer<Char, extent_size>::commit(std::size_t n) -> size_type
+    {
         size_type left = n;
 
         if (n == 0)
             return 0;
 
-        assert(write_pointer >= 0 && write_pointer < extents.size());
+        sk::detail::check(
+            write_pointer >= 0 && write_pointer < extents.size(),
+            "INTERNAL ERROR: dynamic_buffer commit() invalid write pointer");
 
-        assert(write_pointer <
-               static_cast<typename extent_list_type::size_type>(
-                   std::numeric_limits<
-                       typename extent_list_type::difference_type>::max()));
+        sk::detail::check(
+            write_pointer <
+                static_cast<typename extent_list_type::size_type>(
+                    std::numeric_limits<
+                        typename extent_list_type::difference_type>::max()),
+            "INTERNAL ERROR: dynamic_buffer commit() invalid write pointer");
 
         for (;;) {
             // If we reach the end of the buffer, we have run out of data
             // to commit.  Trying to commit more data than exists in the buffer
             // is almost certainly a mistake on the caller's part, so rather
             // than returning a short commit, just abort.
-            assert(write_pointer < extents.size());
+            sk::detail::check(
+                write_pointer < extents.size(),
+                "INTERNAL ERROR: dynamic_buffer commit() n > size");
 
             // Commit as much data as possible in this extent.
             auto m = extents[write_pointer].commit(left);
 
             // Ensure we committed at least 1 object.  If not, that means our
             // writer pointer was pointing at the wrong extent.
-            assert(m > 0);
+            sk::detail::check(
+                m > 0,
+                "INTERNAL ERROR: dynamic_buffer commit() did not commit");
 
             // If we committed all of it, return.
             left -= m;
@@ -232,19 +256,17 @@ namespace sk {
     }
 
     template <typename Char, std::size_t extent_size>
-    template <std::ranges::contiguous_range Range>
-    auto dynamic_buffer<Char, extent_size>::write(Range &&data) -> size_type
-        requires std::same_as<
-            const_value_type,
-            std::add_const_t<std::ranges::range_value_t<Range>>> {
+    auto dynamic_buffer<Char, extent_size>::write(const_value_type *dptr,
+                                                  size_type dsize) -> size_type
+    {
+        auto buf = std::span(dptr, dsize);
 
-        std::span<std::add_const_t<std::ranges::range_value_t<Range>>> buf =
-            data;
-
-        if (buf.size() == 0)
+        if (buf.empty())
             return 0;
 
-        assert(write_pointer >= 0 && write_pointer <= extents.size());
+        sk::detail::check(
+            write_pointer >= 0 && write_pointer <= extents.size(),
+            "INTERNAL ERROR: dynamic_buffer write() invalid write pointer");
 
         for (;;) {
             // If we're at the end of the buffer, add another extent to the end.
@@ -252,15 +274,15 @@ namespace sk {
                 extents.emplace_back();
 
             // Write as much data as possible.
-            auto n = extents[write_pointer].write(buf);
+            auto n = buffer_write(extents[write_pointer], buf);
             buf = buf.subspan(n);
 
             // If we wrote all of it, return.
-            if (buf.size() == 0) {
+            if (buf.empty()) {
                 // Make sure we don't leave write_pointer pointing at a
                 // full extent.
                 ensure_minfree();
-                return std::ranges::size(data);
+                return dsize;
             }
 
             // Move to the next extent and try again.
@@ -270,11 +292,12 @@ namespace sk {
 
     template <typename Char, std::size_t extent_size>
     auto dynamic_buffer<Char, extent_size>::readable_ranges()
-        -> std::vector<std::span<const_value_type>> {
+        -> std::vector<std::span<const_value_type>>
+    {
         std::vector<std::span<const_value_type>> ret;
 
         for (auto const &ext : extents) {
-            if (ext.read_window.size() == 0)
+            if (ext.read_window.empty())
                 continue;
 
             ret.push_back(ext.read_window);
@@ -284,7 +307,8 @@ namespace sk {
     }
 
     template <typename Char, std::size_t extent_size>
-    auto dynamic_buffer<Char, extent_size>::discard(size_type n) -> size_type {
+    auto dynamic_buffer<Char, extent_size>::discard(size_type n) -> size_type
+    {
         std::size_t discards = 0;
         std::size_t nleft = n;
 
@@ -295,7 +319,7 @@ namespace sk {
             auto &front = extents.front();
 
             // If there's no data to discard, return.
-            if (front.read_window.size() == 0)
+            if (front.read_window.empty())
                 return discards;
 
             // Discard as much as possible.
@@ -304,7 +328,7 @@ namespace sk {
             discards += m;
 
             // If the extent we read from is dead, remove it.
-            if (front.read_window.size() == 0 && front.write_window.size() == 0)
+            if (front.read_window.empty() && front.write_window.empty())
                 remove_front();
 
             // If we discarded everything, return.
@@ -314,14 +338,13 @@ namespace sk {
     }
 
     template <typename Char, std::size_t extent_size>
-    template <std::ranges::contiguous_range Range>
-    auto dynamic_buffer<Char, extent_size>::read(Range &&data) -> size_type
-        requires std::same_as<value_type, std::ranges::range_value_t<Range>> {
-
-        std::span<std::ranges::range_value_t<Range>> buf = data;
+    auto dynamic_buffer<Char, extent_size>::read(value_type *dptr,
+                                                 size_type dsize) -> size_type
+    {
+        auto buf = std::span(dptr, dsize);
         std::size_t bytes_read = 0;
 
-        if (buf.size() == 0)
+        if (buf.empty())
             return 0;
 
         for (;;) {
@@ -331,20 +354,20 @@ namespace sk {
             auto &front = extents.front();
 
             // If there's no data to read, return.
-            if (front.read_window.size() == 0)
+            if (front.read_window.empty())
                 return bytes_read;
 
             // Read as much as possible.
-            auto n = front.read(buf);
+            auto n = buffer_read(front, buf);
             buf = buf.subspan(n);
             bytes_read += n;
 
             // If the extent we read from is dead, remove it.
-            if (front.read_window.size() == 0 && front.write_window.size() == 0)
+            if (front.read_window.empty() && front.write_window.empty())
                 remove_front();
 
             // If we read everything, return.
-            if (bytes_read == std::ranges::size(data))
+            if (bytes_read == dsize)
                 return bytes_read;
         }
     }

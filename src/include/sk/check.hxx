@@ -35,33 +35,31 @@
 
 #ifndef NDEBUG
 #    include <stdexcept>
-#    define SK_CIO_CHECKED
 
 namespace sk::detail {
 
     struct checked_error : std::logic_error {
-        explicit checked_error(std::string e) : std::logic_error(std::move(e))
+        explicit checked_error(std::string const &e) : std::logic_error(e)
         {
         }
     };
 
-    inline void checked_failure(char const *what)
+    inline constexpr void check(bool cond, char const *msg)
     {
-        throw checked_error(what);
+        if (!cond)
+            throw checked_error(msg);
     }
-
-#    define SK_CHECK(expr, msg)                                                \
-        do {                                                                   \
-            if (!(expr))                                                       \
-                sk::detail::checked_failure(msg);                              \
-        } while (0)
 
 } // namespace sk::detail
 
 #else
 
-#    define SK_CHECK(expr, msg) ((void)0)
+namespace sk::detail {
+
+    inline constexpr void check(bool cond, char const *msg) {}
+
+} // namespace sk::detail
 
 #endif
 
-#endif // SK_CIO_CHECK_HXX
+#endif // SK_CHECK_HXX

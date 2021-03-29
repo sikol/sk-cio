@@ -61,8 +61,8 @@ namespace sk::posix::detail {
 
         filechannel_base(filechannel_base const &) = delete;
         filechannel_base(filechannel_base &&) noexcept = default;
-        filechannel_base &operator=(filechannel_base const &) = delete;
-        filechannel_base &operator=(filechannel_base &&) noexcept = default;
+        auto operator=(filechannel_base const &) -> filechannel_base & = delete;
+        auto operator=(filechannel_base &&) noexcept -> filechannel_base & = default;
 
         /*
          * Test if this channel has been opened.
@@ -83,7 +83,7 @@ namespace sk::posix::detail {
             -> expected<void, std::error_code>;
 
         [[nodiscard]] static auto _make_flags(fileflags_t flags,
-                                              int &open_flags) -> bool;
+                                              int *open_flags) -> bool;
 
         filechannel_base() = default;
         ~filechannel_base() = default;
@@ -95,8 +95,9 @@ namespace sk::posix::detail {
      * filechannel_base::_make_flags()
      */
     inline auto filechannel_base::_make_flags(fileflags_t flags,
-                                              int &open_flags) -> bool
+                                              int *open_flags) -> bool
     {
+        *open_flags = 0;
 
         // Must specify either read or write.
         if ((flags & (fileflags::read | fileflags::write)) == 0)
@@ -109,7 +110,7 @@ namespace sk::posix::detail {
                 (fileflags::trunc | fileflags::append | fileflags::create_new))
                 return false;
 
-            open_flags = O_RDONLY;
+            *open_flags = O_RDONLY;
             return true;
         }
 
@@ -120,28 +121,28 @@ namespace sk::posix::detail {
                 return false;
 
             if (flags & fileflags::read)
-                open_flags = O_RDWR;
+                *open_flags = O_RDWR;
             else
-                open_flags = O_WRONLY;
+                *open_flags = O_WRONLY;
 
             // Must create a new file.
             if ((flags & fileflags::create_new) &&
                 !(flags & fileflags::open_existing))
-                open_flags |= O_CREAT | O_EXCL;
+                *open_flags |= O_CREAT | O_EXCL;
             // Can create a new file or open an existing one.
             else if ((flags & fileflags::create_new) &&
                      (flags & fileflags::open_existing)) {
                 if (flags & fileflags::trunc)
-                    open_flags |= O_CREAT | O_TRUNC;
+                    *open_flags |= O_CREAT | O_TRUNC;
                 else
-                    open_flags |= O_CREAT;
+                    *open_flags |= O_CREAT;
                 // Can only open an existing file.
             } else if (!(flags & fileflags::create_new) &&
                        (flags & fileflags::open_existing)) {
                 if (flags & fileflags::trunc)
-                    open_flags |= O_TRUNC;
+                    *open_flags |= O_TRUNC;
                 // else
-                //    open_flags |= 0;
+                //    *open_flags |= 0;
             }
 
             return true;
@@ -163,7 +164,7 @@ namespace sk::posix::detail {
 
         int open_flags = 0;
 
-        if (!_make_flags(flags, open_flags))
+        if (!_make_flags(flags, &open_flags))
             co_return make_unexpected(error::filechannel_invalid_flags);
 
         auto native_path = path.native();
@@ -192,7 +193,7 @@ namespace sk::posix::detail {
 
         int open_flags = 0;
 
-        if (!_make_flags(flags, open_flags))
+        if (!_make_flags(flags, &open_flags))
             return make_unexpected(error::filechannel_invalid_flags);
 
         auto native_path = path.native();

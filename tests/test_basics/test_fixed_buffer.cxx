@@ -26,56 +26,54 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <fstream>
-#include <iostream>
-
 #include <catch.hpp>
 
-#include <sk/channel/filechannel/iseqfilechannel.hxx>
+#include "sk/buffer/fixed_buffer.hxx"
 
-TEST_CASE("iseqfilechannel::open() existing file") {
-    std::ignore = std::remove("test.txt");
+TEST_CASE("small fixed_buffer") {
+    // Our test subject.
+    sk::fixed_buffer<char, 5> buf;
 
-    {
-        std::ofstream testfile("test.txt", std::ios::binary | std::ios::trunc);
-        testfile << "This is a test\n";
-        testfile.close();
-    }
+    // Add 5 characters to the buffer, which should fill it up.
+    auto n = buffer_write(buf, std::string("testx"));
+    REQUIRE(n == 5);
 
-    {
-        sk::iseqfilechannel chnl;
-        auto ret = chnl.open("test.txt");
-        REQUIRE(ret);
-    }
-}
+    // Now adding more data should fail.
+    n = buffer_write(buf, std::string("abc"));
+    REQUIRE(n == 0);
 
-TEST_CASE("iseqfilechannel::open() with write flags is an error") {
-    sk::iseqfilechannel chnl;
+    // Read the data we put in the buffer.
+    std::array<char, 5> ret{};
+    n = buffer_read(buf, ret);
+    REQUIRE(n == 5);
+    REQUIRE(ret == std::array{'t', 'e', 's', 't', 'x'});
 
-    auto ret = chnl.open("test.txt", sk::fileflags::write);
-    REQUIRE(!ret);
-    REQUIRE(ret.error() == sk::error::filechannel_invalid_flags);
+    // Adding data should still fail.
+    n = buffer_write(buf, std::string("abc"));
+    REQUIRE(n == 0);
 
-    ret = chnl.open("test.txt", sk::fileflags::trunc);
-    REQUIRE(!ret);
-    REQUIRE(ret.error() == sk::error::filechannel_invalid_flags);
+    // Reset the buffer.
+    buf.reset();
 
-    ret = chnl.open("test.txt", sk::fileflags::append);
-    REQUIRE(!ret);
-    REQUIRE(ret.error() == sk::error::filechannel_invalid_flags);
+    // Now do the same thing again, to make sure reset() works.
 
-    ret = chnl.open("test.txt", sk::fileflags::create_new);
-    REQUIRE(!ret);
-    REQUIRE(ret.error() == sk::error::filechannel_invalid_flags);
-}
+    // Add 5 characters to the buffer, which should fill it up.
+    n = buffer_write(buf, std::string("testx"));
+    REQUIRE(n == 5);
 
-TEST_CASE("iseqfilechannel::open() non-existing file") {
-    std::ignore = std::remove("test.txt");
+    // Now adding more data should fail.
+    n = buffer_write(buf, std::string("abc"));
+    REQUIRE(n == 0);
 
-    {
-        sk::iseqfilechannel chnl;
-        auto ret = chnl.open("test.txt");
-        REQUIRE(!ret);
-        REQUIRE(ret.error() == std::errc::no_such_file_or_directory);
-    }
+    // Read the data we put in the buffer.
+    n = buffer_read(buf, ret);
+    REQUIRE(n == 5);
+    REQUIRE(ret == std::array{'t', 'e', 's', 't', 'x'});
+
+    // Adding data should still fail.
+    n = buffer_write(buf, std::string("abc"));
+    REQUIRE(n == 0);
+
+    // Reset the buffer.
+    buf.reset();
 }

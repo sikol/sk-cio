@@ -36,6 +36,7 @@
 #include <span>
 
 #include <sk/buffer.hxx>
+#include <sk/check.hxx>
 
 namespace sk {
 
@@ -57,7 +58,11 @@ namespace sk {
         using const_value_type = std::add_const_t<Char>;
 
         // Create a new, empty buffer.
+        // We don't initialise this->data because we are tracking the valid
+        // region.
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
         circular_buffer() = default;
+        ~circular_buffer() = default;
 
         // circular_buffer cannot be copied or moved, because the buffer
         // contains the entire std::array<>.  In principle we could allow
@@ -65,15 +70,16 @@ namespace sk {
         // error.
 
         circular_buffer(circular_buffer const &) = delete;
-        circular_buffer &operator=(circular_buffer const &) = delete;
+        auto operator=(circular_buffer const &) -> circular_buffer & = delete;
         circular_buffer(circular_buffer &&) = delete;
-        circular_buffer &operator=(circular_buffer &&) = delete;
+        auto operator=(circular_buffer &&) -> circular_buffer & = delete;
 
         // The data stored in this buffer.
         array_type data;
 
         // Reset the buffer.
-        auto clear() -> void {
+        auto clear() -> void
+        {
             read_pointer = data.begin();
             write_pointer = data.begin();
         }
@@ -133,19 +139,13 @@ namespace sk {
 
         // Write data to the buffer.  Returns the number of objects written,
         // which might less than the size of the range if the buffer is full.
-        template <std::ranges::contiguous_range Range>
-        auto write(Range &&) -> size_type requires std::same_as<
-            const_value_type,
-            std::add_const_t<std::ranges::range_value_t<Range>>>;
+        auto write(const_value_type *dptr, size_type dsize) -> size_type;
 
         // Read data from the buffer.  As much data will be read as possible,
         // and the number of objects read will be returned.  If the return value
         // is less than the requested number of objects, the buffer is now
         // empty.
-        template <std::ranges::contiguous_range Range>
-        auto read(Range &&) -> size_type
-            requires std::same_as<value_type,
-                                  std::ranges::range_value_t<Range>>;
+        auto read(value_type *dptr, size_type dsize) -> size_type;
 
         // Return a list of ranges which represent data in the buffer
         // which can be read.  Writing data to the buffer will not invalidate
@@ -172,14 +172,11 @@ namespace sk {
      * circular_buffer::write()
      */
     template <typename Char, std::size_t buffer_size>
-    template <std::ranges::contiguous_range InRange>
-    auto circular_buffer<Char, buffer_size>::write(InRange &&buf) -> size_type
-        requires std::same_as<
-            const_value_type,
-            std::add_const_t<std::ranges::range_value_t<InRange>>> {
-
+    auto circular_buffer<Char, buffer_size>::write(const_value_type *dptr,
+                                                   size_type dsize) -> size_type
+    {
         size_type bytes_written = 0;
-        std::span<const_value_type> data_left{buf};
+        std::span<const_value_type> data_left(dptr, dsize);
 
         for (auto &&range : writable_ranges()) {
             auto can_write =
@@ -202,7 +199,8 @@ namespace sk {
      */
     template <typename Char, std::size_t buffer_size>
     auto circular_buffer<Char, buffer_size>::writable_ranges()
-        -> std::vector<std::span<value_type>> {
+        -> std::vector<std::span<value_type>>
+    {
 
         std::vector<std::span<value_type>> ret;
         auto theoretical_write_pointer = write_pointer;
@@ -251,7 +249,8 @@ namespace sk {
      * circular_buffer::commit()
      */
     template <typename Char, std::size_t buffer_size>
-    auto circular_buffer<Char, buffer_size>::commit(size_type n) -> size_type {
+    auto circular_buffer<Char, buffer_size>::commit(size_type n) -> size_type
+    {
         auto bytes_left = n;
         size_type bytes_written = 0;
 
@@ -271,7 +270,6 @@ namespace sk {
                 std::min(static_cast<typename array_type::size_type>(
                              wend - write_pointer),
                          bytes_left);
-            assert(can_write >= 0);
 
             bytes_left -= can_write;
             bytes_written += can_write;
@@ -295,12 +293,13 @@ namespace sk {
                 std::min(static_cast<typename array_type::size_type>(
                              read_pointer - data.begin() - 1),
                          bytes_left);
-            assert(can_write >= 0);
 
             bytes_written += can_write;
             write_pointer +=
                 static_cast<typename array_type::difference_type>(can_write);
-            assert(write_pointer < read_pointer);
+            sk::detail::check(write_pointer < read_pointer,
+                              "INTERNAL ERROR: sk::circular_buffer::commit() "
+                              "pointer confusion");
         }
 
         return bytes_written;
@@ -310,12 +309,12 @@ namespace sk {
      * circular_buffer::read()
      */
     template <typename Char, std::size_t buffer_size>
-    template <std::ranges::contiguous_range InRange>
-    auto circular_buffer<Char, buffer_size>::read(InRange &&buf) -> size_type
-        requires std::same_as<value_type, std::ranges::range_value_t<InRange>> {
+    auto circular_buffer<Char, buffer_size>::read(value_type *dptr,
+                                                  size_type dsize) -> size_type
+    {
 
         size_type bytes_read = 0;
-        std::span<value_type> data_left{buf};
+        std::span<value_type> data_left(dptr, dsize);
 
         for (auto &&range : readable_ranges()) {
             auto can_read = std::min(data_left.size(), range.size());
@@ -336,7 +335,8 @@ namespace sk {
      */
     template <typename Char, std::size_t buffer_size>
     auto circular_buffer<Char, buffer_size>::readable_ranges()
-        -> std::vector<std::span<const_value_type>> {
+        -> std::vector<std::span<const_value_type>>
+    {
 
         std::vector<std::span<const_value_type>> ret;
 
@@ -375,7 +375,6 @@ namespace sk {
         if (theoretical_read_pointer < write_pointer) {
             auto can_read = static_cast<typename array_type::size_type>(
                 write_pointer - theoretical_read_pointer);
-            assert(can_read >= 0);
 
             auto span = std::span<const_value_type>(
                 theoretical_read_pointer,
@@ -387,7 +386,10 @@ namespace sk {
             theoretical_read_pointer += static_cast<ptrdiff_t>(can_read);
         }
 
-        assert(theoretical_read_pointer < data.end());
+        sk::detail::check(
+            theoretical_read_pointer < data.end(),
+            "INTERNAL ERROR: sk::circular_buffer::readable_ranges() "
+            "pointer confusion");
         return ret;
     }
 
@@ -395,7 +397,8 @@ namespace sk {
      * circular_buffer::discard()
      */
     template <typename Char, std::size_t buffer_size>
-    auto circular_buffer<Char, buffer_size>::discard(size_type n) -> size_type {
+    auto circular_buffer<Char, buffer_size>::discard(size_type n) -> size_type
+    {
 
         // If read_pointer == write_pointer, the buffer is empty.
         if (read_pointer == write_pointer)
@@ -407,9 +410,10 @@ namespace sk {
         // If read_pointer > write_pointer, we can read from read_pointer
         // until the end of the buffer.
         if (read_pointer > write_pointer) {
-            auto can_read = std::min(
-                bytes_left, static_cast<typename array_type::size_type>(
-                                data.end() - read_pointer));
+            auto can_read =
+                std::min(bytes_left,
+                         static_cast<typename array_type::size_type>(
+                             data.end() - read_pointer));
 
             bytes_left -= can_read;
             bytes_read += can_read;
@@ -427,16 +431,19 @@ namespace sk {
         // If read_pointer < write_pointer, we can read from read_pointer
         // up to write_pointer.
         if (read_pointer < write_pointer) {
-            auto can_read = std::min(
-                bytes_left, static_cast<typename array_type::size_type>(
-                                write_pointer - read_pointer));
-            assert(can_read >= 0);
+            auto can_read =
+                std::min(bytes_left,
+                         static_cast<typename array_type::size_type>(
+                             write_pointer - read_pointer));
 
             read_pointer += static_cast<ptrdiff_t>(can_read);
             bytes_read += can_read;
         }
 
-        assert(read_pointer < data.end());
+        sk::detail::check(
+            read_pointer < data.end(),
+            "INTERNAL ERROR: sk::circular_buffer::readable_ranges() "
+            "pointer confusion");
         return bytes_read;
     }
 
