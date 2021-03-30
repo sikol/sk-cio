@@ -154,6 +154,7 @@ TEST_CASE("fixed_buffer readable_ranges/writable_ranges")
 
         // Read the data back out.
         std::string output_string;
+        INFO("ranges = " + std::to_string(buffer.readable_ranges().size()));
         for (auto &&range : buffer.readable_ranges()) {
             REQUIRE(!range.empty());
             output_string.insert(output_string.end(),

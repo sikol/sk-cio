@@ -38,7 +38,7 @@
 #include <type_traits>
 
 #include <sk/buffer/buffer.hxx>
-#include <sk/static_range.hxx>
+#include <sk/static_vector.hxx>
 
 namespace sk {
 
@@ -103,10 +103,10 @@ namespace sk {
         auto discard(size_type n) -> size_type;
 
         // Return our read window.
-        auto readable_ranges() -> static_range<std::span<const_value_type>, 1>;
+        auto readable_ranges() -> static_vector<std::span<const_value_type>, 1>;
 
         // Return our write window.
-        auto writable_ranges() -> static_range<std::span<value_type>, 1>;
+        auto writable_ranges() -> static_vector<std::span<value_type>, 1>;
 
     private:
         [[nodiscard]] auto _end() -> typename array_type::iterator {
@@ -178,7 +178,7 @@ namespace sk {
      */
     template <typename Char, std::size_t buffer_size>
     auto fixed_buffer<Char, buffer_size>::readable_ranges()
-        -> static_range<std::span<const_value_type>, 1>
+        -> static_vector<std::span<const_value_type>, 1>
     {
         return {std::span(read_pointer, write_pointer)};
     }
@@ -188,7 +188,7 @@ namespace sk {
      */
     template <typename Char, std::size_t buffer_size>
     auto fixed_buffer<Char, buffer_size>::writable_ranges()
-        -> static_range<std::span<value_type>, 1>
+        -> static_vector<std::span<value_type>, 1>
     {
         return {std::span(write_pointer, data.end())};
     }

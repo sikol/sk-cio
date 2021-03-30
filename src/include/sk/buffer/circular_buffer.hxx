@@ -37,7 +37,7 @@
 
 #include <sk/buffer.hxx>
 #include <sk/check.hxx>
-#include <sk/static_range.hxx>
+#include <sk/static_vector.hxx>
 
 namespace sk {
 
@@ -154,7 +154,7 @@ namespace sk {
         //
         // After reading the data, discard() should be called to remove the
         // data from the buffer.
-        auto readable_ranges() -> static_range<std::span<const_value_type>, 2>;
+        auto readable_ranges() -> static_vector<std::span<const_value_type>, 2>;
 
         // Discard up to n bytes of readable data from the start of the buffer.
         // Returns the number of bytes discarded.
@@ -163,7 +163,7 @@ namespace sk {
         // Return a list of ranges representing space in the buffer
         // which can be written to.  After writing the data, commit() should be
         // called to mark the space as used.
-        auto writable_ranges() -> static_range<std::span<value_type>, 2>;
+        auto writable_ranges() -> static_vector<std::span<value_type>, 2>;
 
         // Mark n bytes of previously empty space as containing data.
         auto commit(size_type n) -> size_type;
@@ -207,9 +207,9 @@ namespace sk {
      */
     template <typename Char, std::size_t buffer_size>
     auto circular_buffer<Char, buffer_size>::writable_ranges()
-        -> static_range<std::span<value_type>, 2>
+        -> static_vector<std::span<value_type>, 2>
     {
-        static_range<std::span<value_type>, 2> ret;
+        static_vector<std::span<value_type>, 2> ret;
         auto theoretical_write_pointer = write_pointer;
 
         // If read ptr == write ptr, we can write to the entire buffer.
@@ -352,9 +352,9 @@ namespace sk {
      */
     template <typename Char, std::size_t buffer_size>
     auto circular_buffer<Char, buffer_size>::readable_ranges()
-        -> static_range<std::span<const_value_type>, 2>
+        -> static_vector<std::span<const_value_type>, 2>
     {
-        static_range<std::span<const_value_type>, 2> ret;
+        static_vector<std::span<const_value_type>, 2> ret;
 
         // If read_pointer == write_pointer, the buffer is empty.
         if (read_pointer == write_pointer)

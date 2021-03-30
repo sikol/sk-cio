@@ -43,6 +43,7 @@ add_executable(test_basics
     test_dynamic_buffer.cxx
     test_fixed_buffer.cxx
     test_pmr_buffer.cxx
+    test_static_vector.cxx
     )
 
 target_link_libraries(test_basics PRIVATE sk-cio catch fmt)

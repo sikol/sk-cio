@@ -36,7 +36,7 @@
 
 #include <sk/buffer/buffer.hxx>
 #include <sk/check.hxx>
-#include <sk/static_range.hxx>
+#include <sk/static_vector.hxx>
 
 namespace sk {
 
@@ -67,8 +67,8 @@ namespace sk {
      *
      * The tail is the extent which is currently being written to, which might
      * be the same as the head.  Once the tail's write pointer reaches the end,
-     * the tail is moved to the first spare extent after the tail, or a new
-     * extent is allocated if necessary.
+     * the tail advances to the first spare extent after the tail, or a new
+     * extent is allocated.
      *
      * After the tail are free extents, which will be used once the current
      * tail extent becomes full.  This is to avoid constantly freeing and
@@ -128,8 +128,7 @@ namespace sk {
 
             static constexpr std::size_t xsize = extent_size - bksize;
 
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays,hicpp-avoid-c-arrays,modernize-avoid-c-arrays)
-            Char data[xsize];
+            Char data[xsize]; // NOLINT
 
             extent_type() : read_pointer(&data[0]), write_pointer(read_pointer)
             {
@@ -178,17 +177,11 @@ namespace sk {
             }
         };
 
-        // static_assert(sizeof(extent_type) == extent_bytes);
+        //static_assert(sizeof(extent_type) <= extent_bytes);
 
         // Head and tail of the extent list.  The tail is not the actual tail
         // of the list, but rather the extent we're currently writing to.
         extent_type *_head = nullptr, *_tail = nullptr;
-
-        // The minimum amount of space to keep available for writing; if the
-        // write window is small than this, we will allocate a new extent.
-        // This ensures users writing directly into the buffer have sufficient
-        // space to write into.
-        static constexpr std::size_t minfree = extent_size / 2;
 
         // Remove the current head (read) extent.
         auto _kill_head() noexcept -> void;
@@ -214,15 +207,15 @@ namespace sk {
         auto read(value_type *dptr, size_type dsize) -> size_type;
 
         auto readable_ranges()
-            -> static_range<std::span<const_value_type>, max_ranges>;
+            -> static_vector<std::span<const_value_type>, max_ranges>;
         auto discard(size_type n) -> size_type;
 
         auto writable_ranges()
-            -> static_range<std::span<value_type>, max_ranges>;
+            -> static_vector<std::span<value_type>, max_ranges>;
         auto commit(size_type n) -> size_type;
 
     private:
-        // Ensure that at least minfree objects of write space is available.
+        // Ensure that at least one entire writable extent is available.
         auto _ensure_minfree() -> void;
     };
 
@@ -269,12 +262,10 @@ namespace sk {
                           "INTERNAL ERROR: dynamic_buffer::_kill_head() trying "
                           "to remove our only head");
 
-        auto old_head = _head;
-        old_head->clear();
+        auto old_head = std::exchange(_head, _head->next);
+        old_head->next = std::exchange(_tail->next, old_head);
 
-        _head = _head->next;
-        old_head->next = _tail->next;
-        _tail->next = old_head;
+        old_head->clear();
     }
 
     template <typename Char, std::size_t extent_size, std::size_t max_ranges>
@@ -403,9 +394,9 @@ namespace sk {
 
     template <typename Char, std::size_t extent_size, std::size_t max_ranges>
     auto dynamic_buffer<Char, extent_size, max_ranges>::writable_ranges()
-        -> static_range<std::span<Char>, max_ranges>
+        -> static_vector<std::span<Char>, max_ranges>
     {
-        static_range<std::span<Char>, max_ranges> ret;
+        static_vector<std::span<Char>, max_ranges> ret;
 
         // Make sure we always return a reasonable amount of writable space.
         _ensure_minfree();
@@ -460,9 +451,9 @@ namespace sk {
 
     template <typename Char, std::size_t extent_size, std::size_t max_ranges>
     auto dynamic_buffer<Char, extent_size, max_ranges>::readable_ranges()
-        -> static_range<std::span<const_value_type>, max_ranges>
+        -> static_vector<std::span<const_value_type>, max_ranges>
     {
-        static_range<std::span<const_value_type>, max_ranges> ret;
+        static_vector<std::span<const_value_type>, max_ranges> ret;
 
         auto *hptr = _head;
         while (ret.size() < ret.capacity()) {
