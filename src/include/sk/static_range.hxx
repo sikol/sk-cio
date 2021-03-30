@@ -116,7 +116,12 @@ namespace sk {
                 (*this)[i].~T(); // NOLINT
         }
 
-        [[nodiscard]] auto operator[](size_type n) -> T &
+        [[nodiscard]] auto operator[](size_type n) noexcept -> value_type &
+        {
+            return *(begin() + n);
+        }
+
+        [[nodiscard]] auto operator[](size_type n) const noexcept -> const_value_type &
         {
             return *(begin() + n);
         }
@@ -152,6 +157,15 @@ namespace sk {
             return begin() + size();
         }
 
+        auto push_back(T const &o) -> void
+        {
+            if (size() == capacity())
+                throw std::bad_alloc();
+
+            new (&_data[_size]) T(o); // NOLINT
+            ++_size;
+        }
+
         auto push_back(T &&o) -> void
         {
             if (size() == capacity())
@@ -175,6 +189,8 @@ namespace sk {
         using storage_type =
             typename std::aligned_storage<sizeof(value_type),
                                           alignof(value_type)>::type;
+        static_assert(sizeof(storage_type) == sizeof(value_type));
+
         // NOLINTNEXTLINE
         storage_type _data[max_size];
         size_type _size{};

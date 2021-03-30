@@ -37,6 +37,7 @@
 
 #include <sk/buffer.hxx>
 #include <sk/check.hxx>
+#include <sk/static_range.hxx>
 
 namespace sk {
 
@@ -153,7 +154,7 @@ namespace sk {
         //
         // After reading the data, discard() should be called to remove the
         // data from the buffer.
-        auto readable_ranges() -> std::vector<std::span<const_value_type>>;
+        auto readable_ranges() -> static_range<std::span<const_value_type>, 2>;
 
         // Discard up to n bytes of readable data from the start of the buffer.
         // Returns the number of bytes discarded.
@@ -162,7 +163,7 @@ namespace sk {
         // Return a list of ranges representing space in the buffer
         // which can be written to.  After writing the data, commit() should be
         // called to mark the space as used.
-        auto writable_ranges() -> std::vector<std::span<value_type>>;
+        auto writable_ranges() -> static_range<std::span<value_type>, 2>;
 
         // Mark n bytes of previously empty space as containing data.
         auto commit(size_type n) -> size_type;
@@ -184,8 +185,10 @@ namespace sk {
             if (read_pointer == data.begin())
                 wend--;
 
-            while (write_pointer < wend && cptr < cend)
-                *write_pointer++ = *cptr++;
+            auto wr = std::min(std::distance(write_pointer, wend),
+                               std::distance(cptr, cend));
+            write_pointer = std::copy(cptr, cptr + wr, write_pointer);
+            cptr += wr;
 
             if (write_pointer == data.end())
                 write_pointer = data.begin();
@@ -204,10 +207,9 @@ namespace sk {
      */
     template <typename Char, std::size_t buffer_size>
     auto circular_buffer<Char, buffer_size>::writable_ranges()
-        -> std::vector<std::span<value_type>>
+        -> static_range<std::span<value_type>, 2>
     {
-
-        std::vector<std::span<value_type>> ret;
+        static_range<std::span<value_type>, 2> ret;
         auto theoretical_write_pointer = write_pointer;
 
         // If read ptr == write ptr, we can write to the entire buffer.
@@ -321,16 +323,20 @@ namespace sk {
         auto cend = dptr + dsize;
 
         if (read_pointer > write_pointer) {
-            while ((cptr < cend) && (read_pointer < data.end()))
-                *cptr++ = *read_pointer++;
+            auto rd = std::min(std::distance(cptr, cend),
+                               std::distance(read_pointer, data.end()));
+            cptr = std::copy(read_pointer, read_pointer + rd, cptr);
+            read_pointer += rd;
 
             if (read_pointer == data.end())
                 read_pointer = data.begin();
         }
 
         if (read_pointer < write_pointer) {
-            while ((cptr < cend) && (read_pointer < write_pointer))
-                *cptr++ = *read_pointer++;
+            auto rd = std::min(std::distance(cptr, cend),
+                               std::distance(read_pointer, write_pointer));
+            cptr = std::copy(read_pointer, read_pointer + rd, cptr);
+            read_pointer += rd;
         }
 
         sk::detail::check(
@@ -346,10 +352,9 @@ namespace sk {
      */
     template <typename Char, std::size_t buffer_size>
     auto circular_buffer<Char, buffer_size>::readable_ranges()
-        -> std::vector<std::span<const_value_type>>
+        -> static_range<std::span<const_value_type>, 2>
     {
-
-        std::vector<std::span<const_value_type>> ret;
+        static_range<std::span<const_value_type>, 2> ret;
 
         // If read_pointer == write_pointer, the buffer is empty.
         if (read_pointer == write_pointer)
@@ -411,7 +416,6 @@ namespace sk {
     template <typename Char, std::size_t buffer_size>
     auto circular_buffer<Char, buffer_size>::discard(size_type n) -> size_type
     {
-
         // If read_pointer == write_pointer, the buffer is empty.
         if (read_pointer == write_pointer)
             return 0;

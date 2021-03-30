@@ -106,6 +106,19 @@ namespace sk {
 
         // Return our write window.
         auto writable_ranges() -> static_range<std::span<value_type>, 1>;
+
+    private:
+        [[nodiscard]] auto _end() -> Char* {
+            return data.begin() + buffer_size;
+        }
+
+        [[nodiscard]] auto _writable() -> size_type {
+            return std::distance(write_pointer, _end());
+        }
+
+        [[nodiscard]] auto _readable() -> size_type {
+            return std::distance(read_pointer, write_pointer);
+        }
     };
 
     template <typename Char, std::size_t buffer_size>
@@ -119,13 +132,9 @@ namespace sk {
     auto fixed_buffer<Char, buffer_size>::write(const_value_type *dptr,
                                                 size_type dsize) -> size_type
     {
-        auto *cptr = dptr;
-        auto *cend = dptr + dsize;
-
-        while ((write_pointer < data.end()) && (cptr < cend))
-            *write_pointer++ = *cptr++;
-
-        return cptr - dptr;
+        dsize = std::min(dsize, _writable());
+        write_pointer = std::copy(dptr, dptr + dsize, write_pointer);
+        return dsize;
     }
 
     /*
@@ -134,9 +143,7 @@ namespace sk {
     template <typename Char, std::size_t buffer_size>
     auto fixed_buffer<Char, buffer_size>::commit(size_type n) -> size_type
     {
-        n = std::min(
-            n,
-            static_cast<size_type>(std::distance(write_pointer, data.end())));
+        n = std::min(n, _writable());
         write_pointer += n;
         return n;
     }
@@ -148,13 +155,10 @@ namespace sk {
     auto fixed_buffer<Char, buffer_size>::read(value_type *dptr,
                                                size_type dsize) -> size_type
     {
-        auto *cptr = dptr;
-        auto *cend = dptr + dsize;
-
-        while ((read_pointer < write_pointer) && (cptr < cend))
-            *cptr++ = *read_pointer++;
-
-        return cptr - dptr;
+        dsize = std::min(dsize, _readable());
+        std::copy(read_pointer, read_pointer + dsize, dptr);
+        read_pointer += dsize;
+        return dsize;
     }
 
     /*
@@ -163,9 +167,7 @@ namespace sk {
     template <typename Char, std::size_t buffer_size>
     auto fixed_buffer<Char, buffer_size>::discard(size_type n) -> size_type
     {
-        n = std::min(
-            n,
-            static_cast<size_type>(std::distance(read_pointer, write_pointer)));
+        n = std::min(n, _readable());
         read_pointer += n;
         return n;
     }

@@ -319,8 +319,17 @@ namespace sk {
                 _make_tail();
 
             // Copy as much as we can into the current tail.
-            while ((cptr < cend) && (_tail->write_pointer < _tail->end()))
-                *_tail->write_pointer++ = *cptr++;
+            auto wr = std::min(static_cast<size_type>(cend - cptr),
+                               _tail->writable());
+
+            sk::detail::check(
+                (_tail->write_pointer + wr) <= _tail->end() &&
+                    (cptr + wr) <= cend,
+                "INTERNAL ERROR: dynamic_buffer: write: overflow");
+
+            _tail->write_pointer =
+                std::copy(cptr, cptr + wr, _tail->write_pointer);
+            cptr += wr;
         }
 
         sk::detail::check(static_cast<std::size_t>(cptr - dptr) == dsize,
@@ -347,9 +356,17 @@ namespace sk {
                 break;
             }
 
-            while (cptr < cend && _head->read_pointer < _head->write_pointer) {
-                *cptr++ = *_head->read_pointer++;
-            }
+            auto rd = std::min(static_cast<size_type>(cend - cptr),
+                               _head->readable());
+
+            sk::detail::check(
+                (_head->read_pointer + rd) <= _head->write_pointer &&
+                (cptr + rd) <= cend,
+                "INTERNAL ERROR: dynamic_buffer: read: overflow");
+
+            std::copy(_head->read_pointer, _head->read_pointer + rd, cptr);
+            cptr += rd;
+            _head->read_pointer += rd;
 
             if (_head->dead()) {
                 if (_head != _tail)
