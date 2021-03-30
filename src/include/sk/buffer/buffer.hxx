@@ -134,8 +134,13 @@ namespace sk {
      *
      */
 
+    // clang-format off
     template<writable_buffer Buffer, std::ranges::contiguous_range Range>
-    auto buffer_write(Buffer &buf, Range const &range) {
+    auto buffer_write(Buffer &buf, Range const &range)
+    requires std::same_as<std::remove_cvref_t<buffer_value_t<Buffer>>,
+                          std::remove_cvref_t<std::ranges::range_value_t<Range>>>
+    // clang-format on
+    {
         auto const *data = std::ranges::data(range);
         auto size = std::ranges::size(range);
 

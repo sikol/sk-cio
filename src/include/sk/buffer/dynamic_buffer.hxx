@@ -47,11 +47,42 @@ namespace sk {
      * there is no upper bound on the size of the buffer (other than available
      * memory).
      *
-     * A dynamic buffer consists of a series of fixed_buffers, which are
-     * contiguous ranges of objects of a fixed size, organised into a deque. New
-     * fixed_buffers will be automatically added and removed as the buffer is
-     * used.
+     * A dynamic buffer consists of a linked list of extents (which are arrays
+     * of a fixed size) and a tail pointer.
      *
+     * Each extent contains a read pointer and a write pointer.  The read
+     * pointer is the start of the readable region, the write pointer is the
+     * start of the writable region.  Invariant: readptr <= writeptr <= end.
+     * If readptr == writeptr, then all data has been read from the extent.
+     * If writeptr == end, then the extent cannot be written to any more.
+     * If readptr == writeptr == end, the extent is "dead" and cannot be used
+     * until it is reset to the empty state.  (An extent is essentially a
+     * fixed_buffer, but optimised for this particular use case.)
+     *
+     * The head of the extent list always contains data that can be read.  As
+     * soon as the head's read pointer reaches the end of the data, is it dead;
+     * it is moved to the end of the list and the next extent becomes the new
+     * head (or, if there is only one extent, the current head is cleared
+     * and re-used).
+     *
+     * The tail is the extent which is currently being written to, which might
+     * be the same as the head.  Once the tail's write pointer reaches the end,
+     * the tail is moved to the first spare extent after the tail, or a new
+     * extent is allocated if necessary.
+     *
+     * After the tail are free extents, which will be used once the current
+     * tail extent becomes full.  This is to avoid constantly freeing and
+     * re-allocating extents when the buffer is busy.
+     *
+     * A possible configuration of the buffer with 4 extents:
+     *
+     *   [1]->[2]->[3]->[4]
+     *    \    \    \    `- spare extent ready to be re-used once the current
+     *     \    \    \      tail extent has been entirely written to.
+     *      \    \    `- the list tail; new data is written here.
+     *       \    `- a full extent which will be read from once the current
+     *        \      head is finished with.
+     *         `- the list head; this contains data which can be read out.
      */
 
     // Calculate how large a buffer extent should be if we want to use
@@ -60,9 +91,13 @@ namespace sk {
     template <typename Char>
     constexpr auto extent_size_from_bytes(int nbytes)
     {
-        return nbytes / sizeof(Char);
+        return ((nbytes - (sizeof(char *) * 3))/ sizeof(Char))
+            + sizeof(char *) * 3;
     }
 
+    // Return the correct extent_bytes to create a dynamic_buffer with an
+    // extent capacity of 'n' bytes.  This is 'n' plus the extent's bookkeeping
+    // data.
     static constexpr auto dynamic_buffer_size(std::size_t n)
     {
         return n + (sizeof(char *) * 3);
@@ -86,7 +121,6 @@ namespace sk {
             value_type *write_pointer;
 
             static constexpr std::size_t bksize =
-                // we actually want the size of the next pointer, not *next.
                 // NOLINTNEXTLINE(bugprone-sizeof-expression)
                 sizeof(next) + sizeof(read_pointer) + sizeof(write_pointer);
 
@@ -94,7 +128,6 @@ namespace sk {
 
             static constexpr std::size_t xsize = extent_size - bksize;
 
-            // using a C array for this specific application is fine.
             // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays,hicpp-avoid-c-arrays,modernize-avoid-c-arrays)
             Char data[xsize];
 
@@ -177,36 +210,15 @@ namespace sk {
         dynamic_buffer(dynamic_buffer &&) noexcept;
         auto operator=(dynamic_buffer &&) noexcept -> dynamic_buffer &;
 
-        // Write data to the buffer.  All of the data will be written, and the
-        // buffer will be expanded to fit the data if necessary.
         auto write(const_value_type *dptr, size_type dsize) -> size_type;
-
-        // Read data from the buffer.  As much data will be read as possible,
-        // and the number of objects read will be returned.  If the return value
-        // is less than the requested number of objects, the buffer is now
-        // empty.
         auto read(value_type *dptr, size_type dsize) -> size_type;
 
-        // Return a list of ranges which represent data in the buffer
-        // which can be read.  Writing data to the buffer will not invalidate
-        // the ranges.
-        //
-        // After reading the data, discard() should be called to remove the
-        // data from the buffer.
         auto readable_ranges()
             -> static_range<std::span<const_value_type>, max_ranges>;
-
-        // Discard up to n bytes of readable data from the start of the buffer.
-        // Returns the number of bytes discarded.
         auto discard(size_type n) -> size_type;
 
-        // Return a list of ranges representing space in the buffer
-        // which can be written to.  After writing the data, commit() should be
-        // called to mark the space as used.
         auto writable_ranges()
             -> static_range<std::span<value_type>, max_ranges>;
-
-        // Mark n bytes of previously empty space as containing data.
         auto commit(size_type n) -> size_type;
 
     private:
@@ -344,7 +356,7 @@ namespace sk {
 
         sk::detail::check(static_cast<std::size_t>(cptr - dptr) == dsize,
                           "dynamic_buffer::write(): short write");
-        return cptr - dptr;
+        return dsize;
     }
 
     template <typename Char, std::size_t extent_size, std::size_t max_ranges>

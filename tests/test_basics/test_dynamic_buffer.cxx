@@ -300,7 +300,7 @@ TEST_CASE("dynamic_buffer<>, large buffer discard")
     REQUIRE(nbytes == 0);
 }
 
-TEST_CASE("dynamic_buffer<>, small buffer write+read")
+TEST_CASE("dynamic_buffer<char>, small buffer write+read")
 {
     static constexpr std::size_t buffer_size = 6;
     static constexpr std::size_t max_test_size = buffer_size * 10;
@@ -356,7 +356,63 @@ TEST_CASE("dynamic_buffer<>, small buffer write+read")
     }
 }
 
-TEST_CASE("dynamic_buffer<>, large buffer write+read")
+TEST_CASE("dynamic_buffer<wchar_t>, small buffer write+read")
+{
+    static constexpr std::size_t buffer_size = 6 * sizeof(wchar_t);
+    static constexpr std::size_t max_test_size = buffer_size * 10;
+    static constexpr std::size_t npasses = 400;
+    sk::dynamic_buffer<wchar_t, sk::dynamic_buffer_size(buffer_size)> buf;
+
+    /*
+     * Try repeatedly writing and reading to the buffer with
+     * various write sizes.
+     */
+    for (std::size_t write_size = 1; write_size <= max_test_size;
+         ++write_size) {
+        for (std::size_t pass = 0; pass < npasses; ++pass) {
+            std::wstring input_string(write_size, L'X');
+            std::iota(input_string.begin(), input_string.end(), L'A');
+
+            INFO("write_size=" + std::to_string(write_size) + ", pass=" +
+                 std::to_string(pass) + "/" + std::to_string(npasses));
+
+            auto n = buffer_write(buf, input_string);
+            REQUIRE(n == input_string.size());
+
+            std::wstring output_string(write_size, L'X');
+            n = buffer_read(buf, output_string);
+            REQUIRE(n == output_string.size());
+
+            REQUIRE(input_string == output_string);
+        }
+    }
+
+    /*
+     * Now do the same but vary the write size each time.
+     */
+    for (std::size_t pass = 0; pass < npasses; ++pass) {
+        for (std::size_t write_size = 1; write_size <= max_test_size;
+             ++write_size) {
+
+            std::wstring input_string(write_size, L'X');
+            std::iota(input_string.begin(), input_string.end(), L'A');
+
+            INFO("write_size=" + std::to_string(write_size) + ", pass=" +
+                 std::to_string(pass) + "/" + std::to_string(npasses));
+
+            auto n = buffer_write(buf, input_string);
+            REQUIRE(n == input_string.size());
+
+            std::wstring output_string(write_size, L'X');
+            n = buffer_read(buf, output_string);
+            REQUIRE(n == output_string.size());
+
+            REQUIRE(input_string == output_string);
+        }
+    }
+}
+
+TEST_CASE("dynamic_buffer<char>, large buffer write+read")
 {
     static constexpr std::size_t buffer_size = 512;
     static constexpr std::size_t max_test_size = buffer_size * 2 + 1;
@@ -404,6 +460,62 @@ TEST_CASE("dynamic_buffer<>, large buffer write+read")
             REQUIRE(n == input_string.size());
 
             std::string output_string(write_size, 'X');
+            n = buffer_read(buf, output_string);
+            REQUIRE(n == output_string.size());
+
+            REQUIRE(input_string == output_string);
+        }
+    }
+}
+
+TEST_CASE("dynamic_buffer<wchar_t>, large buffer write+read")
+{
+    static constexpr std::size_t buffer_size = 512;
+    static constexpr std::size_t max_test_size = buffer_size * 2 + 1;
+    static constexpr std::size_t npasses = 20;
+    sk::dynamic_buffer<wchar_t, sk::dynamic_buffer_size(buffer_size)> buf;
+
+    /*
+     * Try repeatedly writing and reading to the buffer with
+     * various write sizes.
+     */
+    for (std::size_t write_size = 1; write_size <= max_test_size;
+         ++write_size) {
+        for (std::size_t pass = 0; pass < npasses; ++pass) {
+            std::wstring input_string(write_size, L'X');
+            std::iota(input_string.begin(), input_string.end(), L'A');
+
+            INFO("write_size=" + std::to_string(write_size) + ", pass=" +
+                 std::to_string(pass) + "/" + std::to_string(npasses));
+
+            auto n = buffer_write(buf, input_string);
+            REQUIRE(n == input_string.size());
+
+            std::wstring output_string(write_size, L'X');
+            n = buffer_read(buf, output_string);
+            REQUIRE(n == output_string.size());
+
+            REQUIRE(input_string == output_string);
+        }
+    }
+
+    /*
+     * Now do the same but vary the write size each time.
+     */
+    for (std::size_t pass = 0; pass < npasses; ++pass) {
+        for (std::size_t write_size = 1; write_size <= max_test_size;
+             ++write_size) {
+
+            std::wstring input_string(write_size, L'X');
+            std::iota(input_string.begin(), input_string.end(), L'A');
+
+            INFO("write_size=" + std::to_string(write_size) + ", pass=" +
+                 std::to_string(pass) + "/" + std::to_string(npasses));
+
+            auto n = buffer_write(buf, input_string);
+            REQUIRE(n == input_string.size());
+
+            std::wstring output_string(write_size, 'X');
             n = buffer_read(buf, output_string);
             REQUIRE(n == output_string.size());
 
