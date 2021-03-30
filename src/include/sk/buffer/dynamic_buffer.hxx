@@ -258,6 +258,8 @@ namespace sk {
                           "to remove our only head");
 
         auto old_head = _head;
+        old_head->clear();
+
         _head = _head->next;
         old_head->next = _tail->next;
         _tail->next = old_head;
@@ -266,6 +268,14 @@ namespace sk {
     template <typename Char, std::size_t extent_size, std::size_t max_ranges>
     auto dynamic_buffer<Char, extent_size, max_ranges>::_make_tail() -> void
     {
+        if (_tail->next) {
+            sk::detail::check(_tail->next->empty(),
+                              "INTERNAL ERROR: dynamic_buffer::_make_tail: "
+                              "next tail not empty");
+            _tail = _tail->next;
+            return;
+        }
+
         auto *new_tail = new extent_type;
         new_tail->next = _tail->next;
         _tail->next = new_tail;
@@ -359,10 +369,10 @@ namespace sk {
             auto rd = std::min(static_cast<size_type>(cend - cptr),
                                _head->readable());
 
-            sk::detail::check(
-                (_head->read_pointer + rd) <= _head->write_pointer &&
-                (cptr + rd) <= cend,
-                "INTERNAL ERROR: dynamic_buffer: read: overflow");
+            sk::detail::check((_head->read_pointer + rd) <=
+                                      _head->write_pointer &&
+                                  (cptr + rd) <= cend,
+                              "INTERNAL ERROR: dynamic_buffer: read: overflow");
 
             std::copy(_head->read_pointer, _head->read_pointer + rd, cptr);
             cptr += rd;

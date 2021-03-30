@@ -33,6 +33,8 @@
 #include <initializer_list>
 #include <type_traits>
 
+#include <sk/check.hxx>
+
 namespace sk {
 
     /*************************************************************************
@@ -61,8 +63,8 @@ namespace sk {
 
         static_range(std::initializer_list<T> items)
         {
-            if (items.size() > max_size)
-                throw std::bad_alloc();
+            sk::detail::check(items.size() <= capacity(),
+                              "static_range: too many items");
 
             for (auto &&item : items)
                 new (&_data[_size++]) T(std::move(item)); // NOLINT
@@ -121,7 +123,8 @@ namespace sk {
             return *(begin() + n);
         }
 
-        [[nodiscard]] auto operator[](size_type n) const noexcept -> const_value_type &
+        [[nodiscard]] auto operator[](size_type n) const noexcept
+            -> const_value_type &
         {
             return *(begin() + n);
         }
@@ -159,8 +162,7 @@ namespace sk {
 
         auto push_back(T const &o) -> void
         {
-            if (size() == capacity())
-                throw std::bad_alloc();
+            sk::detail::check(size() < capacity(), "static_range: no capacity");
 
             new (&_data[_size]) T(o); // NOLINT
             ++_size;
@@ -168,8 +170,7 @@ namespace sk {
 
         auto push_back(T &&o) -> void
         {
-            if (size() == capacity())
-                throw std::bad_alloc();
+            sk::detail::check(size() < capacity(), "static_range: no capacity");
 
             new (&_data[_size]) T(o); // NOLINT
             ++_size;
@@ -178,8 +179,7 @@ namespace sk {
         template <typename... Args>
         auto emplace_back(Args &&...args)
         {
-            if (size() == capacity())
-                throw std::bad_alloc();
+            sk::detail::check(size() < capacity(), "static_range: no capacity");
 
             new (&_data[_size]) T(std::forward<Args>(args)...); // NOLINT
             ++_size;

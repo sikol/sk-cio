@@ -78,6 +78,7 @@ namespace sk {
         auto operator=(fixed_buffer const &) -> fixed_buffer & = delete;
         fixed_buffer(fixed_buffer &&) noexcept = delete;
         auto operator=(fixed_buffer &&) noexcept -> fixed_buffer & = delete;
+
         // reset(): reset this extent to empty, discarding any data it contains.
         auto reset() -> void;
 
