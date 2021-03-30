@@ -108,7 +108,7 @@ namespace sk {
         auto writable_ranges() -> static_range<std::span<value_type>, 1>;
 
     private:
-        [[nodiscard]] auto _end() -> Char* {
+        [[nodiscard]] auto _end() -> typename array_type::iterator {
             return data.begin() + buffer_size;
         }
 
