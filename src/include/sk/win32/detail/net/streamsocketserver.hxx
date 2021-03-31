@@ -26,8 +26,8 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_WIN32_DETAIL_NET_TCPSERVERCHANNEL_HXX_INCLUDED
-#define SK_WIN32_DETAIL_NET_TCPSERVERCHANNEL_HXX_INCLUDED
+#ifndef SK_WIN32_DETAIL_NET_STREAMSOCKETSERVER_HXX_INCLUDED
+#define SK_WIN32_DETAIL_NET_STREAMSOCKETSERVER_HXX_INCLUDED
 
 #include <cstddef>
 #include <system_error>
@@ -35,106 +35,114 @@
 #include <sk/expected.hxx>
 #include <sk/net/address.hxx>
 #include <sk/task.hxx>
-#include <sk/win32/detail/net/tcpchannel.hxx>
 #include <sk/win32/handle.hxx>
 
 namespace sk::win32::detail {
 
-    // clang-format off
-    struct tcpserverchannel {
+    template <typename server_type,
+              seqchannel channel_type,
+              int type,
+              int protocol>
+    class streamsocketserver {
+        unique_socket _native_handle;
+
+        // On Windows, we need to create a new socket to accept into, which
+        // means we need to know the address family we're accepting for.
+        int _address_family{AF_UNSPEC};
+
+    protected:
+        streamsocketserver(unique_socket &&, int address_family);
+        streamsocketserver(streamsocketserver &&) noexcept = default;
+        streamsocketserver &operator=(streamsocketserver &&) noexcept = default;
+        ~streamsocketserver() = default;
+
+    public:
         using value_type = std::byte;
         using native_handle_type = unique_socket;
 
-        tcpserverchannel(unique_socket &&, int address_family);
-        tcpserverchannel(tcpserverchannel const &) = delete;
-        tcpserverchannel(tcpserverchannel &&) noexcept = default;
-        tcpserverchannel &operator=(tcpserverchannel const &) = delete;
-        tcpserverchannel &operator=(tcpserverchannel &&) noexcept = default;
-        ~tcpserverchannel() = default;
+        streamsocketserver(streamsocketserver const &) = delete;
+        streamsocketserver &operator=(streamsocketserver const &) = delete;
 
-        /*
-         * Test if this channel has been opened.
-         */
         [[nodiscard]] auto is_open() const -> bool;
 
-        /*
-         * Create a TCP server channel listening on a local address.
-         */
-        [[nodiscard]]
-        static auto listen(sk::net::address const &addr)
-            -> expected<tcpserverchannel, std::error_code>;
+        [[nodiscard]] static auto listen(sk::net::address const &addr)
+            -> expected<server_type, std::error_code>;
 
-        /*
-         * Accept a connection from a remote host.
-         */
-        [[nodiscard]]
-        auto async_accept()
-            -> task<expected<tcpchannel, std::error_code>>;
+        [[nodiscard]] auto async_accept()
+            -> task<expected<channel_type, std::error_code>>;
 
-        [[nodiscard]]
-        auto accept()
-            -> expected<tcpchannel, std::error_code>;
+        [[nodiscard]] auto accept() -> expected<channel_type, std::error_code>;
 
-        /*
-         * Close the socket.
-         */
-        [[nodiscard]]
-        auto async_close()
-             -> task<expected<void, std::error_code>>;
+        [[nodiscard]] auto async_close()
+            -> task<expected<void, std::error_code>>;
 
-        [[nodiscard]]
-        auto close()
-             -> expected<void, std::error_code>;
-
-    private:
-        native_handle_type _native_handle;
-        int _address_family{-1};
+        [[nodiscard]] auto close() -> expected<void, std::error_code>;
     };
-    // clang-format on
 
     /*************************************************************************
-     * tcpchannel::tcpchannel()
+     * streamsocketserver::streamsocketserver()
      */
 
-    inline tcpserverchannel::tcpserverchannel(unique_socket &&sock,
-                                              int address_family)
+    template <typename server_type,
+              seqchannel channel_type,
+              int type,
+              int protocol>
+    streamsocketserver<server_type, channel_type, type, protocol>::
+        streamsocketserver(unique_socket &&sock, int address_family)
         : _native_handle(std::move(sock)), _address_family(address_family)
     {
     }
 
     /*************************************************************************
-     * tcpserverchannel::is_open()
+     * streamsocketserver::is_open()
      */
 
-    inline auto tcpserverchannel::is_open() const -> bool
+    template <typename server_type,
+              seqchannel channel_type,
+              int type,
+              int protocol>
+    auto
+    streamsocketserver<server_type, channel_type, type, protocol>::is_open()
+        const -> bool
     {
         return _native_handle;
     }
 
     /*************************************************************************
-     * tcpserverchannel::bind()
+     * streamsocketserver::bind()
      */
 
-    inline auto tcpserverchannel::listen(sk::net::address const &addr)
-        -> expected<tcpserverchannel, std::error_code>
+    template <typename server_type,
+              seqchannel channel_type,
+              int type,
+              int protocol>
+    auto streamsocketserver<server_type, channel_type, type, protocol>::listen(
+        sk::net::address const &addr) -> expected<server_type, std::error_code>
     {
-
         SOCKET listener;
-        listener = ::socket(addr.address_family(), SOCK_STREAM, IPPROTO_TCP);
+        listener = ::socket(addr.address_family(), type, protocol);
 
         if (listener == INVALID_SOCKET)
             return make_unexpected(win32::get_last_winsock_error());
 
         unique_socket listener_(listener);
 
-        DWORD one = 1;
-        auto ret = ::setsockopt(listener,
-                                SOL_SOCKET,
-                                SO_REUSEADDR,
-                                reinterpret_cast<char const *>(&one),
-                                sizeof(one));
-        if (ret)
-            return make_unexpected(win32::get_last_winsock_error());
+        int ret;
+
+#ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
+        if (addr.address_family() != AF_UNIX) {
+#endif
+            DWORD one = 1;
+            ret = ::setsockopt(listener,
+                               SOL_SOCKET,
+                               SO_REUSEADDR,
+                               reinterpret_cast<char const *>(&one),
+                               sizeof(one));
+            if (ret)
+                return make_unexpected(win32::get_last_winsock_error());
+#ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
+        }
+#endif
 
         ret = ::bind(listener,
                      reinterpret_cast<sockaddr const *>(&addr.native_address),
@@ -149,15 +157,19 @@ namespace sk::win32::detail {
         reactor_handle::get_global_reactor().associate_handle(
             reinterpret_cast<HANDLE>(listener));
 
-        return tcpserverchannel{std::move(listener_), addr.address_family()};
+        return server_type{std::move(listener_), addr.address_family()};
     }
 
     /*************************************************************************
-     * tcpserverchannel::close()
+     * streamsocketserver::close()
      */
-    inline auto tcpserverchannel::close() -> expected<void, std::error_code>
+    template <typename server_type,
+              seqchannel channel_type,
+              int type,
+              int protocol>
+    auto streamsocketserver<server_type, channel_type, type, protocol>::close()
+        -> expected<void, std::error_code>
     {
-
         if (!is_open())
             return make_unexpected(sk::error::channel_not_open);
 
@@ -168,12 +180,16 @@ namespace sk::win32::detail {
     }
 
     /*************************************************************************
-     * tcpserverchannel::async_close()
+     * streamsocketserver::async_close()
      */
-    inline auto tcpserverchannel::async_close()
+    template <typename server_type,
+              seqchannel channel_type,
+              int type,
+              int protocol>
+    auto
+    streamsocketserver<server_type, channel_type, type, protocol>::async_close()
         -> task<expected<void, std::error_code>>
     {
-
         auto err =
             co_await async_invoke([&] { return _native_handle.close(); });
 
@@ -184,14 +200,17 @@ namespace sk::win32::detail {
     }
 
     /*************************************************************************
-     * tcpserverchannel::async_accept()
+     * streamsocketserver::async_accept()
      */
-    inline auto tcpserverchannel::async_accept()
-        -> task<expected<tcpchannel, std::error_code>>
+    template <typename server_type,
+              seqchannel channel_type,
+              int type,
+              int protocol>
+    auto streamsocketserver<server_type, channel_type, type, protocol>::
+        async_accept() -> task<expected<channel_type, std::error_code>>
     {
-
         SOCKET client_socket;
-        client_socket = ::socket(_address_family, SOCK_STREAM, IPPROTO_TCP);
+        client_socket = ::socket(_address_family, type, protocol);
 
         if (client_socket == INVALID_SOCKET)
             co_return make_unexpected(win32::get_last_winsock_error());
@@ -214,9 +233,9 @@ namespace sk::win32::detail {
 
         reactor_handle::get_global_reactor().associate_handle(
             reinterpret_cast<HANDLE>(client_socket));
-        co_return tcpchannel{std::move(client_socket_)};
+        co_return channel_type{std::move(client_socket_)};
     }
 
 } // namespace sk::win32::detail
 
-#endif // SK_WIN32_DETAIL_NET_TCPSERVERCHANNEL_HXX_INCLUDED
+#endif // SK_WIN32_DETAIL_NET_STREAMSOCKETSERVER_HXX_INCLUDED

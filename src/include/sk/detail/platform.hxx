@@ -32,11 +32,17 @@
 #if defined(_WIN32)
 
 #    define SK_CIO_PLATFORM_WINDOWS
+#    define SK_CIO_PLATFORM_HAS_SOCKETS
+#    if __has_include(<afunix.h>)
+#        define SK_CIO_PLATFORM_HAS_AF_UNIX
+#    endif
 
 #elif defined(__linux__)
 
 #    define SK_CIO_PLATFORM_LINUX
 #    define SK_CIO_PLATFORM_POSIX
+#    define SK_CIO_PLATFORM_HAS_SOCKETS
+#    define SK_CIO_PLATFORM_HAS_AF_UNIX
 
 #else
 

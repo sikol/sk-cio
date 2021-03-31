@@ -30,6 +30,7 @@ add_executable(test_stress
     main.cxx
     stress_idafilechannel.cxx
     stress_tcpchannel.cxx
+    stress_unixchannel.cxx
     )
 
 target_link_libraries(test_stress PRIVATE sk-cio catch fmt)

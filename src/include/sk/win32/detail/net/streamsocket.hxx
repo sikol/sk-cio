@@ -26,10 +26,12 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_WIN32_DETAIL_NET_TCPCHANNEL_HXX_INCLUDED
-#define SK_WIN32_DETAIL_NET_TCPCHANNEL_HXX_INCLUDED
+#ifndef SK_WIN32_DETAIL_NET_STREAMSOCKET_HXX_INCLUDED
+#define SK_WIN32_DETAIL_NET_STREAMSOCKET_HXX_INCLUDED
 
 #include <cstddef>
+
+#include <afunix.h>
 
 #include <sk/async_invoke.hxx>
 #include <sk/channel/concepts.hxx>
@@ -42,95 +44,81 @@
 
 namespace sk::win32::detail {
 
-    // clang-format off
-    struct tcpchannel {
+    template <int type, int protocol>
+    struct streamsocket {
+    protected:
+        unique_socket _native_handle;
+
+        streamsocket() = default;
+
+        explicit streamsocket(unique_socket &&);
+
+        streamsocket(streamsocket &&) noexcept = default;
+
+        auto operator=(streamsocket &&) noexcept -> streamsocket & = default;
+
+        ~streamsocket() = default;
+
+        [[nodiscard]] auto _async_connect(sk::net::address const &addr)
+            -> task<expected<void, std::error_code>>;
+
+        [[nodiscard]] auto _connect(sk::net::address const &addr)
+            -> expected<void, std::error_code>;
+
+    public:
         using value_type = std::byte;
         using native_handle_type = unique_socket;
 
-        tcpchannel() = default;
-        explicit tcpchannel(unique_socket &&);
-        tcpchannel(tcpchannel const &) = delete;
-        tcpchannel(tcpchannel &&) noexcept = default;
-        auto operator=(tcpchannel const &) -> tcpchannel & = delete;
-        auto operator=(tcpchannel &&) noexcept -> tcpchannel & = default;
-        ~tcpchannel() = default;
+        streamsocket(streamsocket const &) = delete;
 
-        /*
-         * Test if this channel has been opened.
-         */
+        auto operator=(streamsocket const &) -> streamsocket & = delete;
+
         [[nodiscard]] auto is_open() const -> bool;
 
-        /*
-         * Connect to a remote host.
-         */
-        [[nodiscard]]
-        auto async_connect(sk::net::address const &addr)
+        [[nodiscard]] auto async_read_some(value_type *buffer, io_size_t n)
+            -> task<expected<io_size_t, std::error_code>>;
+
+        [[nodiscard]] auto read_some(value_type *buffer, io_size_t n)
+            -> expected<io_size_t, std::error_code>;
+
+        [[nodiscard]] auto async_write_some(value_type const *buffer, io_size_t)
+            -> task<expected<io_size_t, std::error_code>>;
+
+        [[nodiscard]] auto write_some(value_type const *buffer, io_size_t)
+            -> expected<io_size_t, std::error_code>;
+
+        [[nodiscard]] auto async_close()
             -> task<expected<void, std::error_code>>;
 
-        [[nodiscard]]
-        auto connect(sk::net::address const &addr)
-            -> expected<void, std::error_code>;
-
-        /*
-         * Read data.
-         */
-        [[nodiscard]]
-        auto async_read_some(value_type *buffer, io_size_t n)
-            -> task<expected<io_size_t, std::error_code>>;
-
-        [[nodiscard]]
-        auto read_some(value_type *buffer, io_size_t n)
-            -> expected<io_size_t, std::error_code>;
-
-        /*
-         * Write data.
-         */
-        [[nodiscard]]
-        auto async_write_some(value_type const *buffer, io_size_t)
-            -> task<expected<io_size_t, std::error_code>>;
-
-        [[nodiscard]]
-        auto write_some(value_type const *buffer, io_size_t)
-            -> expected<io_size_t, std::error_code>;
-
-        /*
-         * Close the socket.
-         */
-        [[nodiscard]]
-        auto async_close() -> task<expected<void, std::error_code>>;
-
-        [[nodiscard]]
-        auto close() -> expected<void, std::error_code>;
-
-    private:
-        native_handle_type _native_handle;
+        [[nodiscard]] auto close() -> expected<void, std::error_code>;
     };
-    // clang-format on
-
-    static_assert(seqchannel<tcpchannel>);
 
     /*************************************************************************
-     * tcpchannel::tcpchannel()
+     * streamsocket::streamsocket()
      */
 
-    inline tcpchannel::tcpchannel(unique_socket &&sock)
+    template <int type, int protocol>
+    streamsocket<type, protocol>::streamsocket(unique_socket &&sock)
         : _native_handle(std::move(sock))
     {
     }
 
     /*************************************************************************
-     * tcpchannel::is_open()
+     * streamsocket::is_open()
      */
 
-    inline auto tcpchannel::is_open() const -> bool
+    template <int type, int protocol>
+    auto streamsocket<type, protocol>::is_open() const -> bool
     {
         return _native_handle;
     }
 
     /*************************************************************************
-     * tcpchannel::close()
+     * streamsocket::close()
      */
-    inline auto tcpchannel::close() -> expected<void, std::error_code>
+    template <int type, int protocol>
+    auto streamsocket<type, protocol>::close()
+        -> expected<void, std::error_code>
     {
 
         if (!is_open())
@@ -143,9 +131,10 @@ namespace sk::win32::detail {
     }
 
     /*************************************************************************
-     * tcpchannel::async_close()
+     * streamsocket::async_close()
      */
-    inline auto tcpchannel::async_close()
+    template <int type, int protocol>
+    auto streamsocket<type, protocol>::async_close()
         -> task<expected<void, std::error_code>>
     {
         auto err =
@@ -158,9 +147,11 @@ namespace sk::win32::detail {
     }
 
     /*************************************************************************
-     * tcpchannel::async_connect()
+     * streamsocket::async_connect()
      */
-    inline auto tcpchannel::async_connect(sk::net::address const &addr)
+    template <int type, int protocol>
+    auto
+    streamsocket<type, protocol>::_async_connect(sk::net::address const &addr)
         -> task<expected<void, std::error_code>>
     {
 
@@ -168,7 +159,7 @@ namespace sk::win32::detail {
 
         auto sock = ::WSASocketW(addr.address_family(),
                                  SOCK_STREAM,
-                                 IPPROTO_TCP,
+                                 protocol,
                                  nullptr,
                                  0,
                                  WSA_FLAG_OVERLAPPED);
@@ -208,17 +199,17 @@ namespace sk::win32::detail {
     }
 
     /*************************************************************************
-     * tcpchannel::connect()
+     * streamsocket::connect()
      */
-    inline auto tcpchannel::connect(sk::net::address const &addr)
+    template <int type, int protocol>
+    auto streamsocket<type, protocol>::_connect(sk::net::address const &addr)
         -> expected<void, std::error_code>
     {
-
         sk::detail::check(is_open(), "attempt to connect on a closed channel");
 
         auto sock = ::WSASocketW(addr.address_family(),
                                  SOCK_STREAM,
-                                 IPPROTO_TCP,
+                                 protocol,
                                  nullptr,
                                  0,
                                  WSA_FLAG_OVERLAPPED);
@@ -259,14 +250,14 @@ namespace sk::win32::detail {
     }
 
     /*************************************************************************
-     * tcpchannel::async_read_some()
+     * streamsocket::async_read_some()
      */
 
-    // clang-format off
-    inline auto tcpchannel::async_read_some(value_type *buf, io_size_t nobjs)
+    template <int type, int protocol>
+    auto streamsocket<type, protocol>::async_read_some(value_type *buf,
+                                                       io_size_t nobjs)
         -> task<expected<io_size_t, std::error_code>>
     {
-        // clang-format on
         sk::detail::check(is_open(), "attempt to read on a closed channel");
 
         auto dwbytes = sk::detail::int_cast<DWORD>(nobjs);
@@ -291,15 +282,14 @@ namespace sk::win32::detail {
     }
 
     /*************************************************************************
-     * tcpchannel::read_some()
+     * streamsocket::read_some()
      */
 
-    // clang-format off
-    inline auto tcpchannel::read_some(value_type *buf, io_size_t nobjs)
+    template <int type, int protocol>
+    auto streamsocket<type, protocol>::read_some(value_type *buf,
+                                                 io_size_t nobjs)
         -> expected<io_size_t, std::error_code>
     {
-        // clang-format on
-
         sk::detail::check(is_open(), "attempt to read on a closed channel");
 
         DWORD bytes_read = 0;
@@ -349,15 +339,14 @@ namespace sk::win32::detail {
     }
 
     /*************************************************************************
-     * tcpchannel::async_write_some()
+     * streamsocket::async_write_some()
      */
 
-    // clang-format off
-    inline auto tcpchannel::async_write_some(value_type const *buf,
-                                             io_size_t nobjs)
+    template <int type, int protocol>
+    auto streamsocket<type, protocol>::async_write_some(value_type const *buf,
+                                                        io_size_t nobjs)
         -> task<expected<io_size_t, std::error_code>>
     {
-        // clang-format on
         sk::detail::check(is_open(), "attempt to write on a closed channel");
 
         DWORD bytes_written = 0;
@@ -378,14 +367,14 @@ namespace sk::win32::detail {
     }
 
     /*************************************************************************
-     * tcpchannel::write_some()
+     * streamsocket::write_some()
      */
 
-    // clang-format off
-    inline auto tcpchannel::write_some(value_type const *buf, io_size_t nobjs)
+    template <int type, int protocol>
+    auto streamsocket<type, protocol>::write_some(value_type const *buf,
+                                                  io_size_t nobjs)
         -> expected<io_size_t, std::error_code>
     {
-        // clang-format on
         sk::detail::check(is_open(), "attempt to write on a closed channel");
 
         auto dwbytes = sk::detail::int_cast<DWORD>(nobjs);
@@ -432,4 +421,4 @@ namespace sk::win32::detail {
 
 } // namespace sk::win32::detail
 
-#endif // SK_WIN32_DETAIL_NET_TCPCHANNEL_HXX_INCLUDED
+#endif // SK_WIN32_DETAIL_NET_STREAMSOCKET_HXX_INCLUDED

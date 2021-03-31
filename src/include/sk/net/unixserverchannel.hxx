@@ -26,31 +26,19 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_HXX_INCLUDED
-#define SK_CIO_HXX_INCLUDED
+#ifndef SK_NET_UNIXSERVERCHANNEL_HXX_INCLUDED
+#define SK_NET_UNIXSERVERCHANNEL_HXX_INCLUDED
 
 #include <sk/detail/platform.hxx>
-#include <sk/async_invoke.hxx>
-#include <sk/co_detach.hxx>
-#include <sk/expected.hxx>
-#include <sk/task.hxx>
-#include <sk/wait.hxx>
 
-#include <sk/channel/charchannel.hxx>
-#include <sk/channel/error.hxx>
-#include <sk/channel/filechannel.hxx>
-#include <sk/channel/memchannel.hxx>
-#include <sk/channel/read.hxx>
-#include <sk/channel/write.hxx>
-
-#include <sk/net/address.hxx>
-#include <sk/net/tcpchannel.hxx>
-#include <sk/net/tcpserverchannel.hxx>
 #ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
-#    include <sk/net/unixchannel.hxx>
-#    include <sk/net/unixserverchannel.hxx>
+
+#    include <sk/net/detail/sockets/unixserverchannel.hxx>
+
+#else
+
+#    error unixserverchannel is not supported on this platform
+
 #endif
 
-#include <sk/buffer.hxx>
-
-#endif // SK_CIO_HXX_INCLUDED
+#endif // SK_NET_UNIXSERVERCHANNEL_HXX_INCLUDED

@@ -3,10 +3,6 @@
 (WIP) Coro-based exception-free async I/O library.
 
 * [Documentation](https://sk-cio.readthedocs.io/en/latest/index.html)
-
-Requires:
-
-* [sk-buffer](https://github.com/sikol/sk-buffer)
  
 Supported platform / compiler combinations:
 

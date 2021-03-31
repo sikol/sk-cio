@@ -26,8 +26,8 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_POSIX_NET_TCPSERVERCHANNEL_HXX_INCLUDED
-#define SK_CIO_POSIX_NET_TCPSERVERCHANNEL_HXX_INCLUDED
+#ifndef SK_CIO_POSIX_NET_STREAMSOCKETSERVER_HXX_INCLUDED
+#define SK_CIO_POSIX_NET_STREAMSOCKETSERVER_HXX_INCLUDED
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -38,80 +38,91 @@
 #include <sk/channel/concepts.hxx>
 #include <sk/expected.hxx>
 #include <sk/net/address.hxx>
-#include <sk/posix/detail/net/tcpchannel.hxx>
 #include <sk/posix/error.hxx>
 #include <sk/posix/fd.hxx>
 #include <sk/task.hxx>
 
 namespace sk::posix::detail {
 
-    struct tcpserverchannel {
+    template <typename server_type,
+              seqchannel channel_type,
+              int type,
+              int protocol>
+    class streamsocketserver {
+    protected:
+        unique_fd _fd;
+
+        // address_family is only used on Win32
+        explicit streamsocketserver(unique_fd &&, int /*address_family*/);
+        streamsocketserver(streamsocketserver &&) noexcept = default;
+        auto operator=(streamsocketserver &&) noexcept
+            -> streamsocketserver & = default;
+        ~streamsocketserver() = default;
+
+    public:
         using value_type = std::byte;
 
-        explicit tcpserverchannel(unique_fd &&);
-        tcpserverchannel(tcpserverchannel const &) = delete;
-        tcpserverchannel(tcpserverchannel &&) noexcept = default;
-        auto operator=(tcpserverchannel const &) -> tcpserverchannel & = delete;
-        auto operator=(tcpserverchannel &&) noexcept -> tcpserverchannel & = default;
-        ~tcpserverchannel() = default;
+        streamsocketserver(streamsocketserver const &) = delete;
+        auto operator=(streamsocketserver const &)
+            -> streamsocketserver & = delete;
 
-        /*
-         * Test if this channel has been opened.
-         */
+        [[nodiscard]] static auto listen(net::address const &addr)
+            -> expected<server_type, std::error_code>;
+
         [[nodiscard]] auto is_open() const -> bool;
 
-        /*
-         * Create a TCP server channel listening on a local address.
-         */
-        [[nodiscard]] static auto listen(net::address const &addr)
-            -> expected<tcpserverchannel, std::error_code>;
-
-        /*
-         * Accept a connection from a remote host.
-         */
         [[nodiscard]] auto async_accept()
-            -> task<expected<tcpchannel, std::error_code>>;
+            -> task<expected<channel_type, std::error_code>>;
 
-        [[nodiscard]] auto accept() -> expected<tcpchannel, std::error_code>;
+        [[nodiscard]] auto accept() -> expected<channel_type, std::error_code>;
 
-        /*
-         * Close the socket.
-         */
         [[nodiscard]] auto async_close()
             -> task<expected<void, std::error_code>>;
 
         [[nodiscard]] auto close() -> expected<void, std::error_code>;
-
-    private:
-        unique_fd _fd;
     };
 
     /*************************************************************************
-     * tcpchannel::tcpchannel()
+     * streamsocketserver::streamsocketserver()
      */
 
-    inline tcpserverchannel::tcpserverchannel(unique_fd &&sock)
+    template <typename server_type,
+              seqchannel channel_type,
+              int type,
+              int protocol>
+    streamsocketserver<server_type, channel_type, type, protocol>::
+        streamsocketserver(unique_fd &&sock, int /*address_family*/)
         : _fd(std::move(sock))
     {
     }
 
     /*************************************************************************
-     * tcpserverchannel::is_open()
+     * streamsocketserver::is_open()
      */
 
-    inline auto tcpserverchannel::is_open() const -> bool
+    template <typename server_type,
+              seqchannel channel_type,
+              int type,
+              int protocol>
+    auto
+    streamsocketserver<server_type, channel_type, type, protocol>::is_open()
+        const -> bool
     {
         return _fd;
     }
 
     /*************************************************************************
-     * tcpserverchannel::bind()
+     * streamsocketserver::listen()
      */
 
-    inline auto tcpserverchannel::listen(net::address const &addr)
-        -> expected<tcpserverchannel, std::error_code>
+    template <typename server_type,
+              seqchannel channel_type,
+              int type,
+              int protocol>
+    auto streamsocketserver<server_type, channel_type, type, protocol>::listen(
+        net::address const &addr) -> expected<server_type, std::error_code>
     {
-        int listener = ::socket(addr.address_family(), SOCK_STREAM, IPPROTO_TCP);
+        int listener = ::socket(addr.address_family(), type, protocol);
 
         if (listener == -1)
             return make_unexpected(sk::posix::get_errno());
@@ -131,13 +142,18 @@ namespace sk::posix::detail {
 
         reactor_handle::get_global_reactor().associate_fd(listener);
 
-        return tcpserverchannel{std::move(listener_)};
+        return server_type{std::move(listener_), addr.address_family()};
     }
 
     /*************************************************************************
-     * tcpserverchannel::close()
+     * streamsocketserver::close()
      */
-    inline auto tcpserverchannel::close() -> expected<void, std::error_code>
+    template <typename server_type,
+              seqchannel channel_type,
+              int type,
+              int protocol>
+    auto streamsocketserver<server_type, channel_type, type, protocol>::close()
+        -> expected<void, std::error_code>
     {
         if (!is_open())
             return make_unexpected(error::channel_not_open);
@@ -149,9 +165,14 @@ namespace sk::posix::detail {
     }
 
     /*************************************************************************
-     * tcpserverchannel::async_close()
+     * streamsocketserver::async_close()
      */
-    inline auto tcpserverchannel::async_close()
+    template <typename server_type,
+              seqchannel channel_type,
+              int type,
+              int protocol>
+    auto
+    streamsocketserver<server_type, channel_type, type, protocol>::async_close()
         -> task<expected<void, std::error_code>>
     {
         auto err = co_await async_invoke([&] { return _fd.close(); });
@@ -163,10 +184,14 @@ namespace sk::posix::detail {
     }
 
     /*************************************************************************
-     * tcpserverchannel::async_accept()
+     * streamsocketserver::async_accept()
      */
-    inline auto tcpserverchannel::async_accept()
-        -> task<expected<tcpchannel, std::error_code>>
+    template <typename server_type,
+              seqchannel channel_type,
+              int type,
+              int protocol>
+    auto streamsocketserver<server_type, channel_type, type, protocol>::
+        async_accept() -> task<expected<channel_type, std::error_code>>
     {
         auto client =
             co_await sk::posix::async_fd_accept(*_fd, nullptr, nullptr);
@@ -176,14 +201,18 @@ namespace sk::posix::detail {
         unique_fd client_(*client);
 
         reactor_handle::get_global_reactor().associate_fd(*client);
-        co_return tcpchannel{std::move(client_)};
+        co_return channel_type{std::move(client_)};
     }
 
     /*************************************************************************
-     * tcpserverchannel::accept()
+     * streamsocketserver::accept()
      */
-    inline auto tcpserverchannel::accept()
-        -> expected<tcpchannel, std::error_code>
+    template <typename server_type,
+              seqchannel channel_type,
+              int type,
+              int protocol>
+    auto streamsocketserver<server_type, channel_type, type, protocol>::accept()
+        -> expected<channel_type, std::error_code>
     {
         auto client = ::accept(*_fd, nullptr, nullptr);
         if (client < 0)
@@ -192,9 +221,9 @@ namespace sk::posix::detail {
         unique_fd client_(client);
 
         reactor_handle::get_global_reactor().associate_fd(client);
-        return tcpchannel{std::move(client_)};
+        return channel_type{std::move(client_)};
     }
 
 } // namespace sk::posix::detail
 
-#endif // SK_CIO_POSIX_NET_TCPSERVERCHANNEL_HXX_INCLUDED
+#endif // SK_CIO_POSIX_NET_STREAMSOCKETSERVER_HXX_INCLUDED

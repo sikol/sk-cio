@@ -31,24 +31,9 @@
 
 #include <sk/detail/platform.hxx>
 
-#if defined(SK_CIO_PLATFORM_WINDOWS)
-#    include <sk/win32/detail/net/tcpchannel.hxx>
+#ifdef SK_CIO_PLATFORM_HAS_SOCKETS
 
-namespace sk::net {
-
-    using sk::win32::detail::tcpchannel;
-
-} // namespace sk::net
-
-#elif defined(SK_CIO_PLATFORM_POSIX)
-
-#    include <sk/posix/detail/net/tcpchannel.hxx>
-
-namespace sk::net {
-
-    using sk::posix::detail::tcpchannel;
-
-} // namespace sk::net
+#    include <sk/net/detail/sockets/tcpchannel.hxx>
 
 #else
 

@@ -44,11 +44,11 @@ constexpr int nthreads = 30;
 constexpr int nops = 500;
 constexpr auto run_for = 20s;
 
-std::string const tcp_listen_address = "127.0.0.1";
-std::string const tcp_listen_port = "5357";
-net::address *tcp_listen_addr;
+auto const unix_listen_address =
+    std::filesystem::current_path() / "__sk_test.sock";
+net::address *unix_listen_addr;
 
-task<int> tcp_stress_task()
+task<int> unix_stress_task()
 {
     std::random_device r;
     std::default_random_engine eng(r());
@@ -60,8 +60,8 @@ task<int> tcp_stress_task()
     for (;;) {
 
         // Connect to the test host.
-        net::tcpchannel chnl;
-        auto ret = co_await chnl.async_connect(*tcp_listen_addr);
+        net::unixchannel chnl;
+        auto ret = co_await chnl.async_connect(*unix_listen_addr);
         if (!ret) {
             std::cerr << "stress_task: failed to connect: "
                       << ret.error().message() << "\n";
@@ -117,7 +117,7 @@ task<int> tcp_stress_task()
     co_return 0;
 }
 
-task<void> tcp_handle_client(net::tcpchannel client)
+task<void> unix_handle_client(net::unixchannel client)
 {
     for (;;) {
         sk::fixed_buffer<std::byte, 1024> buf;
@@ -141,46 +141,52 @@ task<void> tcp_handle_client(net::tcpchannel client)
     fmt::print(stderr, "handle_client() : return\n");
 }
 
-task<void> tcp_server_task(net::tcpserverchannel &chnl)
+task<void> unix_server_task(net::unixserverchannel &chnl)
 {
     for (;;) {
         auto client = co_await chnl.async_accept();
+
         if (!client) {
             fmt::print(
                 stderr, "async_accept(): {}\n", client.error().message());
             co_return;
         }
 
-        co_detach(tcp_handle_client(std::move(*client)));
+        co_detach(unix_handle_client(std::move(*client)));
     }
 }
 
-TEST_CASE("tcpchannel stress test")
+TEST_CASE("unixchannel stress test")
 {
     // Create the server channel.
-    auto netaddr = net::make_address(tcp_listen_address, tcp_listen_port);
+    auto netaddr = net::make_unix_address(unix_listen_address);
     if (!netaddr) {
         fmt::print(stderr,
                    "{}:{}: {}\n",
-                   tcp_listen_address,
-                   tcp_listen_port,
+                   unix_listen_address.generic_string(),
                    netaddr.error().message());
         return;
     }
-    tcp_listen_addr = &*netaddr;
+    unix_listen_addr = &*netaddr;
 
-    auto server = net::tcpserverchannel::listen(*netaddr);
-    REQUIRE(server);
+    std::ignore = std::remove(unix_listen_address.string().c_str());
+    auto server = net::unixserverchannel::listen(*netaddr);
+    if (!server) {
+        INFO(unix_listen_address);
+        INFO(server.error().message());
+        REQUIRE(server);
+    }
 
-    co_detach(tcp_server_task(*server));
+    co_detach(unix_server_task(*server));
 
+    std::this_thread::sleep_for(1s);
     std::cerr << "starting stress tasks\n";
 
     std::vector<std::future<int>> futures;
 
     for (int i = 0; i < nthreads; ++i)
         futures.emplace_back(std::async(std::launch::async, [&]() -> int {
-            return wait(tcp_stress_task());
+            return wait(unix_stress_task());
         }));
 
     std::cerr << "joining stress tasks\n";

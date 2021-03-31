@@ -41,82 +41,19 @@ target_link_libraries(sk-cio PUBLIC Threads::Threads)
 target_sources(sk-cio PRIVATE
     error.cxx
     reactor.cxx
-
-    include/sk/channel/concepts.hxx
-    include/sk/channel/error.hxx
-    include/sk/channel/types.hxx
-    include/sk/channel/concepts.hxx
-    include/sk/channel/charchannel.hxx
-    include/sk/channel/filechannel.hxx
-    include/sk/channel/memchannel.hxx
-    include/sk/channel/pmr_channel.hxx
-    include/sk/channel/write.hxx
-    include/sk/channel/read.hxx
-
-    include/sk/channel/filechannel/detail/filechannel_base.hxx
-    include/sk/channel/filechannel/filechannel.hxx
-    include/sk/channel/filechannel/idafilechannel.hxx
-    include/sk/channel/filechannel/odafilechannel.hxx
-    include/sk/channel/filechannel/dafilechannel.hxx
-    include/sk/channel/filechannel/iseqfilechannel.hxx
-    include/sk/channel/filechannel/oseqfilechannel.hxx
-    include/sk/channel/filechannel/seqfilechannel.hxx
-
-    include/sk/channel/memchannel/detail/memchannel_base.hxx
-    include/sk/channel/memchannel/imemchannel.hxx
-    include/sk/channel/memchannel/omemchannel.hxx
-
-    include/sk/net/address.hxx
-    include/sk/net/tcpchannel.hxx
-    include/sk/net/tcpserverchannel.hxx
-
-    include/sk/detail/platform.hxx
-    include/sk/detail/safeint.hxx
-    include/sk/detail/coroutine.hxx
-    include/sk/detail/clang_experimental_coroutine.hxx
-
-    include/sk/task.hxx
-    include/sk/reactor.hxx
-    include/sk/async_invoke.hxx
-    include/sk/expected.hxx
-    include/sk/co_detach.hxx
-    include/sk/workq.hxx
-    include/sk/check.hxx
-
-    include/sk/buffer/circular_buffer.hxx
-    include/sk/buffer/dynamic_buffer.hxx
-    include/sk/buffer/fixed_buffer.hxx
-    include/sk/buffer/range_buffer.hxx
-    include/sk/buffer/pmr_buffer.hxx
-    include/sk/buffer.hxx
-
-    include/sk/cio.hxx
-    )
+)
 
 if (WIN32)
     target_sources(sk-cio PRIVATE
         win32/error.cxx
         win32/iocp_reactor.cxx
         win32/async_api.cxx
-
-        include/sk/win32/detail/iocp_reactor.hxx
-        include/sk/win32/detail/filechannel/filechannel_base.hxx
-        include/sk/win32/detail/net/tcpchannel.hxx
-        include/sk/win32/detail/net/tcpserverchannel.hxx
-
-        include/sk/win32/error.hxx
-        include/sk/win32/handle.hxx
-        include/sk/win32/windows.hxx
-        include/sk/win32/async_api.hxx
         )
 endif ()
 
 if (UNIX)
     if (CMAKE_SYSTEM_NAME STREQUAL Linux)
         target_sources(sk-cio PRIVATE
-            include/sk/posix/detail/epoll_reactor.hxx
-            include/sk/posix/detail/io_uring_reactor.hxx
-            include/sk/posix/detail/linux_reactor.hxx
             posix/epoll_reactor.cxx
             posix/linux_reactor.cxx)
 
@@ -133,16 +70,6 @@ if (UNIX)
             message(FATAL_ERROR "Could not find io_uring.  Install liburing, or set SK_CIO_DISABLE_IO_URING=ON.")
         endif ()
     endif ()
-
-    target_sources(sk-cio PRIVATE
-        include/sk/posix/detail/filechannel/dafilechannel_base.hxx
-        include/sk/posix/detail/net/tcpchannel.hxx
-        include/sk/posix/detail/net/tcpserverchannel.hxx
-
-        include/sk/posix/async_api.hxx
-        include/sk/posix/error.hxx
-        include/sk/posix/fd.hxx
-        )
 
     if (SK_CIO_HAVE_IO_URING)
         target_sources(sk-cio PRIVATE posix/io_uring_reactor.cxx)

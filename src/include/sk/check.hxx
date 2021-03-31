@@ -37,9 +37,6 @@
 #    include <iostream>
 
 namespace sk::detail {
-    // noexcept because we want to terminate on check failure, but throw the
-    // exception so the debugger can see it.
-    // NOLINTNEXTLINE(bugprone-exception-escape)
     inline constexpr void check(bool cond, char const *msg) noexcept
     {
         if (!cond) {

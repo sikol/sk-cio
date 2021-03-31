@@ -26,31 +26,42 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_HXX_INCLUDED
-#define SK_CIO_HXX_INCLUDED
+#ifndef SK_NET_DETAIL_SOCKETS_SOCKETS_HXX_INCLUDED
+#define SK_NET_DETAIL_SOCKETS_SOCKETS_HXX_INCLUDED
 
 #include <sk/detail/platform.hxx>
-#include <sk/async_invoke.hxx>
-#include <sk/co_detach.hxx>
-#include <sk/expected.hxx>
-#include <sk/task.hxx>
-#include <sk/wait.hxx>
 
-#include <sk/channel/charchannel.hxx>
-#include <sk/channel/error.hxx>
-#include <sk/channel/filechannel.hxx>
-#include <sk/channel/memchannel.hxx>
-#include <sk/channel/read.hxx>
-#include <sk/channel/write.hxx>
+#if defined(SK_CIO_PLATFORM_WINDOWS)
+#    include <sk/win32/handle.hxx>
+#    include <sk/win32/detail/net/streamsocket.hxx>
+#    include <sk/win32/detail/net/streamsocketserver.hxx>
 
-#include <sk/net/address.hxx>
-#include <sk/net/tcpchannel.hxx>
-#include <sk/net/tcpserverchannel.hxx>
-#ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
-#    include <sk/net/unixchannel.hxx>
-#    include <sk/net/unixserverchannel.hxx>
+namespace sk::net::detail {
+
+    using native_socket_type = win32::unique_socket;
+    using sk::win32::detail::streamsocket;
+    using sk::win32::detail::streamsocketserver;
+
+} // namespace sk::net::detail
+
+#elif defined(SK_CIO_PLATFORM_POSIX)
+
+#    include <sk/posix/fd.hxx>
+#    include <sk/posix/detail/net/streamsocket.hxx>
+#    include <sk/posix/detail/net/streamsocketserver.hxx>
+
+namespace sk::net::detail {
+
+    using native_socket_type = posix::unique_fd;
+    using sk::posix::detail::streamsocket;
+    using sk::posix::detail::streamsocketserver;
+
+} // namespace sk::net::detail
+
+#else
+
+#    error sockets are not supported on this platform
+
 #endif
 
-#include <sk/buffer.hxx>
-
-#endif // SK_CIO_HXX_INCLUDED
+#endif // SK_NET_DETAIL_SOCKETS_SOCKETS_HXX_INCLUDED

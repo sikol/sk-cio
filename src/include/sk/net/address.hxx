@@ -38,9 +38,8 @@
 
 #if defined(SK_CIO_PLATFORM_WINDOWS)
 #    include <sk/win32/windows.hxx>
-#    if __has_include(<afunix.h>)
+#    ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
 #        include <afunix.h>
-#        define SK_CIO_HAVE_AF_UNIX
 #    endif
 #elif defined(SK_CIO_PLATFORM_POSIX)
 #    define SK_CIO_HAVE_AF_UNIX
@@ -209,7 +208,7 @@ namespace sk::net {
     /*************************************************************************
      * make_address(sockaddr_un)
      */
-#ifdef SK_CIO_HAVE_AF_UNIX
+#ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
     [[nodiscard]] inline auto make_address(sockaddr_un const *saddr)
     {
         return address::make(reinterpret_cast<sockaddr const *>(saddr),
@@ -254,6 +253,14 @@ namespace sk::net {
             return make_address(&sin6);
         }
 
+#ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
+        case AF_UNIX: {
+            sockaddr_un sun{};
+            sun.sun_family = AF_UNIX;
+            return make_address(&sun);
+        }
+#endif
+
         default:
             return make_unexpected(
                 std::make_error_code(std::errc::address_family_not_supported));
@@ -294,6 +301,33 @@ namespace sk::net {
         freeaddrinfo(gai_result);
         return addr;
     }
+
+    /*************************************************************************
+     * Create an AF_UNIX address from a path.
+     */
+#ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
+    [[nodiscard]] inline auto
+    make_unix_address(std::filesystem::path const &path)
+        -> expected<net::address, std::error_code>
+    {
+        sockaddr_un sun{};
+
+#    ifdef SK_CIO_PLATFORM_WINDOWS
+        // Windows wants UTF-8 in its sun_path.
+        auto native_path = path.u8string();
+#    else
+        auto native_path = path.string();
+#    endif
+
+        if (native_path.size() > sizeof(sun.sun_path))
+            return make_unexpected(
+                std::make_error_code(std::errc::value_too_large));
+
+        std::ranges::copy(native_path, sun.sun_path);
+        sun.sun_family = AF_UNIX;
+        return make_address(&sun);
+    }
+#endif
 
     /*************************************************************************
      *

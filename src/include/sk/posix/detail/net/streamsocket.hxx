@@ -26,8 +26,8 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_NET_DETAIL_POSIX_CPCHANNEL_HXX_INCLUDED
-#define SK_NET_DETAIL_POSIX_CPCHANNEL_HXX_INCLUDED
+#ifndef SK_NET_DETAIL_POSIX_STREAMSOCKET_HXX_INCLUDED
+#define SK_NET_DETAIL_POSIX_STREAMSOCKET_HXX_INCLUDED
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -46,77 +46,65 @@
 
 namespace sk::posix::detail {
 
-    struct tcpchannel {
+    template<int type, int protocol>
+    class streamsocket {
+    protected:
+        streamsocket() = default;
+        explicit streamsocket(sk::posix::unique_fd &&);
+        streamsocket(streamsocket &&) noexcept = default;
+        auto operator=(streamsocket &&) noexcept -> streamsocket & = default;
+        ~streamsocket() = default;
+
+        sk::posix::unique_fd _fd;
+
+        [[nodiscard]] auto _async_connect(sk::net::address const &addr)
+        -> task<expected<void, std::error_code>>;
+
+        [[nodiscard]] auto _connect(sk::net::address const &addr)
+        -> expected<void, std::error_code>;
+
+    public:
         using value_type = std::byte;
 
-        tcpchannel() = default;
-        explicit tcpchannel(sk::posix::unique_fd &&);
-        tcpchannel(tcpchannel const &) = delete;
-        tcpchannel(tcpchannel &&) noexcept = default;
-        auto operator=(tcpchannel const &) -> tcpchannel & = delete;
-        auto operator=(tcpchannel &&) noexcept -> tcpchannel & = default;
-        ~tcpchannel() = default;
+        streamsocket(streamsocket const &) = delete;
+        auto operator=(streamsocket const &) -> streamsocket & = delete;
 
-        /*
-         * Test if this channel has been opened.
-         */
         [[nodiscard]] auto is_open() const -> bool;
 
-        /*
-         * Connect to a remote host.
-         */
-        [[nodiscard]] auto async_connect(sk::net::address const &addr)
-            -> task<expected<void, std::error_code>>;
-
-        [[nodiscard]] auto connect(sk::net::address const &addr)
-            -> expected<void, std::error_code>;
-
-        /*
-         * Read data.
-         */
         [[nodiscard]] auto async_read_some(value_type *buffer, io_size_t n)
-            -> task<expected<io_size_t, std::error_code>>;
+        -> task<expected<io_size_t, std::error_code>>;
 
         [[nodiscard]] auto read_some(value_type *buffer, io_size_t n)
-            -> expected<io_size_t, std::error_code>;
+        -> expected<io_size_t, std::error_code>;
 
-        /*
-         * Write data.
-         */
         [[nodiscard]] auto async_write_some(value_type const *buffer, io_size_t)
-            -> task<expected<io_size_t, std::error_code>>;
+        -> task<expected<io_size_t, std::error_code>>;
 
         [[nodiscard]] auto write_some(value_type const *buffer, io_size_t)
-            -> expected<io_size_t, std::error_code>;
+        -> expected<io_size_t, std::error_code>;
 
-        /*
-         * Close the socket.
-         */
         [[nodiscard]] auto async_close()
-            -> task<expected<void, std::error_code>>;
+        -> task<expected<void, std::error_code>>;
 
         [[nodiscard]] auto close() -> expected<void, std::error_code>;
-
-    private:
-        sk::posix::unique_fd _fd;
     };
 
-    static_assert(seqchannel<tcpchannel>);
-
     /*************************************************************************
-     * tcpchannel::tcpchannel()
+     * streamsocket::streamsocket()
      */
 
-    inline tcpchannel::tcpchannel(sk::posix::unique_fd &&sock)
+    template<int type, int protocol>
+    streamsocket<type, protocol>::streamsocket(sk::posix::unique_fd &&sock)
         : _fd(std::move(sock))
     {
     }
 
     /*************************************************************************
-     * tcpchannel::is_open()
+     * streamsocket::is_open()
      */
 
-    inline auto tcpchannel::is_open() const -> bool
+    template<int type, int protocol>
+    auto streamsocket<type, protocol>::is_open() const -> bool
     {
         return _fd;
     }
@@ -124,7 +112,8 @@ namespace sk::posix::detail {
     /*************************************************************************
      * tcpchannel::close()
      */
-    inline auto tcpchannel::close() -> expected<void, std::error_code>
+    template<int type, int protocol>
+    auto streamsocket<type, protocol>::close() -> expected<void, std::error_code>
     {
 
         if (!is_open())
@@ -137,10 +126,11 @@ namespace sk::posix::detail {
     }
 
     /*************************************************************************
-     * tcpchannel::async_close()
+     * streamsocket::async_close()
      */
-    inline auto tcpchannel::async_close()
-        -> task<expected<void, std::error_code>>
+    template<int type, int protocol>
+    auto streamsocket<type, protocol>::async_close()
+    -> task<expected<void, std::error_code>>
     {
         int fd = _fd.release();
         auto err = co_await sk::posix::async_fd_close(fd);
@@ -152,15 +142,16 @@ namespace sk::posix::detail {
     }
 
     /*************************************************************************
-     * tcpchannel::async_connect()
+     * streamsocket::async_connect()
      */
-    inline auto tcpchannel::async_connect(sk::net::address const &addr)
-        -> task<expected<void, std::error_code>>
+    template<int type, int protocol>
+    auto streamsocket<type, protocol>::_async_connect(sk::net::address const &addr)
+    -> task<expected<void, std::error_code>>
     {
 
         sk::detail::check(!is_open(), "attempt to re-connect an open channel");
 
-        auto sock = ::socket(addr.address_family(), SOCK_STREAM, IPPROTO_TCP);
+        auto sock = ::socket(addr.address_family(), type, protocol);
 
         if (sock == -1)
             co_return make_unexpected(sk::posix::get_errno());
@@ -181,20 +172,22 @@ namespace sk::posix::detail {
     }
 
     /*************************************************************************
-     * tcpchannel::connect()
+     * streamsocket::connect()
      */
-    inline auto tcpchannel::connect(sk::net::address const &addr)
-        -> expected<void, std::error_code>
+    template<int type, int protocol>
+    auto streamsocket<type, protocol>::_connect(sk::net::address const &addr)
+    -> expected<void, std::error_code>
     {
-        return wait(async_connect(addr));
+        return wait(_async_connect(addr));
     }
 
     /*************************************************************************
-     * tcpchannel::async_read_some()
+     * streamsocket::async_read_some()
      */
 
-    inline auto tcpchannel::async_read_some(value_type *buffer, io_size_t nobjs)
-        -> task<expected<io_size_t, std::error_code>>
+    template<int type, int protocol>
+    auto streamsocket<type, protocol>::async_read_some(value_type *buffer, io_size_t nobjs)
+    -> task<expected<io_size_t, std::error_code>>
     {
         sk::detail::check(is_open(), "attempt to read on a closed channel");
 
@@ -212,23 +205,25 @@ namespace sk::posix::detail {
     }
 
     /*************************************************************************
-     * tcpchannel::read_some()
+     * streamsocket::read_some()
      */
 
-    inline auto tcpchannel::read_some(value_type *buffer, io_size_t nobjs)
-        -> expected<io_size_t, std::error_code>
+    template<int type, int protocol>
+    auto streamsocket<type, protocol>::read_some(value_type *buffer, io_size_t nobjs)
+    -> expected<io_size_t, std::error_code>
     {
         sk::detail::check(is_open(), "attempt to read on a closed channel");
         return wait(async_read_some(buffer, nobjs));
     }
 
     /*************************************************************************
-     * tcpchannel::async_write_some()
+     * streamsocket::async_write_some()
      */
 
-    inline auto tcpchannel::async_write_some(value_type const *buffer,
+    template<int type, int protocol>
+    auto streamsocket<type, protocol>::async_write_some(value_type const *buffer,
                                              io_size_t nobjs)
-        -> task<expected<io_size_t, std::error_code>>
+    -> task<expected<io_size_t, std::error_code>>
     {
         sk::detail::check(is_open(), "attempt to write on a closed channel");
 
@@ -246,16 +241,17 @@ namespace sk::posix::detail {
     }
 
     /*************************************************************************
-     * tcpchannel::write_some()
+     * streamsocket::write_some()
      */
 
-    inline auto tcpchannel::write_some(value_type const *buffer,
+    template<int type, int protocol>
+    auto streamsocket<type, protocol>::write_some(value_type const *buffer,
                                        io_size_t nobjs)
-        -> expected<io_size_t, std::error_code>
+    -> expected<io_size_t, std::error_code>
     {
         return wait(async_write_some(buffer, nobjs));
     }
 
 } // namespace sk::posix::detail
 
-#endif // SK_NET_DETAIL_POSIX_CPCHANNEL_HXX_INCLUDED
+#endif // SK_NET_DETAIL_POSIX_STREAMSOCKET_HXX_INCLUDED
