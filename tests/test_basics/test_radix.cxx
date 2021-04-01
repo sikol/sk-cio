@@ -92,15 +92,17 @@ TEST_CASE("radix byte inserts") {
     std::byte b1{0b11110000};
     std::byte b2{0b11111000};
 
-    fmt::print("\n--HERE--\n\n");
+    fmt::print("\n--HERE insert 1 --\n\n");
     trie.insert(std::span(&b1, 1), 42);
 
-    fmt::print("\n--HERE--\n\n");
+    fmt::print("\n--HERE insert 2--\n\n");
     trie.insert(std::span(&b2, 1), 42);
 
+    fmt::print("\n--HERE find 1--\n\n");
     auto r = trie.find(std::span(&b1, 1));
     REQUIRE(r);
 
+    fmt::print("\n--HERE find 2--\n\n");
     r = trie.find(std::span(&b2, 1));
     REQUIRE(r);
 }

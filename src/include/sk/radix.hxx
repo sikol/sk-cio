@@ -29,6 +29,7 @@
 #ifndef SK_RADIX_HXX_INCLUDED
 #define SK_RADIX_HXX_INCLUDED
 
+#include <climits>
 #include <concepts>
 #include <cstdio>
 #include <cstdlib>
@@ -36,7 +37,6 @@
 #include <ranges>
 #include <span>
 #include <vector>
-#include <climits>
 
 #include <fmt/core.h>
 
@@ -52,7 +52,9 @@ namespace sk {
         biterator() = default;
 
         biterator(biterator const &other)
-            : first(other.first), last(other.last), mask(other.mask) {}
+            : first(other.first), last(other.last), mask(other.mask)
+        {
+        }
 
         template <std::ranges::contiguous_range Range>
         biterator(Range &&r)
@@ -79,7 +81,8 @@ namespace sk {
         auto operator*() const -> bool
         {
             auto ret = (*first & mask) != std::byte{0};
-            //fmt::print("biterator: first={:0b} mask={:08b} return {}\n", *first, mask, ret);
+            // fmt::print("biterator: first={:0b} mask={:08b} return {}\n",
+            // *first, mask, ret);
             return ret;
         }
 
@@ -120,7 +123,8 @@ namespace sk {
         return (a.first == b.first) && (a.last == b.last) && (a.mask == b.mask);
     }
 
-    auto operator!=(biterator const &a, biterator const &b) {
+    auto operator!=(biterator const &a, biterator const &b)
+    {
         return !(a == b);
     }
 
@@ -138,7 +142,8 @@ namespace sk {
             : _begin(reinterpret_cast<std::byte const *>(std::ranges::data(r)),
                      reinterpret_cast<std::byte const *>(std::ranges::data(r) +
                                                          std::ranges::size(r))),
-              _size(std::ranges::size(r) * sizeof(std::ranges::range_value_t<Range>))
+              _size(std::ranges::size(r) *
+                    sizeof(std::ranges::range_value_t<Range>))
         {
         }
 
@@ -164,7 +169,7 @@ namespace sk {
         remove,
     };
 
-    template <typename Char, typename T>
+    template <typename T>
     struct radix_node {
         using node_ptr = std::unique_ptr<radix_node>;
 
@@ -173,30 +178,31 @@ namespace sk {
         radix_node(Range &&string_)
             : string(std::ranges::begin(string_), std::ranges::end(string_))
         {
-            //std::string r;
-            //std::ranges::for_each(string, [&](auto b) { r.push_back(b ? '1' : '0'); });
-            //fmt::print("  make new node, string=[{}]\n", r);
+            // std::string r;
+            // std::ranges::for_each(string, [&](auto b) { r.push_back(b ? '1' :
+            // '0'); }); fmt::print("  make new node, string=[{}]\n", r);
         }
 
-        std::vector<Char> string;
+        auto add_node(std::unique_ptr<radix_node<T>> &&n) -> node_ptr &
+        {
+            auto &branch = n->string[0] ? right : left;
+            assert(branch.get() == nullptr);
+            branch = std::move(n);
+            return branch;
+        }
+
+        std::vector<bool> string;
         std::optional<T> value;
 
-        //static constexpr int radix = std::numeric_limits<Char>::max();
-
-        // std::array<node_ptr, radix> edges;
-        std::vector<node_ptr> edges;
+        node_ptr left, right;
 
         template <std::ranges::range Range>
-        auto find(Range &&r, radix_op op) -> radix_node<Char, T> *
+        auto find(Range &&r, radix_op op) -> radix_node<T> *
         {
             namespace stdr = std::ranges;
 
-            //fmt::print("find: here={}\n", *std::ranges::begin(r));
-
             // If r is empty, we are the edge for this string.
-            //if (stdr::size(r) == 0) {
             if (std::ranges::begin(r) == std::ranges::end(r)) {
-                //fmt::print("  at end\n");
                 if (op == radix_op::remove)
                     value.reset();
 
@@ -204,86 +210,71 @@ namespace sk {
             }
 
             // Look for an existing edge.
-            for (auto eit = edges.begin(), eend = edges.end(); eit != eend;
-                 ++eit) {
-                auto &e = *eit;
+            auto &e = *std::ranges::begin(r) ? right : left;
 
-                auto mismatch = stdr::mismatch(r, e->string);
-
-                auto matchlen = static_cast<std::size_t>(
-                    std::distance(stdr::begin(e->string), mismatch.in2));
-
-                //fmt::print("  matchlen={}\n", matchlen);
-
-                if (matchlen == 0)
-                    continue;
-
-                // Found the child.
-                if (matchlen == stdr::size(e->string)) {
-                    auto sr = stdr::subrange(mismatch.in1, stdr::end(r));
-                    auto ret = e->find(sr, op);
-                    if (op != radix_op::remove)
-                        return ret;
-
-                    if (!e->value) {
-                        if (e->edges.empty()) {
-                            // If the child node has no value and no children,
-                            // kill it.
-                            edges.erase(eit);
-                            return this;
-                        }
-
-                        if (e->edges.size() == 1) {
-                            // If the child only has a single edge, unsplit it.
-                            e->edges[0]->string.insert(
-                                e->edges[0]->string.begin(),
-                                e->string.begin(),
-                                e->string.end());
-                            auto ne = node_ptr(std::move(e->edges[0]));
-                            edges.erase(eit);
-                            edges.emplace_back(std::move(ne));
-                            return this;
-                        }
-                    }
-
-                    return ret;
-                }
-
+            if (!e) {
                 if (op != radix_op::insert)
                     return nullptr;
 
-                // Found a partial substring, split into two children.
-                //fmt::print("partial match len={}, going to split\n", matchlen);
-                auto new_node = std::make_unique<radix_node>(stdr::subrange(
-                    std::ranges::begin(r), mismatch.in1));
-                    //std::ranges::begin(r), stdr::begin(r) + matchlen));
-
-                e->string.erase(e->string.begin(),
-                                e->string.begin() + matchlen);
-                new_node->edges.emplace_back(std::move(e));
-                auto nr =
-                    stdr::subrange(mismatch.in1, stdr::end(r));
-                    //stdr::subrange(stdr::begin(r) + matchlen, stdr::end(r));
-                edges.erase(eit);
-                auto &nn = edges.emplace_back(std::move(new_node));
-
-                return nn->find(nr, op);
+                auto &new_edge = add_node(std::make_unique<radix_node>(r));
+                return new_edge.get();
             }
 
-            //fmt::print("  didn't find an edge, insert a new one\n");
+            auto mismatch = stdr::mismatch(r, e->string);
+
+            auto matchlen = static_cast<std::size_t>(
+                std::distance(stdr::begin(e->string), mismatch.in2));
+
+            assert(matchlen > 0);
+
+            if (matchlen == stdr::size(e->string)) {
+                auto sr = stdr::subrange(mismatch.in1, stdr::end(r));
+                auto ret = e->find(sr, op);
+                if (op != radix_op::remove)
+                    return ret;
+
+                if (!e->value) {
+                    if (!e->left && !e->right) {
+                        // If the child node has no value and no children,
+                        // kill it.
+                        e.reset();
+                        return this;
+                    }
+
+                    if (!(e->left && e->right)) {
+                        auto &steal = e->left ? e->left : e->right;
+                        // If the child only has a single edge, unsplit it.
+                        steal->string.insert(steal->string.begin(),
+                                             e->string.begin(),
+                                             e->string.end());
+                        e = std::move(steal);
+                        return this;
+                    }
+                }
+
+                return ret;
+            }
+
             if (op != radix_op::insert)
                 return nullptr;
 
-            // Add a new edge.
-            auto new_edge = std::make_unique<radix_node>(r);
-            edges.push_back(std::move(new_edge));
-            return edges.back().get();
+            // Found a partial substring, split into two children.
+            auto new_node = std::make_unique<radix_node>(
+                stdr::subrange(std::ranges::begin(r), mismatch.in1));
+
+            e->string.erase(e->string.begin(), e->string.begin() + matchlen);
+
+            new_node->add_node(std::move(e));
+            e = std::move(new_node);
+
+            auto nr = stdr::subrange(mismatch.in1, stdr::end(r));
+            return e->find(nr, op);
         }
     };
 
     template <typename Char, typename T>
     struct radix_tree {
-        radix_node<bool, T> root;
+        radix_node<T> root;
 
         template <std::ranges::contiguous_range Range>
         auto insert(Range &&r, T const &value) -> bool
