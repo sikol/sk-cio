@@ -34,9 +34,80 @@ using namespace std::string_view_literals;
 
 #include <sk/radix.hxx>
 
+using sk::biterator;
+using sk::bit_range;
 using sk::radix_tree;
 
-TEST_CASE("radix basic inserts") {
+TEST_CASE("biterator")
+{
+    std::byte b{0b10110010};
+    biterator bit(std::span(&b, 1)), bend;
+    std::vector<bool> bits;
+    std::copy(bit, biterator(), std::back_inserter(bits));
+    REQUIRE(bits == std::vector<bool>{
+                        true, false, true, true, false, false, true, false});
+
+    std::array bytes{
+        std::byte{0b10110010},
+        std::byte{0b00101101},
+        std::byte{0b11100101},
+    };
+
+    biterator bit2(bytes);
+
+    bits.clear();
+    std::copy(bit2, bend, std::back_inserter(bits));
+    REQUIRE(bits == std::vector<bool>{1, 0, 1, 1, 0, 0, 1, 0, //
+                                      0, 0, 1, 0, 1, 1, 0, 1, //
+                                      1, 1, 1, 0, 0, 1, 0, 1});
+}
+
+TEST_CASE("bit_range") {
+    std::byte b{0b10110010};
+    bit_range r1(std::span(&b, 1));
+
+    std::vector<bool> bits;
+    std::ranges::copy(r1, std::back_inserter(bits));
+    REQUIRE(bits == std::vector<bool>{
+            true, false, true, true, false, false, true, false});
+
+    std::array bytes{
+            std::byte{0b10110010},
+            std::byte{0b00101101},
+            std::byte{0b11100101},
+    };
+
+    bit_range r2(bytes);
+
+    bits.clear();
+    std::ranges::copy(r2, std::back_inserter(bits));
+    REQUIRE(bits == std::vector<bool>{1, 0, 1, 1, 0, 0, 1, 0, //
+                                      0, 0, 1, 0, 1, 1, 0, 1, //
+                                      1, 1, 1, 0, 0, 1, 0, 1});
+}
+
+TEST_CASE("radix byte inserts") {
+    radix_tree<std::byte, int> trie;
+
+    std::byte b1{0b11110000};
+    std::byte b2{0b11111000};
+
+    fmt::print("\n--HERE--\n\n");
+    trie.insert(std::span(&b1, 1), 42);
+
+    fmt::print("\n--HERE--\n\n");
+    trie.insert(std::span(&b2, 1), 42);
+
+    auto r = trie.find(std::span(&b1, 1));
+    REQUIRE(r);
+
+    r = trie.find(std::span(&b2, 1));
+    REQUIRE(r);
+}
+
+#if 1
+TEST_CASE("radix basic inserts")
+{
     std::vector<std::string_view> test_strings{
         "test"sv,
         "testep"sv,
@@ -52,20 +123,20 @@ TEST_CASE("radix basic inserts") {
 
     do {
         radix_tree<char, std::string> trie;
-        //fmt::print("\n\n-- START PERMUTATION --\n\n");
+        // fmt::print("\n\n-- START PERMUTATION --\n\n");
 
         std::string info;
-        for (auto &&s: test_strings)
+        for (auto &&s : test_strings)
             info += "->" + std::string(s);
 
         INFO(info);
 
-        for (auto &&s: test_strings) {
+        for (auto &&s : test_strings) {
             auto b = trie.insert(s, std::string(s));
             REQUIRE(b);
         }
 
-        for (auto &&s: test_strings) {
+        for (auto &&s : test_strings) {
             auto r = trie.find(s);
             REQUIRE(r);
             REQUIRE(*r == s);
@@ -87,3 +158,4 @@ TEST_CASE("radix basic inserts") {
         }
     } while (std::ranges::next_permutation(test_strings).found);
 }
+#endif

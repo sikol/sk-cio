@@ -36,10 +36,127 @@
 #include <ranges>
 #include <span>
 #include <vector>
+#include <climits>
 
 #include <fmt/core.h>
 
 namespace sk {
+
+    struct biterator {
+        using iterator_category = std::input_iterator_tag;
+        using difference_type = std::ptrdiff_t;
+        using value_type = bool;
+        using pointer = std::optional<bool>;
+        using reference = bool;
+
+        biterator() = default;
+
+        biterator(biterator const &other)
+            : first(other.first), last(other.last), mask(other.mask) {}
+
+        template <std::ranges::contiguous_range Range>
+        biterator(Range &&r)
+            : first(std::ranges::data(r)), last(first + std::ranges::size(r))
+        {
+        }
+
+        biterator(std::byte const *first_, std::byte const *last_)
+            : first(first_), last(last_)
+        {
+        }
+
+        auto operator=(biterator const &other) -> biterator &
+        {
+            if (this != &other) {
+                first = other.first;
+                last = other.last;
+                mask = other.mask;
+            }
+
+            return *this;
+        }
+
+        auto operator*() const -> bool
+        {
+            auto ret = (*first & mask) != std::byte{0};
+            //fmt::print("biterator: first={:0b} mask={:08b} return {}\n", *first, mask, ret);
+            return ret;
+        }
+
+        auto operator++() -> biterator &
+        {
+            mask >>= 1;
+
+            if (mask == std::byte{0}) {
+                first++;
+                if (first == last)
+                    return *this;
+
+                mask = std::byte{0x80};
+            }
+
+            return *this;
+        }
+
+        auto operator++(int) -> biterator
+        {
+            auto tmp(*this);
+            ++tmp;
+            return tmp;
+        }
+
+        std::byte const *first = nullptr, *last = nullptr;
+        std::byte mask = std::byte{0x80};
+    };
+
+    auto operator==(biterator const &a, biterator const &b)
+    {
+        auto a_end = (a.first == a.last) || (a.first == nullptr);
+        auto b_end = (b.first == b.last) || (b.first == nullptr);
+
+        if (a_end || b_end)
+            return a_end && b_end;
+
+        return (a.first == b.first) && (a.last == b.last) && (a.mask == b.mask);
+    }
+
+    auto operator!=(biterator const &a, biterator const &b) {
+        return !(a == b);
+    }
+
+    struct bit_range {
+        using iterator = biterator;
+        using const_iterator = biterator;
+        using value_type = bool;
+        using size_type = std::size_t;
+
+        biterator _begin, _end;
+        size_type _size;
+
+        template <std::ranges::contiguous_range Range>
+        bit_range(Range &&r)
+            : _begin(reinterpret_cast<std::byte const *>(std::ranges::data(r)),
+                     reinterpret_cast<std::byte const *>(std::ranges::data(r) +
+                                                         std::ranges::size(r))),
+              _size(std::ranges::size(r) * sizeof(std::ranges::range_value_t<Range>))
+        {
+        }
+
+        auto begin() const -> const_iterator
+        {
+            return _begin;
+        }
+
+        auto end() const -> const_iterator
+        {
+            return _end;
+        }
+
+        auto size() const -> size_type
+        {
+            return _size * CHAR_BIT;
+        }
+    };
 
     enum struct radix_op : int {
         insert,
@@ -56,11 +173,17 @@ namespace sk {
         radix_node(Range &&string_)
             : string(std::ranges::begin(string_), std::ranges::end(string_))
         {
+            //std::string r;
+            //std::ranges::for_each(string, [&](auto b) { r.push_back(b ? '1' : '0'); });
+            //fmt::print("  make new node, string=[{}]\n", r);
         }
 
         std::vector<Char> string;
         std::optional<T> value;
 
+        //static constexpr int radix = std::numeric_limits<Char>::max();
+
+        // std::array<node_ptr, radix> edges;
         std::vector<node_ptr> edges;
 
         template <std::ranges::range Range>
@@ -68,8 +191,12 @@ namespace sk {
         {
             namespace stdr = std::ranges;
 
+            //fmt::print("find: here={}\n", *std::ranges::begin(r));
+
             // If r is empty, we are the edge for this string.
-            if (stdr::size(r) == 0) {
+            //if (stdr::size(r) == 0) {
+            if (std::ranges::begin(r) == std::ranges::end(r)) {
+                //fmt::print("  at end\n");
                 if (op == radix_op::remove)
                     value.reset();
 
@@ -85,6 +212,8 @@ namespace sk {
 
                 auto matchlen = static_cast<std::size_t>(
                     std::distance(stdr::begin(e->string), mismatch.in2));
+
+                //fmt::print("  matchlen={}\n", matchlen);
 
                 if (matchlen == 0)
                     continue;
@@ -124,20 +253,24 @@ namespace sk {
                     return nullptr;
 
                 // Found a partial substring, split into two children.
+                //fmt::print("partial match len={}, going to split\n", matchlen);
                 auto new_node = std::make_unique<radix_node>(stdr::subrange(
-                    std::ranges::begin(r), stdr::begin(r) + matchlen));
+                    std::ranges::begin(r), mismatch.in1));
+                    //std::ranges::begin(r), stdr::begin(r) + matchlen));
 
                 e->string.erase(e->string.begin(),
                                 e->string.begin() + matchlen);
                 new_node->edges.emplace_back(std::move(e));
                 auto nr =
-                    stdr::subrange(stdr::begin(r) + matchlen, stdr::end(r));
+                    stdr::subrange(mismatch.in1, stdr::end(r));
+                    //stdr::subrange(stdr::begin(r) + matchlen, stdr::end(r));
                 edges.erase(eit);
                 auto &nn = edges.emplace_back(std::move(new_node));
 
                 return nn->find(nr, op);
             }
 
+            //fmt::print("  didn't find an edge, insert a new one\n");
             if (op != radix_op::insert)
                 return nullptr;
 
@@ -150,12 +283,14 @@ namespace sk {
 
     template <typename Char, typename T>
     struct radix_tree {
-        radix_node<Char, T> root;
+        radix_node<bool, T> root;
 
-        template <std::ranges::range Range>
+        template <std::ranges::contiguous_range Range>
         auto insert(Range &&r, T const &value) -> bool
         {
-            auto *node = root.find(r, radix_op::insert);
+            bit_range br(r);
+
+            auto *node = root.find(br, radix_op::insert);
             if (node->value)
                 return false;
 
@@ -163,24 +298,32 @@ namespace sk {
             return true;
         }
 
-        template <std::ranges::range Range>
+        template <std::ranges::contiguous_range Range>
         auto remove(Range &&r) -> bool
         {
-            auto *node = root.find(r, radix_op::remove);
+            bit_range br(r);
+
+            auto *node = root.find(br, radix_op::remove);
+
             if (!node)
                 return false;
 
             return true;
         }
 
-        template <std::ranges::range Range>
+        template <std::ranges::contiguous_range Range>
         auto find(Range &&r) -> T *
         {
-            auto node = root.find(r, radix_op::find);
+            bit_range br(r);
+
+            auto node = root.find(br, radix_op::find);
+
             if (!node)
                 return nullptr;
+
             if (!node->value)
                 return nullptr;
+
             return &*node->value;
         }
     };
