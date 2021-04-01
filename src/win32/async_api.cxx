@@ -68,12 +68,18 @@ namespace sk::win32 {
             return ::GetLastError();
         }
 
-        bool await_suspend(coroutine_handle<> coro_handle_)
+        template<typename P>
+        bool await_suspend(coroutine_handle<P> coro_handle_)
         {
             // Lock the overlapped so our coro isn't resumed by the
             // iocp_reactor until we're finished.
             std::lock_guard lock(overlapped->mutex);
             overlapped->coro_handle = coro_handle_;
+
+            sk::detail::check(coro_handle_.promise().task_executor != nullptr,
+                              "co_overlapped_awaiter: no executor");
+
+            overlapped->executor = coro_handle_.promise().task_executor;
 
             overlapped->success = static_cast<Impl *>(this)->overlapped_begin();
             overlapped->error = static_cast<Impl *>(this)->get_last_error();

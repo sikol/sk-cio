@@ -26,28 +26,50 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_NET_ADDRESS_HXX_INCLUDED
-#define SK_CIO_NET_ADDRESS_HXX_INCLUDED
+#ifndef SK_NET_ADDRESS_MAKE_ADDRESS_HXX_INCLUDED
+#define SK_NET_ADDRESS_MAKE_ADDRESS_HXX_INCLUDED
 
-#include <cstring>
-#include <iostream>
-#include <stdexcept>
-#include <system_error>
-
-#include <sk/detail/platform.hxx>
-#include <sk/detail/safeint.hxx>
-#include <sk/expected.hxx>
-#include <sk/task.hxx>
+// Utility functions for creating addresses.
 
 #include <sk/net/address/address.hxx>
-#include <sk/net/address/inet.hxx>
-#include <sk/net/address/inet6.hxx>
+#include <sk/net/address/unspec.hxx>
+
+namespace sk::net {
+
+    /*************************************************************************
+     * make_zero_address - return the zero unspecified_address for an AF.
+     */
+    [[nodiscard]] inline auto make_unspecified_zero_address(int af)
+        -> expected<unspecified_address, std::error_code>
+    {
+        switch (af) {
+        case AF_INET: {
+            sockaddr_in sin{};
+            sin.sin_family = AF_INET;
+            return address_cast<unspecified_address>(sin);
+        }
+
+        case AF_INET6: {
+            sockaddr_in6 sin6{};
+            sin6.sin6_family = AF_INET6;
+
+            return address_cast<unspecified_address>(sin6);
+        }
 
 #ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
-#include <sk/net/address/unix.hxx>
+        case AF_UNIX: {
+            sockaddr_un sun{};
+            sun.sun_family = AF_UNIX;
+            return address_cast<unspecified_address>(sun);
+        }
 #endif
 
-#include <sk/net/address/make_address.hxx>
-#include <sk/net/address/resolve.hxx>
+        default:
+            return make_unexpected(
+                std::make_error_code(std::errc::address_family_not_supported));
+        }
+    }
 
-#endif // SK_CIO_NET_ADDRESS_HXX_INCLUDED
+} // namespace sk::net
+
+#endif // SRC_INCLUDE_SK_NET_ADDRESS_MAKE_ADDRESS_HXX_INCLUDED

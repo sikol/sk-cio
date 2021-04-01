@@ -66,7 +66,8 @@ namespace sk::posix::detail {
         auto operator=(streamsocketserver const &)
             -> streamsocketserver & = delete;
 
-        [[nodiscard]] static auto listen(net::address const &addr)
+        template<int af>
+        [[nodiscard]] static auto listen(net::address<af> const &addr)
             -> expected<server_type, std::error_code>;
 
         [[nodiscard]] auto is_open() const -> bool;
@@ -119,10 +120,11 @@ namespace sk::posix::detail {
               seqchannel channel_type,
               int type,
               int protocol>
+    template<int af>
     auto streamsocketserver<server_type, channel_type, type, protocol>::listen(
-        net::address const &addr) -> expected<server_type, std::error_code>
+        net::address<af> const &addr) -> expected<server_type, std::error_code>
     {
-        int listener = ::socket(addr.address_family(), type, protocol);
+        int listener = ::socket(address_family(addr), type, protocol);
 
         if (listener == -1)
             return make_unexpected(sk::posix::get_errno());
@@ -131,7 +133,7 @@ namespace sk::posix::detail {
 
         auto ret =
             ::bind(listener,
-                   reinterpret_cast<sockaddr const *>(&addr.native_address),
+                   *address_cast<sockaddr const *>(addr),
                    addr.native_address_length);
         if (ret == -1)
             return make_unexpected(sk::posix::get_errno());
@@ -142,7 +144,7 @@ namespace sk::posix::detail {
 
         reactor_handle::get_global_reactor().associate_fd(listener);
 
-        return server_type{std::move(listener_), addr.address_family()};
+        return server_type{std::move(listener_), address_family(addr)};
     }
 
     /*************************************************************************

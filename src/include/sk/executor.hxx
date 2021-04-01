@@ -26,28 +26,40 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_NET_ADDRESS_HXX_INCLUDED
-#define SK_CIO_NET_ADDRESS_HXX_INCLUDED
+#ifndef SK_EXECUTOR_HXX_INCLUDED
+#define SK_EXECUTOR_HXX_INCLUDED
 
-#include <cstring>
-#include <iostream>
-#include <stdexcept>
-#include <system_error>
+#include <functional>
+#include <future>
+#include <memory>
 
-#include <sk/detail/platform.hxx>
-#include <sk/detail/safeint.hxx>
-#include <sk/expected.hxx>
-#include <sk/task.hxx>
+namespace sk {
 
-#include <sk/net/address/address.hxx>
-#include <sk/net/address/inet.hxx>
-#include <sk/net/address/inet6.hxx>
+    /*************************************************************************
+     *
+     * executor: dispatch tasks.
+     *
+     */
+    struct executor {
+        virtual auto post(std::function<void()> &&) -> void = 0;
+    };
 
-#ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
-#include <sk/net/address/unix.hxx>
+    /*************************************************************************
+     *
+     * local_executor: dispatch tasks on this thread.
+     *
+     */
+#if 0
+    class local_executor final : executor {
+        std::promise<void> _promise;
+        std::future<void> _future = _promise.get_future();
+
+        auto post(std::function<void()> fn) -> void override {
+
+        }
+    };
 #endif
 
-#include <sk/net/address/make_address.hxx>
-#include <sk/net/address/resolve.hxx>
+} // namespace sk
 
-#endif // SK_CIO_NET_ADDRESS_HXX_INCLUDED
+#endif // SK_EXECUTOR_HXX_INCLUDED

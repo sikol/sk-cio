@@ -79,6 +79,8 @@ namespace sk::posix::detail {
         // Stop this reactor.
         auto stop() -> void;
 
+        auto get_executor() -> executor *;
+
         // Post work to the reactor's thread pool.
         auto post(std::function<void()> &&fn) -> void;
 

@@ -36,6 +36,8 @@
 #include <thread>
 #include <vector>
 
+#include <sk/executor.hxx>
+
 namespace sk {
 
     /*************************************************************************
@@ -44,7 +46,7 @@ namespace sk {
      *
      */
 
-    struct workq {
+    struct workq final : executor, std::enable_shared_from_this<workq> {
         using work_type = std::function<void()>;
 
         // Post work to the queue

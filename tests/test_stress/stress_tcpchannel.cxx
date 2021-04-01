@@ -46,7 +46,7 @@ constexpr auto run_for = 20s;
 
 std::string const tcp_listen_address = "127.0.0.1";
 std::string const tcp_listen_port = "5357";
-net::address *tcp_listen_addr;
+net::address<> *tcp_listen_addr;
 
 task<int> tcp_stress_task()
 {

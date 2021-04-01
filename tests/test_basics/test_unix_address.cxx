@@ -26,28 +26,51 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_NET_ADDRESS_HXX_INCLUDED
-#define SK_CIO_NET_ADDRESS_HXX_INCLUDED
+#include <catch.hpp>
 
-#include <cstring>
-#include <iostream>
-#include <stdexcept>
-#include <system_error>
+#include <sk/net/address.hxx>
 
-#include <sk/detail/platform.hxx>
-#include <sk/detail/safeint.hxx>
-#include <sk/expected.hxx>
-#include <sk/task.hxx>
+using namespace sk::net;
 
-#include <sk/net/address/address.hxx>
-#include <sk/net/address/inet.hxx>
-#include <sk/net/address/inet6.hxx>
+TEST_CASE("unix_address: make_unix_address") {
+    auto addr = make_unix_address("/tmp/x.sock");
+    REQUIRE(addr);
+    REQUIRE(address_family(*addr) == AF_UNIX);
 
-#ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
-#include <sk/net/address/unix.hxx>
-#endif
+    auto s = str(*addr);
+    REQUIRE(s);
+    REQUIRE(*s == "/tmp/x.sock");
+}
 
-#include <sk/net/address/make_address.hxx>
-#include <sk/net/address/resolve.hxx>
+TEST_CASE("unix_address: address_cast to unspecified_address") {
+    auto uaddr = make_unix_address("/tmp/x.sock");
+    REQUIRE(uaddr);
 
-#endif // SK_CIO_NET_ADDRESS_HXX_INCLUDED
+    auto unspec = address_cast<unspecified_address>(*uaddr);
+    REQUIRE(unspec);
+    REQUIRE(address_family(*unspec) == AF_UNIX);
+
+    auto s = str(*unspec);
+    if (!s) {
+        INFO(s.error().message());
+        REQUIRE(s);
+    }
+    REQUIRE(*s == "/tmp/x.sock");
+
+    auto unix2 = address_cast<unix_address>(*unspec);
+    REQUIRE(address_family(*unix2) == AF_UNIX);
+
+    s = str(*unix2);
+    REQUIRE(s);
+    REQUIRE(*s == "/tmp/x.sock");
+}
+
+TEST_CASE("unix_address: streaming output") {
+    auto addr = make_unix_address("/tmp/x.sock");
+    REQUIRE(addr);
+
+    std::ostringstream strm;
+    strm << *addr;
+    REQUIRE(strm.str() == "/tmp/x.sock");
+
+}

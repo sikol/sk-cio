@@ -15,6 +15,7 @@ both a synchronous API and a coroutine-based asynchronous API.
    io_functions.rst
    filechannel.rst
    memchannel.rst
+   net.rst
 
 Supported compilers
 -------------------

@@ -65,7 +65,8 @@ namespace sk::win32::detail {
 
         [[nodiscard]] auto is_open() const -> bool;
 
-        [[nodiscard]] static auto listen(sk::net::address const &addr)
+        template <int af>
+        [[nodiscard]] static auto listen(sk::net::address<af> const &addr)
             -> expected<server_type, std::error_code>;
 
         [[nodiscard]] auto async_accept()
@@ -116,11 +117,13 @@ namespace sk::win32::detail {
               seqchannel channel_type,
               int type,
               int protocol>
+    template <int af>
     auto streamsocketserver<server_type, channel_type, type, protocol>::listen(
-        sk::net::address const &addr) -> expected<server_type, std::error_code>
+        sk::net::address<af> const &addr)
+        -> expected<server_type, std::error_code>
     {
         SOCKET listener;
-        listener = ::socket(addr.address_family(), type, protocol);
+        listener = ::socket(address_family(addr), type, protocol);
 
         if (listener == INVALID_SOCKET)
             return make_unexpected(win32::get_last_winsock_error());
@@ -129,8 +132,10 @@ namespace sk::win32::detail {
 
         int ret;
 
+        // Setting SO_REUSEADDR on an AF_UNIX socket is pointless, but on
+        // Windows it returns an error.
 #ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
-        if (addr.address_family() != AF_UNIX) {
+        if (address_family(addr) != AF_UNIX) {
 #endif
             DWORD one = 1;
             ret = ::setsockopt(listener,
@@ -145,7 +150,7 @@ namespace sk::win32::detail {
 #endif
 
         ret = ::bind(listener,
-                     reinterpret_cast<sockaddr const *>(&addr.native_address),
+                     *address_cast<sockaddr const *>(addr),
                      addr.native_address_length);
         if (ret)
             return make_unexpected(win32::get_last_winsock_error());
@@ -157,7 +162,7 @@ namespace sk::win32::detail {
         reactor_handle::get_global_reactor().associate_handle(
             reinterpret_cast<HANDLE>(listener));
 
-        return server_type{std::move(listener_), addr.address_family()};
+        return server_type{std::move(listener_), address_family(addr)};
     }
 
     /*************************************************************************

@@ -73,7 +73,11 @@ namespace sk::win32::detail {
             }
 
             auto &h = overlapped->coro_handle;
-            _workq.post([&] { h.resume(); });
+            sk::detail::check(
+                overlapped->executor != nullptr,
+                "iocp_reactor: trying to resume without executor");
+
+            overlapped->executor->post([&] { h.resume(); });
         }
     }
 
@@ -102,6 +106,10 @@ namespace sk::win32::detail {
     auto iocp_reactor::post(std::function<void()> fn) -> void
     {
         _workq.post(std::move(fn));
+    }
+
+    auto iocp_reactor::get_executor() -> executor * {
+        return &_workq;
     }
 
 } // namespace sk::win32::detail

@@ -36,6 +36,8 @@ namespace sk {
 
     struct detach_task {
         struct promise_type {
+            executor *task_executor;
+
             auto get_return_object() -> detach_task
             {
                 return detach_task(
@@ -75,6 +77,8 @@ namespace sk {
         detach_task(detach_task &&other) noexcept
             : coro_handle(std::exchange(other.coro_handle, {}))
         {
+            coro_handle.promise().task_executor =
+                reactor_handle::get_global_reactor().get_executor();
         }
 
         ~detach_task()

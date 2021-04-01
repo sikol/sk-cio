@@ -44,6 +44,9 @@ add_executable(test_basics
     test_fixed_buffer.cxx
     test_pmr_buffer.cxx
     test_static_vector.cxx
+    test_inet_address.cxx
+    test_inet6_address.cxx
+    test_unix_address.cxx
     )
 
 target_link_libraries(test_basics PRIVATE sk-cio catch fmt)

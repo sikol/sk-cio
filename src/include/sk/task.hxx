@@ -38,6 +38,7 @@
 #include <utility>
 
 #include <sk/detail/coroutine.hxx>
+#include <sk/executor.hxx>
 
 namespace sk {
     /*************************************************************************
@@ -85,6 +86,7 @@ namespace sk {
 #endif
             coroutine_handle<> previous;
             std::exception_ptr exception{nullptr};
+            executor *task_executor;
 
             auto get_return_object()
             {
@@ -176,17 +178,22 @@ namespace sk {
 
 #ifdef SK_HAS_STD_COROUTINES
         // NOLINTNEXTLINE(bugprone-exception-escape)
-        auto await_suspend(coroutine_handle<> h) noexcept
+        template<typename P>
+        auto await_suspend(coroutine_handle<P> h) noexcept
         {
-            coro_handle.promise().previous = h;
+            auto &promise = coro_handle.promise();
+            promise.previous = h;
+            promise.task_executor = h.promise().task_executor;
             return coro_handle;
         }
 #else
         // NOLINTNEXTLINE(bugprone-exception-escape)
-        auto await_suspend(coroutine_handle<> h) noexcept -> bool
+        template<typename P>
+        auto await_suspend(coroutine_handle<P> h) noexcept -> bool
         {
             auto &promise = coro_handle.promise();
             promise.previous = h;
+            promise.task_executor = h.promise().task_executor;
             coro_handle.resume();
             return !promise.ready.exchange(true, std::memory_order_acq_rel);
         }

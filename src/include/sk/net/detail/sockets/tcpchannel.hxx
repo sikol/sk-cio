@@ -69,21 +69,23 @@ namespace sk::net {
 
         auto operator=(tcpchannel const &) -> tcpchannel & = delete;
 
-        [[nodiscard]] auto connect(sk::net::address const &addr)
+        template <int af>
+        [[nodiscard]] auto connect(sk::net::address<af> const &addr)
             -> expected<void, std::error_code>
         {
-            if (addr.address_family() != AF_INET &&
-                addr.address_family() != AF_INET6)
+            if (address_family(addr) != AF_INET &&
+                address_family(addr) != AF_INET6)
                 return make_unexpected(std::make_error_code(
                     std::errc::address_family_not_supported));
             return socket_type::_connect(addr);
         }
 
-        [[nodiscard]] auto async_connect(sk::net::address const &addr)
+        template <int af>
+        [[nodiscard]] auto async_connect(sk::net::address<af> const &addr)
             -> task<expected<void, std::error_code>>
         {
-            if (addr.address_family() != AF_INET &&
-                addr.address_family() != AF_INET6)
+            if (address_family(addr) != AF_INET &&
+                address_family(addr) != AF_INET6)
                 co_return make_unexpected(std::make_error_code(
                     std::errc::address_family_not_supported));
             co_return co_await socket_type::_async_connect(addr);

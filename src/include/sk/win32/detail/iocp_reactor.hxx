@@ -38,6 +38,7 @@
 #include <sk/win32/windows.hxx>
 #include <sk/task.hxx>
 #include <sk/workq.hxx>
+#include <sk/executor.hxx>
 
 namespace sk::win32::detail {
 
@@ -47,6 +48,7 @@ namespace sk::win32::detail {
         BOOL success = 0;
         DWORD error = 0;
         DWORD bytes_transferred = 0;
+        executor *executor;
         coroutine_handle<> coro_handle;
         std::mutex mutex;
     };
@@ -76,6 +78,8 @@ namespace sk::win32::detail {
 
         // Post work to the reactor's thread pool.
         auto post(std::function<void()> fn) -> void;
+
+        auto get_executor() -> executor *;
 
     private:
         workq _workq;

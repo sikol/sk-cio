@@ -72,6 +72,10 @@ namespace sk::posix::detail {
         _workq.post(std::move(fn));
     }
 
+    auto linux_reactor::get_executor() -> executor * {
+        return &_workq;
+    }
+
     /*
      * File I/O functions.
      */

@@ -57,10 +57,12 @@ namespace sk::posix::detail {
 
         sk::posix::unique_fd _fd;
 
-        [[nodiscard]] auto _async_connect(sk::net::address const &addr)
+        template<int af>
+        [[nodiscard]] auto _async_connect(sk::net::address<af> const &addr)
         -> task<expected<void, std::error_code>>;
 
-        [[nodiscard]] auto _connect(sk::net::address const &addr)
+        template<int af>
+        [[nodiscard]] auto _connect(sk::net::address<af> const &addr)
         -> expected<void, std::error_code>;
 
     public:
@@ -145,13 +147,14 @@ namespace sk::posix::detail {
      * streamsocket::async_connect()
      */
     template<int type, int protocol>
-    auto streamsocket<type, protocol>::_async_connect(sk::net::address const &addr)
+    template<int af>
+    auto streamsocket<type, protocol>::_async_connect(sk::net::address<af> const &addr)
     -> task<expected<void, std::error_code>>
     {
 
         sk::detail::check(!is_open(), "attempt to re-connect an open channel");
 
-        auto sock = ::socket(addr.address_family(), type, protocol);
+        auto sock = ::socket(address_family(addr), type, protocol);
 
         if (sock == -1)
             co_return make_unexpected(sk::posix::get_errno());
@@ -160,7 +163,7 @@ namespace sk::posix::detail {
 
         auto ret = co_await sk::posix::async_fd_connect(
             sock,
-            reinterpret_cast<sockaddr const *>(&addr.native_address),
+            *address_cast<sockaddr const *>(addr),
             addr.native_address_length);
 
         if (!ret)
@@ -175,7 +178,8 @@ namespace sk::posix::detail {
      * streamsocket::connect()
      */
     template<int type, int protocol>
-    auto streamsocket<type, protocol>::_connect(sk::net::address const &addr)
+    template<int af>
+    auto streamsocket<type, protocol>::_connect(sk::net::address<af> const &addr)
     -> expected<void, std::error_code>
     {
         return wait(_async_connect(addr));

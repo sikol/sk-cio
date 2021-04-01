@@ -29,6 +29,7 @@
 #ifndef SK_CIO_WAIT_HXX_INCLUDED
 #define SK_CIO_WAIT_HXX_INCLUDED
 
+#include <sk/reactor.hxx>
 #include <sk/task.hxx>
 
 namespace sk {
@@ -36,6 +37,7 @@ namespace sk {
     struct wait_task {
         struct promise_type {
             std::promise<void> promise;
+            executor *task_executor;
 
             auto get_return_object()
             {
@@ -79,6 +81,8 @@ namespace sk {
         explicit wait_task(coroutine_handle<promise_type> coro_handle_)
             : coro_handle(coro_handle_)
         {
+            coro_handle.promise().task_executor =
+                reactor_handle::get_global_reactor().get_executor();
         }
 
         wait_task(wait_task const &) = delete;

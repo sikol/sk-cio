@@ -26,28 +26,19 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_NET_ADDRESS_HXX_INCLUDED
-#define SK_CIO_NET_ADDRESS_HXX_INCLUDED
+#ifndef SK_OVERLOAD_HXX_INCLUDED
+#define SK_OVERLOAD_HXX_INCLUDED
 
-#include <cstring>
-#include <iostream>
-#include <stdexcept>
-#include <system_error>
+namespace sk {
 
-#include <sk/detail/platform.hxx>
-#include <sk/detail/safeint.hxx>
-#include <sk/expected.hxx>
-#include <sk/task.hxx>
+    template <typename... Ts>
+    struct overload : Ts... {
+        using Ts::operator()...;
+    };
 
-#include <sk/net/address/address.hxx>
-#include <sk/net/address/inet.hxx>
-#include <sk/net/address/inet6.hxx>
+    template <typename... Ts>
+    overload(Ts...) -> overload<Ts...>;
 
-#ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
-#include <sk/net/address/unix.hxx>
-#endif
+} // namespace sk
 
-#include <sk/net/address/make_address.hxx>
-#include <sk/net/address/resolve.hxx>
-
-#endif // SK_CIO_NET_ADDRESS_HXX_INCLUDED
+#endif // SK_OVERLOAD_HXX_INCLUDED
