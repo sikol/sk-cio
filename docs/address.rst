@@ -57,12 +57,12 @@ family to be inspected at runtime.
         switch (af) {
         case AF_INET:
         case AF_INET6:
-            // We know the address at compile time.
+            // We know the address family at compile time.
             do_something(af);
             break;
 
         case AF_UNSPEC: {
-            // We can determine the address at runtime.
+            // We can determine the address family at runtime.
             int family = address_family(addr);
             do_something(family);
             break;
@@ -92,7 +92,7 @@ An ``inet_address`` represents an IPv4 address, and optionally a port number.
 
         socklen_t const native_address_length = sizeof(native_address);
 
-        auto port() -> int;
+        auto port() const -> int;
     };
 
     }
@@ -115,7 +115,7 @@ An ``inet6_address`` represents an IPv6 address, and optionally a port number.
 
         socklen_t const native_address_length = sizeof(native_address);
 
-        auto port() -> int;
+        auto port() const -> int;
     };
 
     }
@@ -281,7 +281,7 @@ Addresses can be converted between types using ``address_cast()``:
     namespace sk::net {
 
     template<typename To, typename From>
-    auto address_cast(From const &) -> To;
+    auto address_cast(From const &) -> expected<To, std::error_code>;
 
     }
 
