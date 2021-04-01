@@ -79,7 +79,7 @@ namespace sk::net {
         constexpr std::size_t ni_maxhost = 1025;
 #endif
 
-#ifdef NI_MAXHOST
+#ifdef NI_MAXSERV
         constexpr std::size_t ni_maxserv = NI_MAXSERV;
 #else
         constexpr std::size_t ni_maxserv = 32;
