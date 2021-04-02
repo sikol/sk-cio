@@ -42,126 +42,188 @@
 
 namespace sk {
 
-    struct biterator {
-        using iterator_category = std::input_iterator_tag;
-        using difference_type = std::ptrdiff_t;
-        using value_type = bool;
-        using pointer = std::optional<bool>;
-        using reference = bool;
+    template <std::unsigned_integral T>
+    struct bitstring {
+        static constexpr unsigned max_len = std::numeric_limits<T>::digits;
+        static constexpr T one = T(1) << (max_len - 1);
+        static constexpr T zero = 0;
+        T value = 0;
+        unsigned len = 0;
 
-        biterator() = default;
-
-        biterator(biterator const &other)
-            : first(other.first), last(other.last), mask(other.mask)
+        auto mask_for_bit(unsigned bit) const -> T
         {
+            return one >> bit;
         }
 
-        template <std::ranges::contiguous_range Range>
-        biterator(Range &&r)
-            : first(std::ranges::data(r)), last(first + std::ranges::size(r))
+        void set(unsigned bit)
         {
+            value |= mask_for_bit(bit);
         }
 
-        biterator(std::byte const *first_, std::byte const *last_)
-            : first(first_), last(last_)
+        void clr(unsigned bit)
         {
+            value &= ~mask_for_bit(bit);
         }
 
-        auto operator=(biterator const &other) -> biterator &
+        auto mask() const -> T
         {
-            if (this != &other) {
-                first = other.first;
-                last = other.last;
-                mask = other.mask;
-            }
+            return ~zero << (max_len - len);
+        }
 
+        void append(bool bit)
+        {
+            assert(len + 1 < max_len);
+            if (bit)
+                set(len);
+            else
+                clr(len);
+            ++len;
+        }
+
+        void append(bitstring const &other)
+        {
+            assert(len + other.len < max_len);
+            value |= (other.value >> len);
+            len += other.len;
+        }
+
+        auto test(unsigned bit) const -> bool
+        {
+            assert(bit < len);
+            return (value & mask_for_bit(bit)) ? 1 : 0;
+        }
+
+        auto operator[](unsigned bit) const -> bool
+        {
+            return test(bit);
+        }
+
+        auto str() const -> std::string
+        {
+            std::string r;
+
+            for (unsigned i = 0; i < len; ++i)
+                r += test(i) ? '1' : '0';
+
+            return r;
+        }
+
+        auto vec() const -> std::vector<bool>
+        {
+            std::vector<bool> r;
+
+            for (unsigned i = 0; i < len; ++i)
+                r.push_back(test(i));
+
+            return r;
+        }
+
+        auto operator=(std::vector<bool> const &other) -> bitstring &
+        {
+            reset();
+            for (auto &&bit : other)
+                append(bit);
             return *this;
         }
 
-        auto operator*() const -> bool
+        auto operator=(bitstring const &other) -> bitstring &
         {
-            auto ret = (*first & mask) != std::byte{0};
-            // fmt::print("biterator: first={:0b} mask={:08b} return {}\n",
-            // *first, mask, ret);
-            return ret;
-        }
-
-        auto operator++() -> biterator &
-        {
-            mask >>= 1;
-
-            if (mask == std::byte{0}) {
-                first++;
-                if (first == last)
-                    return *this;
-
-                mask = std::byte{0x80};
+            if (&other != this) {
+                value = other.value;
+                len = other.len;
             }
-
             return *this;
         }
 
-        auto operator++(int) -> biterator
+        auto operator=(std::string const &v) -> bitstring &
         {
-            auto tmp(*this);
-            ++tmp;
-            return tmp;
+            reset();
+            for (auto &&b : v)
+                append(b == '1' ? 1 : 0);
+            return *this;
         }
 
-        std::byte const *first = nullptr, *last = nullptr;
-        std::byte mask = std::byte{0x80};
+        auto reset() -> void
+        {
+            value = 0;
+            len = 0;
+        }
+
+        auto size() -> unsigned
+        {
+            return len;
+        }
+
+        bitstring() = default;
+
+        bitstring(T value_, unsigned len_) : value(value_), len(len_)
+        {
+            value &= mask();
+        }
+
+        bitstring(bitstring const &other) : value(other.value), len(other.len)
+        {
+        }
+
+        explicit bitstring(std::string const &v)
+        {
+            for (auto &&b : v)
+                append(b == '1' ? 1 : 0);
+        }
+
+        explicit bitstring(char const *s) : bitstring(std::string(s)) {}
+
+#if 0
+        template <std::ranges::range Range>
+        explicit bitstring(Range const &r)
+        {
+            for (auto v : r)
+                append(v);
+        }
+#endif
+
+        explicit bitstring(std::byte const *bstart, std::byte const *bend)
+        {
+            while (bstart < bend) {
+                value |= (static_cast<T>(*bstart) << (max_len - (len + 8)));
+                len += 8;
+                ++bstart;
+            }
+        }
+
+        explicit bitstring(std::vector<bool> const &bits)
+        {
+            for (auto &&bit : bits)
+                append(bit);
+        }
     };
 
-    auto operator==(biterator const &a, biterator const &b)
+    template <std::unsigned_integral T>
+    inline auto common_prefix(bitstring<T> const &a, bitstring<T> const &b)
     {
-        auto a_end = (a.first == a.last) || (a.first == nullptr);
-        auto b_end = (b.first == b.last) || (b.first == nullptr);
-
-        if (a_end || b_end)
-            return a_end && b_end;
-
-        return (a.first == b.first) && (a.last == b.last) && (a.mask == b.mask);
+        unsigned len = std::min(a.len, b.len);
+        T mask = (~T(0)) << (bitstring<T>::max_len - len);
+        unsigned bits = std::countl_zero((a.value & mask) ^ (b.value & mask));
+        return bitstring<T>(a.value & mask, std::min(bits, len));
     }
 
-    auto operator!=(biterator const &a, biterator const &b)
+    template <std::unsigned_integral T>
+    inline auto operator+(bitstring<T> const &a, bitstring<T> const &b)
     {
-        return !(a == b);
+        auto r(a);
+        r.append(b);
+        return r;
     }
 
-    struct bit_range {
-        using iterator = biterator;
-        using const_iterator = biterator;
-        using value_type = bool;
-        using size_type = std::size_t;
-
-        biterator _begin, _end;
-        size_type _size;
-
-        template <std::ranges::contiguous_range Range>
-        bit_range(Range &&r)
-            : _begin(reinterpret_cast<std::byte const *>(std::ranges::data(r)),
-                     reinterpret_cast<std::byte const *>(std::ranges::data(r) +
-                                                         std::ranges::size(r))),
-              _size(std::ranges::size(r) *
-                    sizeof(std::ranges::range_value_t<Range>))
-        {
-        }
-
-        auto begin() const -> const_iterator
-        {
-            return _begin;
-        }
-
-        auto end() const -> const_iterator
-        {
-            return _end;
-        }
-
-        auto size() const -> size_type
-        {
-            return _size * CHAR_BIT;
-        }
-    };
+    template <std::unsigned_integral T>
+    inline auto operator<<(bitstring<T> const &b, unsigned bits)
+    {
+        auto r(b);
+        assert(r.len >= bits);
+        r.len -= bits;
+        r.value <<= bits;
+        return r;
+    }
 
     enum struct radix_op : int {
         insert,
@@ -172,37 +234,30 @@ namespace sk {
     template <typename T>
     struct radix_node {
         using node_ptr = std::unique_ptr<radix_node>;
+        using string_type = bitstring<std::uint64_t>;
 
         radix_node() = default;
-        template <std::ranges::range Range>
-        radix_node(Range &&string_)
-            : string(std::ranges::begin(string_), std::ranges::end(string_))
-        {
-            // std::string r;
-            // std::ranges::for_each(string, [&](auto b) { r.push_back(b ? '1' :
-            // '0'); }); fmt::print("  make new node, string=[{}]\n", r);
-        }
+
+        radix_node(string_type const &s) : istring(s) {}
 
         auto add_node(std::unique_ptr<radix_node<T>> &&n) -> node_ptr &
         {
-            auto &branch = n->string[0] ? right : left;
+            auto &branch = n->istring[0] ? right : left;
             assert(branch.get() == nullptr);
             branch = std::move(n);
             return branch;
         }
 
-        std::vector<bool> string;
+        static constexpr unsigned max_string = 64;
+        string_type istring;
         std::optional<T> value;
 
         node_ptr left, right;
 
-        template <std::ranges::range Range>
-        auto find(Range &&r, radix_op op) -> radix_node<T> *
+        auto find(string_type ir, radix_op op) -> radix_node<T> *
         {
-            namespace stdr = std::ranges;
-
             // If r is empty, we are the edge for this string.
-            if (std::ranges::begin(r) == std::ranges::end(r)) {
+            if (ir.size() == 0) {
                 if (op == radix_op::remove)
                     value.reset();
 
@@ -210,26 +265,27 @@ namespace sk {
             }
 
             // Look for an existing edge.
-            auto &e = *std::ranges::begin(r) ? right : left;
+            auto &e = ir[0] ? right : left;
 
             if (!e) {
                 if (op != radix_op::insert)
                     return nullptr;
 
-                auto &new_edge = add_node(std::make_unique<radix_node>(r));
+                auto &new_edge = add_node(std::make_unique<radix_node>(ir));
                 return new_edge.get();
             }
 
-            auto mismatch = stdr::mismatch(r, e->string);
+            auto pfx = common_prefix(ir, e->istring);
 
-            auto matchlen = static_cast<std::size_t>(
-                std::distance(stdr::begin(e->string), mismatch.in2));
+            auto matchlen = pfx.size();
 
+            assert(matchlen < max_string);
             assert(matchlen > 0);
 
-            if (matchlen == stdr::size(e->string)) {
-                auto sr = stdr::subrange(mismatch.in1, stdr::end(r));
-                auto ret = e->find(sr, op);
+            // if (matchlen == stdr::size(e->string)) {
+            if (matchlen == e->istring.size()) {
+                auto br = ir << pfx.size();
+                auto ret = e->find(br, op);
                 if (op != radix_op::remove)
                     return ret;
 
@@ -244,9 +300,7 @@ namespace sk {
                     if (!(e->left && e->right)) {
                         auto &steal = e->left ? e->left : e->right;
                         // If the child only has a single edge, unsplit it.
-                        steal->string.insert(steal->string.begin(),
-                                             e->string.begin(),
-                                             e->string.end());
+                        steal->istring = e->istring + steal->istring;
                         e = std::move(steal);
                         return this;
                     }
@@ -259,15 +313,13 @@ namespace sk {
                 return nullptr;
 
             // Found a partial substring, split into two children.
-            auto new_node = std::make_unique<radix_node>(
-                stdr::subrange(std::ranges::begin(r), mismatch.in1));
-
-            e->string.erase(e->string.begin(), e->string.begin() + matchlen);
+            auto new_node = std::make_unique<radix_node>(pfx);
+            e->istring = e->istring << matchlen;
 
             new_node->add_node(std::move(e));
             e = std::move(new_node);
 
-            auto nr = stdr::subrange(mismatch.in1, stdr::end(r));
+            auto nr = ir << pfx.size();
             return e->find(nr, op);
         }
     };
@@ -279,9 +331,13 @@ namespace sk {
         template <std::ranges::contiguous_range Range>
         auto insert(Range &&r, T const &value) -> bool
         {
-            bit_range br(r);
+            auto dstart =
+                reinterpret_cast<std::byte const *>(std::ranges::data(r));
+            auto dend = dstart + std::ranges::size(r) *
+                                     sizeof(std::ranges::range_value_t<Range>);
+            typename radix_node<T>::string_type bs(dstart, dend);
 
-            auto *node = root.find(br, radix_op::insert);
+            auto *node = root.find(bs, radix_op::insert);
             if (node->value)
                 return false;
 
@@ -292,9 +348,13 @@ namespace sk {
         template <std::ranges::contiguous_range Range>
         auto remove(Range &&r) -> bool
         {
-            bit_range br(r);
+            auto dstart =
+                reinterpret_cast<std::byte const *>(std::ranges::data(r));
+            auto dend = dstart + std::ranges::size(r) *
+                                     sizeof(std::ranges::range_value_t<Range>);
+            typename radix_node<T>::string_type bs(dstart, dend);
 
-            auto *node = root.find(br, radix_op::remove);
+            auto *node = root.find(bs, radix_op::remove);
 
             if (!node)
                 return false;
@@ -305,9 +365,13 @@ namespace sk {
         template <std::ranges::contiguous_range Range>
         auto find(Range &&r) -> T *
         {
-            bit_range br(r);
+            auto dstart =
+                reinterpret_cast<std::byte const *>(std::ranges::data(r));
+            auto dend = dstart + std::ranges::size(r) *
+                                     sizeof(std::ranges::range_value_t<Range>);
+            typename radix_node<T>::string_type bs(dstart, dend);
 
-            auto node = root.find(br, radix_op::find);
+            auto node = root.find(bs, radix_op::find);
 
             if (!node)
                 return nullptr;

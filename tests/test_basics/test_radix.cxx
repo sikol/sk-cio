@@ -34,56 +34,62 @@ using namespace std::string_view_literals;
 
 #include <sk/radix.hxx>
 
-using sk::biterator;
-using sk::bit_range;
 using sk::radix_tree;
+using sk::bitstring;
 
-TEST_CASE("biterator")
-{
-    std::byte b{0b10110010};
-    biterator bit(std::span(&b, 1)), bend;
-    std::vector<bool> bits;
-    std::copy(bit, biterator(), std::back_inserter(bits));
-    REQUIRE(bits == std::vector<bool>{
-                        true, false, true, true, false, false, true, false});
+TEST_CASE("bitstring") {
+    bitstring<std::uint64_t> bits;
+
+    bits.append(1);
+    REQUIRE(bits.str() == "1");
+    REQUIRE(bits.mask() == 0x8000000000000000);
+
+    bits.append(0);
+    REQUIRE(bits.str() == "10");
+    REQUIRE(bits.mask() == 0xC000000000000000);
+
+    std::vector<bool> v{0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 0};
+    bits = v;
+    REQUIRE(bits.str() == "01010111000");
+    REQUIRE(bits[0] == 0);
+    REQUIRE(bits[1] == 1);
+    REQUIRE(bits[2] == 0);
+    REQUIRE(bits[3] == 1);
+    REQUIRE(bits[4] == 0);
+    REQUIRE(bits[5] == 1);
+    REQUIRE(bits[6] == 1);
+    REQUIRE(bits[7] == 1);
+    REQUIRE(bits[8] == 0);
+    REQUIRE(bits[9] == 0);
+    REQUIRE(bits[10] == 0);
+    REQUIRE(bits.mask() == 0xffe0000000000000);
+
+    REQUIRE((bits << 3).str() == "10111000");
+
+    bitstring<std::uint64_t> a("101100");
+    bitstring<std::uint64_t> b("101011");
+    REQUIRE(common_prefix(a, b).str() == "101");
+
+    a = "101100";
+    b = "001011";
+    REQUIRE(common_prefix(a, b).str() == "");
+    REQUIRE(a.vec() == std::vector<bool>{1, 0, 1, 1, 0, 0});
+
+    auto c = a + b;
+    REQUIRE(c.str() == "101100001011");
+
+    a = "1011000";
+    b = "1011000";
+    REQUIRE(common_prefix(a, b).str() == "1011000");
 
     std::array bytes{
-        std::byte{0b10110010},
-        std::byte{0b00101101},
-        std::byte{0b11100101},
+        std::byte{0b01101001},
+        std::byte{0b11101111},
+        std::byte{0b10010101}
     };
 
-    biterator bit2(bytes);
-
-    bits.clear();
-    std::copy(bit2, bend, std::back_inserter(bits));
-    REQUIRE(bits == std::vector<bool>{1, 0, 1, 1, 0, 0, 1, 0, //
-                                      0, 0, 1, 0, 1, 1, 0, 1, //
-                                      1, 1, 1, 0, 0, 1, 0, 1});
-}
-
-TEST_CASE("bit_range") {
-    std::byte b{0b10110010};
-    bit_range r1(std::span(&b, 1));
-
-    std::vector<bool> bits;
-    std::ranges::copy(r1, std::back_inserter(bits));
-    REQUIRE(bits == std::vector<bool>{
-            true, false, true, true, false, false, true, false});
-
-    std::array bytes{
-            std::byte{0b10110010},
-            std::byte{0b00101101},
-            std::byte{0b11100101},
-    };
-
-    bit_range r2(bytes);
-
-    bits.clear();
-    std::ranges::copy(r2, std::back_inserter(bits));
-    REQUIRE(bits == std::vector<bool>{1, 0, 1, 1, 0, 0, 1, 0, //
-                                      0, 0, 1, 0, 1, 1, 0, 1, //
-                                      1, 1, 1, 0, 0, 1, 0, 1});
+    bitstring<std::uint64_t> bs(bytes.data(), bytes.data() + bytes.size());
+    REQUIRE(bs.str() == "011010011110111110010101");
 }
 
 TEST_CASE("radix byte inserts") {
@@ -118,7 +124,7 @@ TEST_CASE("radix basic inserts")
         "team"sv,
         "tam"sv,
         "foo"sv,
-        //"bar"sv,
+        "bar"sv,
     };
 
     std::ranges::sort(test_strings);
