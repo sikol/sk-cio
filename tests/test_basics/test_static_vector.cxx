@@ -403,7 +403,7 @@ TEST_CASE("static_vector<std::string> iterators work")
 TEST_CASE("static_vector<unique_ptr<std::string>> calls destructor")
 {
     int dtor_count = 0;
-    auto destroy = [&](auto *) { ++dtor_count; };
+    auto destroy = [&](auto *p) { ++dtor_count; delete p; };
 
     {
         static_vector<std::unique_ptr<std::string, decltype(destroy)>, 2> v;

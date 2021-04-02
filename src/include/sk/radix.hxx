@@ -67,12 +67,12 @@ namespace sk {
 
         auto mask() const -> T
         {
-            return ~zero << (max_len - len);
+            return T(~0) << (max_len - len);
         }
 
         void append(bool bit)
         {
-            assert(len + 1 < max_len);
+            assert(len < max_len);
             if (bit)
                 set(len);
             else
@@ -173,15 +173,6 @@ namespace sk {
 
         explicit bitstring(char const *s) : bitstring(std::string(s)) {}
 
-#if 0
-        template <std::ranges::range Range>
-        explicit bitstring(Range const &r)
-        {
-            for (auto v : r)
-                append(v);
-        }
-#endif
-
         explicit bitstring(std::byte const *bstart, std::byte const *bend)
         {
             while (bstart < bend) {
@@ -225,6 +216,301 @@ namespace sk {
         return r;
     }
 
+    template <std::unsigned_integral T>
+    auto operator==(bitstring<T> const &a, bitstring<T> const &b)
+    {
+        return a.value == b.value && a.len == b.len;
+    }
+
+    template <unsigned chunks, typename T = std::uint8_t>
+    struct multi_bitstring {
+        unsigned const max_len = std::numeric_limits<T>::digits * chunks;
+        static constexpr unsigned max_value_len =
+            std::numeric_limits<T>::digits;
+        static constexpr T one = T(1) << (std::numeric_limits<T>::digits - 1);
+
+        std::array<T, chunks> values;
+        unsigned len = 0;
+
+        multi_bitstring() = default;
+
+        multi_bitstring(multi_bitstring const &other)
+            : values(other.values), len(other.len)
+        {
+        }
+
+        explicit multi_bitstring(std::string const &v)
+        {
+            for (auto &&b : v)
+                append(b == '1' ? 1 : 0);
+        }
+
+        explicit multi_bitstring(char const *s)
+            : multi_bitstring(std::string(s))
+        {
+        }
+
+        explicit multi_bitstring(std::byte const *bstart, std::byte const *bend)
+        {
+            std::memcpy(values.data(), bstart, bend - bstart);
+            len = std::distance(bstart, bend) * 8;
+        }
+
+        auto operator=(std::string const &v) -> multi_bitstring &
+        {
+            reset();
+            for (auto &&b : v) {
+                if (b == '\'')
+                    continue;
+
+                append(b == '1' ? 1 : 0);
+            }
+            return *this;
+        }
+
+        auto value_for_bit(unsigned bit) const -> T const &
+        {
+            auto n = bit / max_value_len;
+            assert(n < chunks);
+            return values[n];
+        }
+
+        auto value_for_bit(unsigned bit) -> T &
+        {
+            return const_cast<T &>(
+                static_cast<multi_bitstring const *>(this)->value_for_bit(bit));
+        }
+
+        auto bit_for_bit(unsigned bit) const -> unsigned
+        {
+            auto n = bit % max_value_len;
+            return n;
+        }
+
+        auto mask_for_bit(unsigned bit) const -> T
+        {
+            return one >> bit_for_bit(bit);
+        }
+
+        void set(unsigned bit)
+        {
+            value_for_bit(bit) |= mask_for_bit(bit_for_bit(bit));
+            assert(test(bit));
+        }
+
+        void clr(unsigned bit)
+        {
+            value_for_bit(bit) &= ~mask_for_bit(bit_for_bit(bit));
+            assert(!test(bit));
+        }
+
+        auto test(unsigned bit) const -> bool
+        {
+            // assert(bit < len);
+            return (value_for_bit(bit) & mask_for_bit(bit)) ? 1 : 0;
+        }
+
+        void append(bool bit)
+        {
+            assert(len + 1 <= max_len);
+
+            if (bit)
+                set(len);
+            else
+                clr(len);
+
+            ++len;
+        }
+
+        auto str() const -> std::string
+        {
+            std::string r;
+
+            for (unsigned i = 0; i < len; ++i)
+                r += test(i) ? '1' : '0';
+
+            return r;
+        }
+
+        auto reset() -> void
+        {
+            len = 0;
+        }
+
+        auto operator[](unsigned bit) const -> bool
+        {
+            return test(bit);
+        }
+
+        auto operator=(multi_bitstring const &other) -> multi_bitstring &
+        {
+            if (&other != this) {
+                len = other.len;
+                std::ranges::copy(other.values, values.begin());
+            }
+
+            return *this;
+        }
+
+        auto size() -> unsigned
+        {
+            return len;
+        }
+
+        void append(multi_bitstring const &other)
+        {
+            assert(len + other.len < max_len);
+
+            unsigned n = other.len;
+            auto *this_value = &value_for_bit(len + 1);
+            auto *other_value = &other.value_for_bit(0);
+            unsigned offs = len % max_value_len;
+
+            // fmt::print("\n\nappend: len={} other.len={} offs={}\n",
+            //           len,
+            //           other.len,
+            //           offs);
+
+            while (n) {
+                unsigned can = std::min(n, max_value_len);
+                auto next_value = this_value + 1;
+
+                // int can_ = std::min(can, max_value_len - (len %
+                // max_value_len));
+
+                *this_value &= ~(T(~0) >> offs);
+
+                // fmt::print("  n={} can={} this_value={:08b}
+                // other_value={:08b}\n",
+                //           n, can,
+                //           *this_value,
+                //           *other_value);
+
+                *this_value |= *other_value >> offs;
+
+                // fmt::print("  now this_value={:08b}", *this_value);
+                if ((can + offs) > max_value_len) {
+                    *next_value = (*other_value << (max_value_len - offs));
+                    // fmt::print(", next_value={:08b}", *next_value);
+                    //*next_value += can - can_;
+                }
+                // fmt::print("\n");
+                ++this_value;
+                ++other_value;
+                len += can;
+                n -= can;
+            }
+        }
+
+#if 0
+        bitstring(T value_, unsigned len_) : value(value_), len(len_)
+        {
+            value &= mask();
+        }
+
+        explicit bitstring(std::vector<bool> const &bits)
+        {
+            for (auto &&bit : bits)
+                append(bit);
+        }
+#endif
+    };
+
+    template <unsigned chunks, std::unsigned_integral T>
+    inline auto common_prefix(multi_bitstring<chunks, T> const &a,
+                              multi_bitstring<chunks, T> const &b)
+    {
+        multi_bitstring<chunks, T> ret(a);
+
+        unsigned minlen = std::min(a.len, b.len);
+        unsigned bits_left = minlen;
+
+        //fmt::print("\n\ncommon_prefix: minlen={}\n", minlen);
+
+        for (unsigned i = 0; i < chunks; ++i) {
+            //fmt::print("  loop i={} bits_left={}\n", i, bits_left);
+            if (bits_left > ret.max_value_len && (a.values[i] == b.values[i])) {
+                bits_left -= ret.max_value_len;
+                continue;
+            }
+
+            unsigned len = ret.bit_for_bit(std::min(a.len, b.len));
+            if (len == 0)
+                len = ret.max_value_len;
+
+            T mask = T(~0) << (ret.max_value_len - len);
+            //fmt::print(
+            //    "len={} mask={:08b},\n         a={:08b}\n         b={:08b}\n",
+            //    len,
+            //    mask,
+            //    a.values[i],
+            //    b.values[i]);
+
+            T xor_ = T(T(a.values[i] & mask) ^ T(b.values[i] & mask));
+            //fmt::print("xor={:08b}\n", xor_);
+
+            unsigned bits = std::countl_zero(
+                T(T(a.values[i] & mask) ^ T(b.values[i] & mask)));
+            if (bits > len)
+                bits = len;
+
+            ret.len = i * (sizeof(T) * CHAR_BIT) + std::min(ret.len, bits);
+            //fmt::print("i={}, a.len={}, b.len={}, bits={}, ret.len={}\n",
+            //           i,
+            //           a.len,
+            //           b.len,
+            //           bits,
+            //           ret.len);
+            break;
+        }
+
+        return ret;
+    }
+
+    template <unsigned chunks, std::unsigned_integral T>
+    inline auto operator+(multi_bitstring<chunks, T> const &a,
+                          multi_bitstring<chunks, T> const &b)
+    {
+        auto r(a);
+        r.append(b);
+        return r;
+    }
+
+    template <unsigned chunks, std::unsigned_integral T>
+    inline auto operator<<(multi_bitstring<chunks, T> const &b, unsigned bits)
+    {
+        auto r(b);
+        assert(r.len >= bits);
+
+        auto *this_value = &r.values[0];
+        int offs = bits / r.max_value_len;
+        auto *shift_value = &r.values[0] + offs;
+        // fmt::print("\n<< bits={} offs={} this_value={:08b}
+        // shift_value={:08b}\n", bits, offs,
+        //           *this_value, *shift_value);
+
+        int shift = bits % r.max_value_len;
+
+        for (unsigned i = 0; i < chunks; ++i) {
+            // fmt::print("\n  i={} r.values[i]={:08b} shift_value={:08b}\n", i,
+            // r.values[i], *shift_value);
+            if (shift_value < (r.values.data() + r.values.size()))
+                r.values[i] = *shift_value << shift;
+
+            // fmt::print("    -> r.values[i]={:08b}\n", r.values[i]);
+
+            if (shift_value + 1 < (r.values.data() + r.values.size()))
+                r.values[i] |=
+                    T(*(shift_value + 1)) >> (sizeof(T) * CHAR_BIT - shift);
+
+            // fmt::print("    -> r.values[i]={:08b}\n", r.values[i]);
+            shift_value++;
+        }
+
+        r.len -= bits;
+        return r;
+    }
+
     enum struct radix_op : int {
         insert,
         find,
@@ -234,7 +520,7 @@ namespace sk {
     template <typename T>
     struct radix_node {
         using node_ptr = std::unique_ptr<radix_node>;
-        using string_type = bitstring<std::uint64_t>;
+        using string_type = multi_bitstring<8, std::uint8_t>;
 
         radix_node() = default;
 
@@ -256,13 +542,19 @@ namespace sk {
 
         auto find(string_type ir, radix_op op) -> radix_node<T> *
         {
+            //fmt::print("find: ir={} size={}\n", ir.str(), ir.size());
+
             // If r is empty, we are the edge for this string.
             if (ir.size() == 0) {
+                //fmt::print("  got end\n");
                 if (op == radix_op::remove)
                     value.reset();
 
                 return this;
             }
+
+            //fmt::print(
+            //    "  first bit={}, take {}\n", ir[0], ir[0] ? "right" : "left");
 
             // Look for an existing edge.
             auto &e = ir[0] ? right : left;
@@ -271,18 +563,22 @@ namespace sk {
                 if (op != radix_op::insert)
                     return nullptr;
 
+                //fmt::print("  no node here, inserting\n");
                 auto &new_edge = add_node(std::make_unique<radix_node>(ir));
                 return new_edge.get();
             }
 
             auto pfx = common_prefix(ir, e->istring);
 
+            //fmt::print("ir={:24}\n", ir.str());
+            //fmt::print(" e={:24}\n", e->istring.str());
+            //fmt::print(" p={:24}\n", pfx.str());
+
             auto matchlen = pfx.size();
 
             assert(matchlen < max_string);
             assert(matchlen > 0);
 
-            // if (matchlen == stdr::size(e->string)) {
             if (matchlen == e->istring.size()) {
                 auto br = ir << pfx.size();
                 auto ret = e->find(br, op);

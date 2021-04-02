@@ -36,6 +36,301 @@ using namespace std::string_view_literals;
 
 using sk::radix_tree;
 using sk::bitstring;
+using sk::multi_bitstring;
+
+TEST_CASE("multi_bitstring uint8_t") {
+    multi_bitstring<4, std::uint8_t> bits;
+
+    REQUIRE(bits.str() == "");
+
+    bits.append(1);
+    REQUIRE(bits.str() == "1");
+    bits.append(0);
+    REQUIRE(bits.str() == "10");
+
+    bits = "00101100'11010000'01111001";
+    REQUIRE(bits.str() == "001011001101000001111001");
+
+    multi_bitstring<4, std::uint8_t> a, b;
+
+    a = "1";
+    b = "1";
+    a.append(b);
+    REQUIRE(a.str() == "11");
+
+    a = "1";
+    b = "1101";
+    a.append(b);
+    REQUIRE(a.str() == "11101");
+
+    a = "0101";
+    b = "1";
+    a.append(b);
+    REQUIRE(a.str() == "01011");
+
+    a = "01010101";
+    b = "1";
+    a.append(b);
+    REQUIRE(a.str() == "010101011");
+
+    a = "111111";
+    b = "0000";
+    a.append(b);
+    REQUIRE(a.str() == "1111110000");
+
+    a = "111111";
+    b = "110000000011111111";
+    a.append(b);
+    REQUIRE(a.str() == "111111110000000011111111");
+
+    a = "110000000011111111";
+    b = "111111";
+    a.append(b);
+    REQUIRE(a.str() == "110000000011111111111111");
+
+    a = "11001100'11001100'11";
+    b = "10101010'10101";
+    a.append(b);
+    REQUIRE(a.str() == "1100110011001100111010101010101");
+
+    std::array bytes{
+        std::byte{0b01101001},
+        std::byte{0b11101111},
+        std::byte{0b10010101}
+    };
+
+    multi_bitstring<4, std::uint8_t> mbs(bytes.data(), bytes.data() + bytes.size());
+    REQUIRE(mbs.str() == "011010011110111110010101");
+
+    a = "101011";
+    b = "101010";
+    auto c = common_prefix(a, b);
+    REQUIRE(c.str() == "10101");
+
+    a = "01100";
+    b = "1110001";
+    c = common_prefix(a, b);
+    REQUIRE(c.str() == "");
+
+    a = "11010101'00011010'01001001'0111";
+    b = "11010101'00011010'011001";
+    c = common_prefix(a, b);
+    REQUIRE(c.str() == "110101010001101001");
+
+    a = "11010011'0";
+    b = a << 3;
+    REQUIRE(b.str() == "100110");
+
+    a = "1101";
+    b = a << 1;
+    REQUIRE(b.str() == "101");
+
+    a = "11010001'10111000'011";
+    b = a << 5;
+    REQUIRE(b.str() == "00110111000011");
+
+    a = "00000110011011110110111101100110";
+    b = a << 15;
+    REQUIRE(b.str() == "10110111101100110");
+
+    a = "011001100110111101101111";
+    b = "011000100110000101110010";
+    c = common_prefix(a, b);
+    REQUIRE(c.str() == "01100");
+
+    a = "01110100011001010110000101101101";
+    b = "011";
+    c = common_prefix(a, b);
+    REQUIRE(c.str() == "011");
+}
+
+TEST_CASE("multi_bitstring uint16_t") {
+    multi_bitstring<2, std::uint16_t> bits;
+
+    REQUIRE(bits.str() == "");
+
+    bits.append(1);
+    REQUIRE(bits.str() == "1");
+    bits.append(0);
+    REQUIRE(bits.str() == "10");
+
+    bits = "00101100'11010000'01111001";
+    REQUIRE(bits.str() == "001011001101000001111001");
+
+    multi_bitstring<2, std::uint16_t> a, b;
+
+    a = "1";
+    b = "1";
+    a.append(b);
+    REQUIRE(a.str() == "11");
+
+    a = "1";
+    b = "1101";
+    a.append(b);
+    REQUIRE(a.str() == "11101");
+
+    a = "0101";
+    b = "1";
+    a.append(b);
+    REQUIRE(a.str() == "01011");
+
+    a = "01010101";
+    b = "1";
+    a.append(b);
+    REQUIRE(a.str() == "010101011");
+
+    a = "111111";
+    b = "0000";
+    a.append(b);
+    REQUIRE(a.str() == "1111110000");
+
+    a = "111111";
+    b = "110000000011111111";
+    a.append(b);
+    REQUIRE(a.str() == "111111110000000011111111");
+
+    a = "110000000011111111";
+    b = "111111";
+    a.append(b);
+    REQUIRE(a.str() == "110000000011111111111111");
+
+    a = "11001100'11001100'11";
+    b = "10101010'10101";
+    a.append(b);
+    REQUIRE(a.str() == "1100110011001100111010101010101");
+
+#if 0
+    std::array bytes{
+        std::byte{0b01101001},
+        std::byte{0b11101111},
+        std::byte{0b10010101}
+    };
+
+    multi_bitstring<2, std::uint16_t> mbs(bytes.data(), bytes.data() + bytes.size());
+    REQUIRE(mbs.str() == "011010011110111110010101");
+#endif
+
+    a = "101011";
+    b = "101010";
+    auto c = common_prefix(a, b);
+    REQUIRE(c.str() == "10101");
+
+    a = "01100";
+    b = "1110001";
+    c = common_prefix(a, b);
+    REQUIRE(c.str() == "");
+
+    a = "11010101'00011010'01001001'0111";
+    b = "11010101'00011010'011001";
+    c = common_prefix(a, b);
+    REQUIRE(c.str() == "110101010001101001");
+
+    a = "11010011'0";
+    b = a << 3;
+    REQUIRE(b.str() == "100110");
+
+    a = "1101";
+    b = a << 1;
+    REQUIRE(b.str() == "101");
+
+    a = "11010001'10111000'011";
+    b = a << 5;
+    REQUIRE(b.str() == "00110111000011");
+}
+
+TEST_CASE("multi_bitstring uint64_t") {
+    multi_bitstring<2, std::uint64_t> bits;
+
+    REQUIRE(bits.str() == "");
+
+    bits.append(1);
+    REQUIRE(bits.str() == "1");
+    bits.append(0);
+    REQUIRE(bits.str() == "10");
+
+    bits = "00101100'11010000'01111001";
+    REQUIRE(bits.str() == "001011001101000001111001");
+
+    multi_bitstring<2, std::uint64_t> a, b;
+
+    a = "1";
+    b = "1";
+    a.append(b);
+    REQUIRE(a.str() == "11");
+
+    a = "1";
+    b = "1101";
+    a.append(b);
+    REQUIRE(a.str() == "11101");
+
+    a = "0101";
+    b = "1";
+    a.append(b);
+    REQUIRE(a.str() == "01011");
+
+    a = "01010101";
+    b = "1";
+    a.append(b);
+    REQUIRE(a.str() == "010101011");
+
+    a = "111111";
+    b = "0000";
+    a.append(b);
+    REQUIRE(a.str() == "1111110000");
+
+    a = "111111";
+    b = "110000000011111111";
+    a.append(b);
+    REQUIRE(a.str() == "111111110000000011111111");
+
+    a = "110000000011111111";
+    b = "111111";
+    a.append(b);
+    REQUIRE(a.str() == "110000000011111111111111");
+
+    a = "11001100'11001100'11";
+    b = "10101010'10101";
+    a.append(b);
+    REQUIRE(a.str() == "1100110011001100111010101010101");
+
+#if 0
+    std::array bytes{
+        std::byte{0b01101001},
+        std::byte{0b11101111},
+        std::byte{0b10010101}
+    };
+
+    multi_bitstring<2, std::uint16_t> mbs(bytes.data(), bytes.data() + bytes.size());
+    REQUIRE(mbs.str() == "011010011110111110010101");
+#endif
+
+    a = "101011";
+    b = "101010";
+    auto c = common_prefix(a, b);
+    REQUIRE(c.str() == "10101");
+
+    a = "01100";
+    b = "1110001";
+    c = common_prefix(a, b);
+    REQUIRE(c.str() == "");
+
+    a = "11010101'00011010'01001001'0111";
+    b = "11010101'00011010'011001";
+    c = common_prefix(a, b);
+    REQUIRE(c.str() == "110101010001101001");
+
+    a = "11010011'0";
+    b = a << 3;
+    REQUIRE(b.str() == "100110");
+
+    a = "1101";
+    b = a << 1;
+    REQUIRE(b.str() == "101");
+
+    a = "0000000000000000011111111111111110000110011011110110111101100110";
+    b = a << 15;
+    REQUIRE(b.str() == "0011111111111111110000110011011110110111101100110");
+}
 
 TEST_CASE("bitstring") {
     bitstring<std::uint64_t> bits;
@@ -90,6 +385,9 @@ TEST_CASE("bitstring") {
 
     bitstring<std::uint64_t> bs(bytes.data(), bytes.data() + bytes.size());
     REQUIRE(bs.str() == "011010011110111110010101");
+
+    bitstring<std::uint8_t> u8;
+    u8 = "11111111";
 }
 
 TEST_CASE("radix byte inserts") {
@@ -140,6 +438,7 @@ TEST_CASE("radix basic inserts")
         INFO(info);
 
         for (auto &&s : test_strings) {
+            //fmt::print("inserting [{}]\n", s);
             auto b = trie.insert(s, std::string(s));
             REQUIRE(b);
         }
