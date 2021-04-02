@@ -35,10 +35,12 @@ using namespace std::string_view_literals;
 #include <sk/radix.hxx>
 
 using sk::radix_tree;
-using sk::multi_bitstring;
+using sk::bitstring;
 
-TEST_CASE("multi_bitstring uint8_t") {
-    multi_bitstring<4, std::uint8_t> bits;
+TEST_CASE("bitstring uint8_t") {
+    std::array<std::uint8_t, 4> s1, s2;
+
+    bitstring<std::uint8_t> bits(s1);
 
     REQUIRE(bits.str() == "");
 
@@ -50,7 +52,7 @@ TEST_CASE("multi_bitstring uint8_t") {
     bits = "00101100'11010000'01111001";
     REQUIRE(bits.str() == "001011001101000001111001");
 
-    multi_bitstring<4, std::uint8_t> a, b;
+    bitstring<std::uint8_t> a(s1), b(s2);
 
     a = "1";
     b = "1";
@@ -98,7 +100,7 @@ TEST_CASE("multi_bitstring uint8_t") {
         std::byte{0b10010101}
     };
 
-    multi_bitstring<4, std::uint8_t> mbs(bytes.data(), bytes.data() + bytes.size());
+    bitstring<std::uint8_t> mbs(s1, bytes.data(), bytes.data() + bytes.size());
     REQUIRE(mbs.str() == "011010011110111110010101");
 
     a = "101011";
@@ -117,24 +119,30 @@ TEST_CASE("multi_bitstring uint8_t") {
     REQUIRE(c.str() == "110101010001101001");
 
     a = "11010011'0";
-    b = a << 3;
+    b = a;
+    b <<= 3;
     REQUIRE(b.str() == "100110");
 
     a = "1101";
-    b = a << 1;
+    b = a;
+    b <<= 1;
     REQUIRE(b.str() == "101");
 
     a = "11010001'10111000'011";
-    b = a << 5;
+    b = a;
+    b <<= 5;
     REQUIRE(b.str() == "00110111000011");
 
     a = "00000110011011110110111101100110";
-    b = a << 15;
+    b = a;
+    b <<= 15;
     REQUIRE(b.str() == "10110111101100110");
 
+    fmt::print("--here--\n");
     a = "011001100110111101101111";
     b = "011000100110000101110010";
     c = common_prefix(a, b);
+    fmt::print("{}\n", c.str());
     REQUIRE(c.str() == "01100");
 
     a = "01110100011001010110000101101101";
@@ -143,8 +151,9 @@ TEST_CASE("multi_bitstring uint8_t") {
     REQUIRE(c.str() == "011");
 }
 
-TEST_CASE("multi_bitstring uint16_t") {
-    multi_bitstring<2, std::uint16_t> bits;
+TEST_CASE("bitstring uint16_t") {
+    std::array<std::uint16_t, 2> s1, s2;
+    bitstring<std::uint16_t> bits(s1);
 
     REQUIRE(bits.str() == "");
 
@@ -156,7 +165,7 @@ TEST_CASE("multi_bitstring uint16_t") {
     bits = "00101100'11010000'01111001";
     REQUIRE(bits.str() == "001011001101000001111001");
 
-    multi_bitstring<2, std::uint16_t> a, b;
+    bitstring<std::uint16_t> a(s1), b(s2);
 
     a = "1";
     b = "1";
@@ -204,7 +213,7 @@ TEST_CASE("multi_bitstring uint16_t") {
         std::byte{0b10010101}
     };
 
-    multi_bitstring<2, std::uint16_t> mbs(bytes.data(), bytes.data() + bytes.size());
+    bitstring<std::uint16_t> mbs(s1, bytes.data(), bytes.data() + bytes.size());
     REQUIRE(mbs.str() == "011010011110111110010101");
 
     a = "101011";
@@ -223,20 +232,24 @@ TEST_CASE("multi_bitstring uint16_t") {
     REQUIRE(c.str() == "110101010001101001");
 
     a = "11010011'0";
-    b = a << 3;
+    b = a;
+    b <<= 3;
     REQUIRE(b.str() == "100110");
 
     a = "1101";
-    b = a << 1;
+    b = a;
+    b <<= 1;
     REQUIRE(b.str() == "101");
 
     a = "11010001'10111000'011";
-    b = a << 5;
+    b = a;
+    b <<= 5;
     REQUIRE(b.str() == "00110111000011");
 }
 
-TEST_CASE("multi_bitstring uint64_t") {
-    multi_bitstring<2, std::uint64_t> bits;
+TEST_CASE("bitstring uint64_t") {
+    std::array<std::uint64_t, 2> s1, s2;
+    bitstring<std::uint64_t> bits(s1);
 
     REQUIRE(bits.str() == "");
 
@@ -248,7 +261,7 @@ TEST_CASE("multi_bitstring uint64_t") {
     bits = "00101100'11010000'01111001";
     REQUIRE(bits.str() == "001011001101000001111001");
 
-    multi_bitstring<2, std::uint64_t> a, b;
+    bitstring<std::uint64_t> a(s1), b(s2);
 
     a = "1";
     b = "1";
@@ -296,7 +309,7 @@ TEST_CASE("multi_bitstring uint64_t") {
         std::byte{0b10010101}
     };
 
-    multi_bitstring<2, std::uint64_t> mbs(bytes.data(), bytes.data() + bytes.size());
+    bitstring<std::uint64_t> mbs(s1, bytes.data(), bytes.data() + bytes.size());
     REQUIRE(mbs.str() == "011010011110111110010101");
 
     a = "101011";
@@ -315,15 +328,18 @@ TEST_CASE("multi_bitstring uint64_t") {
     REQUIRE(c.str() == "110101010001101001");
 
     a = "11010011'0";
-    b = a << 3;
+    b = a;
+    b <<= 3;
     REQUIRE(b.str() == "100110");
 
     a = "1101";
-    b = a << 1;
+    b = a;
+    b <<= 1;
     REQUIRE(b.str() == "101");
 
     a = "0000000000000000011111111111111110000110011011110110111101100110";
-    b = a << 15;
+    b = a;
+    b <<= 15;
     REQUIRE(b.str() == "0011111111111111110000110011011110110111101100110");
 }
 
@@ -381,6 +397,7 @@ TEST_CASE("radix basic inserts")
         }
 
         for (auto &&s : test_strings) {
+            //fmt::print("finding [{}]\n", s);
             auto r = trie.find(s);
             REQUIRE(r);
             REQUIRE(*r == s);

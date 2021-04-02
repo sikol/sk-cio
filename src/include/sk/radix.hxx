@@ -42,49 +42,71 @@
 
 namespace sk {
 
-    template <unsigned chunks, typename T = std::uint8_t>
-    struct multi_bitstring {
-        unsigned const max_len = std::numeric_limits<T>::digits * chunks;
+    template <typename T = std::uint8_t>
+    struct bitstring {
         static constexpr unsigned max_value_len =
             std::numeric_limits<T>::digits;
         static constexpr T one = T(1) << (std::numeric_limits<T>::digits - 1);
 
-        std::array<T, chunks> values;
-        unsigned len = 0;
-
-        multi_bitstring() = default;
-
-        multi_bitstring(multi_bitstring const &other)
-            : values(other.values), len(other.len)
+        auto max_len() const -> std::size_t
         {
+            return values.size() * std::numeric_limits<T>::digits;
         }
 
-        explicit multi_bitstring(std::string const &v)
+        std::span<T> values;
+        unsigned len = 0;
+
+        bitstring() = default;
+
+        bitstring(bitstring const &other) : values(other.values), len(other.len)
+        {
+        }
+        bitstring(bitstring &&other) : values(other.values), len(other.len) {}
+
+        explicit bitstring(std::span<T> values_) : values(values_) {}
+
+        bitstring(std::span<T> values_, bitstring const &other)
+            : values(values_)
+        {
+            len = other.len;
+            assert(len <= (values_.size() * max_value_len));
+            std::memcpy(
+                values.data(), other.values.data(), other.values.size() * sizeof(T));
+        }
+
+        bitstring(std::span<T> values_, std::string const &v) : values(values_)
         {
             for (auto &&b : v)
                 append(b == '1' ? 1 : 0);
         }
 
-        explicit multi_bitstring(char const *s)
-            : multi_bitstring(std::string(s))
+        bitstring(std::span<T> values_, char const *s)
+            : bitstring(values_, std::string(s))
         {
         }
 
-        explicit multi_bitstring(std::byte const *bstart, std::byte const *bend)
-            : values{}
+        explicit bitstring(std::span<T> values_,
+                           std::byte const *bstart,
+                           std::byte const *bend)
+            : values(values_)
         {
             len = std::distance(bstart, bend) * 8;
+
+            assert(values.size_bytes() >=
+                   static_cast<std::size_t>(bend - bstart));
 
             if (sizeof(T) == 1 || (std::endian::native == std::endian::big)) {
                 std::memcpy(values.data(), bstart, bend - bstart);
             } else {
-                auto *value = values.begin();
+                auto value = values.begin();
+                *value = 0;
                 unsigned shift = max_value_len - 8;
 
                 while (bstart < bend) {
                     *value |= static_cast<T>(*bstart) << shift;
                     if (shift == 0) {
                         value++;
+                        *value = 0;
                         shift = max_value_len - 8;
                     } else {
                         shift -= 8;
@@ -94,7 +116,7 @@ namespace sk {
             }
         }
 
-        auto operator=(std::string const &v) -> multi_bitstring &
+        auto operator=(std::string const &v) -> bitstring &
         {
             reset();
             for (auto &&b : v) {
@@ -106,17 +128,38 @@ namespace sk {
             return *this;
         }
 
+        auto operator=(bitstring const &other) -> bitstring &
+        {
+            if (&other != this) {
+                assert(other.len <= max_len());
+                len = other.len;
+                std::ranges::copy(other.values, values.begin());
+            }
+
+            return *this;
+        }
+
+        auto operator=(bitstring &&other) -> bitstring &
+        {
+            if (&other != this) {
+                values = other.values;
+                len = other.len;
+            }
+
+            return *this;
+        }
+
         auto value_for_bit(unsigned bit) const -> T const &
         {
             auto n = bit / max_value_len;
-            assert(n < chunks);
+            assert(n < values.size());
             return values[n];
         }
 
         auto value_for_bit(unsigned bit) -> T &
         {
             return const_cast<T &>(
-                static_cast<multi_bitstring const *>(this)->value_for_bit(bit));
+                static_cast<bitstring const *>(this)->value_for_bit(bit));
         }
 
         auto bit_for_bit(unsigned bit) const -> unsigned
@@ -150,7 +193,7 @@ namespace sk {
 
         void append(bool bit)
         {
-            assert(len + 1 <= max_len);
+            assert(len + 1 <= max_len());
 
             if (bit)
                 set(len);
@@ -180,24 +223,14 @@ namespace sk {
             return test(bit);
         }
 
-        auto operator=(multi_bitstring const &other) -> multi_bitstring &
-        {
-            if (&other != this) {
-                len = other.len;
-                std::ranges::copy(other.values, values.begin());
-            }
-
-            return *this;
-        }
-
         auto size() -> unsigned
         {
             return len;
         }
 
-        void append(multi_bitstring const &other)
+        void append(bitstring const &other)
         {
-            assert(len + other.len < max_len);
+            assert(len + other.len < max_len());
 
             unsigned n = other.len;
             auto *this_value = &value_for_bit(len + 1);
@@ -220,18 +253,46 @@ namespace sk {
                 n -= can;
             }
         }
+
+        auto operator<<=(unsigned bits) -> bitstring &
+        {
+            assert(len >= bits);
+
+            int offs = bits / max_value_len;
+            auto *shift_value = &values[0] + offs;
+
+            int shift = bits % max_value_len;
+            unsigned bits_left = len;
+
+            for (unsigned i = 0; i < values.size(); ++i) {
+                if (!bits_left)
+                    break;
+
+                if (shift_value < (values.data() + values.size()))
+                    values[i] = *shift_value << shift;
+
+                if (shift_value + 1 < (values.data() + values.size()))
+                    values[i] |=
+                        T(*(shift_value + 1)) >> (max_value_len - shift);
+
+                shift_value++;
+                bits_left -= max_value_len;
+            }
+
+            len -= bits;
+            return *this;
+        }
     };
 
-    template <unsigned chunks, std::unsigned_integral T>
-    inline auto common_prefix(multi_bitstring<chunks, T> const &a,
-                              multi_bitstring<chunks, T> const &b)
+    template <std::unsigned_integral T>
+    inline auto common_prefix(bitstring<T> const &a, bitstring<T> const &b)
     {
-        multi_bitstring<chunks, T> ret(a);
+        bitstring<T> ret(a);
 
         unsigned minlen = std::min(a.len, b.len);
         unsigned bits_left = minlen;
 
-        for (unsigned i = 0; i < chunks; ++i) {
+        for (unsigned i = 0;; ++i) {
             if (bits_left > ret.max_value_len && (a.values[i] == b.values[i])) {
                 bits_left -= ret.max_value_len;
                 continue;
@@ -255,42 +316,11 @@ namespace sk {
         return ret;
     }
 
-    template <unsigned chunks, std::unsigned_integral T>
-    inline auto operator+(multi_bitstring<chunks, T> const &a,
-                          multi_bitstring<chunks, T> const &b)
+    template <std::unsigned_integral T>
+    inline auto operator+(bitstring<T> const &a, bitstring<T> const &b)
     {
         auto r(a);
         r.append(b);
-        return r;
-    }
-
-    template <unsigned chunks, std::unsigned_integral T>
-    inline auto operator<<(multi_bitstring<chunks, T> const &b, unsigned bits)
-    {
-        auto r(b);
-        assert(r.len >= bits);
-
-        int offs = bits / r.max_value_len;
-        auto *shift_value = &r.values[0] + offs;
-
-        int shift = bits % r.max_value_len;
-        unsigned bits_left = r.len;
-
-        for (unsigned i = 0; i < chunks; ++i) {
-            if (!bits_left)
-                break;
-
-            r.values[i] = *shift_value << shift;
-
-            if (shift_value + 1 < (r.values.data() + r.values.size()))
-                r.values[i] |=
-                    T(*(shift_value + 1)) >> (r.max_value_len - shift);
-
-            shift_value++;
-            bits_left -= r.max_value_len;
-        }
-
-        r.len -= bits;
         return r;
     }
 
@@ -302,14 +332,62 @@ namespace sk {
 
     template <typename T>
     struct radix_node {
-        using node_ptr = std::unique_ptr<radix_node>;
-        using string_type = multi_bitstring<1, std::uint64_t>;
+        struct deleter {
+            void operator() (radix_node *n) {
+                if (!n)
+                    return;
+                n->~radix_node();
+                std::free(n);
+            }
+        };
 
-        radix_node() = default;
+        using node_ptr = std::unique_ptr<radix_node, deleter>;
+        using pack_type = std::uint8_t;
+        using string_type = bitstring<pack_type>;
 
-        radix_node(string_type const &s) : istring(s) {}
+        radix_node()
+            : istring(key_data)
+        {
+        }
 
-        auto add_node(std::unique_ptr<radix_node<T>> &&n) -> node_ptr &
+        radix_node(radix_node const &) = delete;
+        radix_node(radix_node &&other) : value(std::move(other.value)),
+              left(std::move(other.left)), right(std::move(other.right)) {}
+
+        auto operator=(radix_node const &) = delete;
+        auto operator=(radix_node &&) = delete;
+
+        // radix_node(string_type const &s) : istring(s) {}
+
+        auto make_node(string_type const &ir) -> node_ptr
+        {
+            void *data = std::malloc(sizeof(radix_node) +
+                                     (ir.values.size() * sizeof(pack_type)));
+
+            radix_node *n = new (data) radix_node();
+            n->istring =
+                string_type(std::span(&n->key_data[0], ir.values.size()), ir);
+
+            assert(n == data);
+            return node_ptr(n);
+        }
+
+        auto make_node(node_ptr &&np, string_type const &ira, string_type const &irb) -> node_ptr
+        {
+            void *data = std::malloc(sizeof(radix_node) +
+                                     (ira.values.size() * sizeof(pack_type))
+                                     + (irb.values.size() * sizeof(pack_type)));
+
+            radix_node *n = new (data) radix_node(std::move(*np));
+            n->istring =
+                string_type(std::span(&n->key_data[0], ira.values.size() + irb.values.size()), ira);
+            n->istring.append(irb);
+
+            assert(n == data);
+            return node_ptr(n);
+        }
+
+        auto add_node(node_ptr &&n) -> node_ptr &
         {
             auto &branch = n->istring[0] ? right : left;
             assert(branch.get() == nullptr);
@@ -317,15 +395,13 @@ namespace sk {
             return branch;
         }
 
-        static constexpr unsigned max_string = 64;
-        string_type istring;
         std::optional<T> value;
-
+        string_type istring;
         node_ptr left, right;
+        pack_type key_data[1];
 
         auto find(string_type ir, radix_op op) -> radix_node<T> *
         {
-            // If r is empty, we are the edge for this string.
             if (ir.size() == 0) {
                 if (op == radix_op::remove)
                     value.reset();
@@ -333,14 +409,13 @@ namespace sk {
                 return this;
             }
 
-            // Look for an existing edge.
             auto &e = ir[0] ? right : left;
 
             if (!e) {
                 if (op != radix_op::insert)
                     return nullptr;
 
-                auto &new_edge = add_node(std::make_unique<radix_node>(ir));
+                auto &new_edge = add_node(make_node(ir));
                 return new_edge.get();
             }
 
@@ -348,28 +423,23 @@ namespace sk {
 
             auto matchlen = pfx.size();
 
-            assert(matchlen < max_string);
             assert(matchlen > 0);
 
             if (matchlen == e->istring.size()) {
-                auto br = ir << pfx.size();
-                auto ret = e->find(br, op);
+                ir <<= pfx.size();
+                auto ret = e->find(ir, op);
                 if (op != radix_op::remove)
                     return ret;
 
                 if (!e->value) {
                     if (!e->left && !e->right) {
-                        // If the child node has no value and no children,
-                        // kill it.
                         e.reset();
                         return this;
                     }
 
                     if (!(e->left && e->right)) {
                         auto &steal = e->left ? e->left : e->right;
-                        // If the child only has a single edge, unsplit it.
-                        steal->istring = e->istring + steal->istring;
-                        e = std::move(steal);
+                        e = make_node(std::move(steal), e->istring, steal->istring);
                         return this;
                     }
                 }
@@ -380,15 +450,14 @@ namespace sk {
             if (op != radix_op::insert)
                 return nullptr;
 
-            // Found a partial substring, split into two children.
-            auto new_node = std::make_unique<radix_node>(pfx);
-            e->istring = e->istring << matchlen;
+            auto new_node = make_node(pfx);
+            e->istring <<= matchlen;
 
             new_node->add_node(std::move(e));
             e = std::move(new_node);
 
-            auto nr = ir << pfx.size();
-            return e->find(nr, op);
+            ir <<= pfx.size();
+            return e->find(ir, op);
         }
     };
 
@@ -403,7 +472,10 @@ namespace sk {
                 reinterpret_cast<std::byte const *>(std::ranges::data(r));
             auto dend = dstart + std::ranges::size(r) *
                                      sizeof(std::ranges::range_value_t<Range>);
-            typename radix_node<T>::string_type bs(dstart, dend);
+            std::array<typename radix_node<T>::pack_type, 8> data;
+            //std::vector<typename radix_node<T>::pack_type> data(
+            //    std::distance(dstart, dend));
+            typename radix_node<T>::string_type bs(data, dstart, dend);
 
             auto *node = root.find(bs, radix_op::insert);
             if (node->value)
@@ -420,7 +492,9 @@ namespace sk {
                 reinterpret_cast<std::byte const *>(std::ranges::data(r));
             auto dend = dstart + std::ranges::size(r) *
                                      sizeof(std::ranges::range_value_t<Range>);
-            typename radix_node<T>::string_type bs(dstart, dend);
+            std::vector<typename radix_node<T>::pack_type> data(
+                std::distance(dstart, dend));
+            typename radix_node<T>::string_type bs(data, dstart, dend);
 
             auto *node = root.find(bs, radix_op::remove);
 
@@ -437,7 +511,9 @@ namespace sk {
                 reinterpret_cast<std::byte const *>(std::ranges::data(r));
             auto dend = dstart + std::ranges::size(r) *
                                      sizeof(std::ranges::range_value_t<Range>);
-            typename radix_node<T>::string_type bs(dstart, dend);
+            std::vector<typename radix_node<T>::pack_type> data(
+                std::distance(dstart, dend));
+            typename radix_node<T>::string_type bs(data, dstart, dend);
 
             auto node = root.find(bs, radix_op::find);
 
