@@ -35,7 +35,6 @@ using namespace std::string_view_literals;
 #include <sk/radix.hxx>
 
 using sk::radix_tree;
-using sk::bitstring;
 using sk::multi_bitstring;
 
 TEST_CASE("multi_bitstring uint8_t") {
@@ -199,7 +198,6 @@ TEST_CASE("multi_bitstring uint16_t") {
     a.append(b);
     REQUIRE(a.str() == "1100110011001100111010101010101");
 
-#if 0
     std::array bytes{
         std::byte{0b01101001},
         std::byte{0b11101111},
@@ -208,7 +206,6 @@ TEST_CASE("multi_bitstring uint16_t") {
 
     multi_bitstring<2, std::uint16_t> mbs(bytes.data(), bytes.data() + bytes.size());
     REQUIRE(mbs.str() == "011010011110111110010101");
-#endif
 
     a = "101011";
     b = "101010";
@@ -293,16 +290,14 @@ TEST_CASE("multi_bitstring uint64_t") {
     a.append(b);
     REQUIRE(a.str() == "1100110011001100111010101010101");
 
-#if 0
     std::array bytes{
         std::byte{0b01101001},
         std::byte{0b11101111},
         std::byte{0b10010101}
     };
 
-    multi_bitstring<2, std::uint16_t> mbs(bytes.data(), bytes.data() + bytes.size());
+    multi_bitstring<2, std::uint64_t> mbs(bytes.data(), bytes.data() + bytes.size());
     REQUIRE(mbs.str() == "011010011110111110010101");
-#endif
 
     a = "101011";
     b = "101010";
@@ -330,64 +325,6 @@ TEST_CASE("multi_bitstring uint64_t") {
     a = "0000000000000000011111111111111110000110011011110110111101100110";
     b = a << 15;
     REQUIRE(b.str() == "0011111111111111110000110011011110110111101100110");
-}
-
-TEST_CASE("bitstring") {
-    bitstring<std::uint64_t> bits;
-
-    bits.append(1);
-    REQUIRE(bits.str() == "1");
-    REQUIRE(bits.mask() == 0x8000000000000000);
-
-    bits.append(0);
-    REQUIRE(bits.str() == "10");
-    REQUIRE(bits.mask() == 0xC000000000000000);
-
-    std::vector<bool> v{0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 0};
-    bits = v;
-    REQUIRE(bits.str() == "01010111000");
-    REQUIRE(bits[0] == 0);
-    REQUIRE(bits[1] == 1);
-    REQUIRE(bits[2] == 0);
-    REQUIRE(bits[3] == 1);
-    REQUIRE(bits[4] == 0);
-    REQUIRE(bits[5] == 1);
-    REQUIRE(bits[6] == 1);
-    REQUIRE(bits[7] == 1);
-    REQUIRE(bits[8] == 0);
-    REQUIRE(bits[9] == 0);
-    REQUIRE(bits[10] == 0);
-    REQUIRE(bits.mask() == 0xffe0000000000000);
-
-    REQUIRE((bits << 3).str() == "10111000");
-
-    bitstring<std::uint64_t> a("101100");
-    bitstring<std::uint64_t> b("101011");
-    REQUIRE(common_prefix(a, b).str() == "101");
-
-    a = "101100";
-    b = "001011";
-    REQUIRE(common_prefix(a, b).str() == "");
-    REQUIRE(a.vec() == std::vector<bool>{1, 0, 1, 1, 0, 0});
-
-    auto c = a + b;
-    REQUIRE(c.str() == "101100001011");
-
-    a = "1011000";
-    b = "1011000";
-    REQUIRE(common_prefix(a, b).str() == "1011000");
-
-    std::array bytes{
-        std::byte{0b01101001},
-        std::byte{0b11101111},
-        std::byte{0b10010101}
-    };
-
-    bitstring<std::uint64_t> bs(bytes.data(), bytes.data() + bytes.size());
-    REQUIRE(bs.str() == "011010011110111110010101");
-
-    bitstring<std::uint8_t> u8;
-    u8 = "11111111";
 }
 
 TEST_CASE("radix byte inserts") {

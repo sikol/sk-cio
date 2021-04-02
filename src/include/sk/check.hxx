@@ -51,7 +51,7 @@ namespace sk::detail {
 
 namespace sk::detail {
 
-    inline constexpr void check(bool cond, char const *msg) noexcept {}
+    inline constexpr void check(bool, char const *) noexcept {}
 
 } // namespace sk::detail
 
