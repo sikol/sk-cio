@@ -56,7 +56,8 @@ Some generic functions are provided for working with address types.
                   auto sk::net::tag(address<af> const &) noexcept -> address_family_tag
 
     Return the address tag for an address.  For ``address<>``, this is determined at runtime,
-    otherwise at compile time.
+    otherwise at compile time.  The address tag can be used to determine the address family,
+    by comparing it to a tag constant such as ``inet_family::tag``.
 
 .. cpp:function:: template <address_family family> \
                   auto sk::net::socket_address_family(address<family> const &) -> int
@@ -66,7 +67,8 @@ Some generic functions are provided for working with address types.
 .. cpp:function:: template<address_family af> \
                   auto sk::net::str(address<af> const &) -> std::string
 
-    Convert an address to a string.
+    Convert an address to a string in the canonical format.  For INET and INET6, this is the
+    standard IP address representation; for UNIX addresses, it is the path.
 
 .. cpp:function:: template <address_family family> \
                   auto sk::net::operator<<(std::ostream &, address<family> const &) -> std::ostream &
@@ -217,7 +219,7 @@ A ``unix_address`` represents a UNIX socket address.
 
     }
 
-A default-constructed ``inet_address`` stores an empty path, which is not a valid address
+A default-constructed ``unix_address`` stores an empty path, which is not a valid address
 and cannot be connected to or bound to.
 
 ``value()`` returns the stored address as an array.  This array is always the maximum
@@ -400,6 +402,10 @@ Defined in ``<sk/net/tcpchannel.hxx>``.
 
     .. cpp:type:: port_type = std::uint16_t
 
+    .. cpp:type:: address_type = address<>
+
+    .. cpp:type:: const_address_type = address<> const
+
     .. cpp:function:: auto address() const noexcept -> const_address_type &
 
     .. cpp:function:: auto address() noexcept -> address_type &
@@ -451,7 +457,7 @@ To resolve endpoints, use ``tcp_endpoint_system_resolver``.  This has the same i
 ``system_resolver``, except it return ``tcp_endpoint`` objects.  Note that while the
 ``service`` parameter to ``async_resolve()`` has no effect when resolving addresses, when
 resolving endpoints, it will be used to determine the endpoint's port number.  To create
-a listening endpoint for all addresses on the local system, use ``async_resolve({}, "service name")``.
+a listening endpoint for all addresses on the local system, use ``async_resolve({}, "service-name")``.
 
 Example
 ^^^^^^^
