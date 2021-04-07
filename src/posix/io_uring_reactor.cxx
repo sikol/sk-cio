@@ -73,6 +73,7 @@ namespace sk::posix::detail {
 
         int await_resume()
         {
+            std::lock_guard lock(mutex);
             return ret;
         }
     };
@@ -167,7 +168,7 @@ namespace sk::posix::detail {
                 std::lock_guard h_lock(cstate->mutex);
                 cstate->ret = cqe->res;
                 cstate->flags = cqe->flags;
-                _workq.post([=] { cstate->coro_handle.resume(); });
+                _workq.post([handle=cstate->coro_handle] { handle.resume(); });
 
                 io_uring_cqe_seen(&ring, cqe);
                 ++did_requests;
