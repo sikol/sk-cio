@@ -298,18 +298,44 @@ namespace sk::net {
             -> expected<void, std::error_code>
         {
             auto ss = addr.as_sockaddr_storage();
+            socklen_t len = 0;
+
+            switch (ss.ss_family) {
+            case AF_INET:
+                len = sizeof(sockaddr_in);
+                break;
+            case AF_INET6:
+                len = sizeof(sockaddr_in6);
+                break;
+            default:
+                return make_unexpected(std::make_error_code(
+                    std::errc::address_family_not_supported));
+            }
 
             return socket_type::_connect(
-                ss.ss_family, reinterpret_cast<sockaddr *>(&ss), sizeof(ss));
+                ss.ss_family, reinterpret_cast<sockaddr *>(&ss), len);
         }
 
         [[nodiscard]] auto async_connect(tcp_endpoint &addr)
             -> task<expected<void, std::error_code>>
         {
             auto ss = addr.as_sockaddr_storage();
+            socklen_t len = 0;
+
+            switch (ss.ss_family) {
+            case AF_INET:
+                len = sizeof(sockaddr_in);
+                break;
+            case AF_INET6:
+                len = sizeof(sockaddr_in6);
+                break;
+            default:
+                co_return make_unexpected(std::make_error_code(
+                    std::errc::address_family_not_supported));
+            }
 
             co_return co_await socket_type::_async_connect(
-                ss.ss_family, reinterpret_cast<sockaddr *>(&ss), sizeof(ss));
+                ss.ss_family, reinterpret_cast<sockaddr *>(&ss), len);
         }
     };
 

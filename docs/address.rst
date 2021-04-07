@@ -30,7 +30,11 @@ Unless otherwise specified, all symbols described here are defined in ``<sk/net/
 
     The UNIX socket address family.
 
-.. cpp:class:: template<address_family af> sk::net::address
+.. cpp:struct:: sk::net::unspecified_family
+
+    The unspecified address family (described below).
+
+.. cpp:class:: template<address_family af = unspecified_family> sk::net::address
 
     An address.
 
@@ -442,13 +446,66 @@ Defined in ``<sk/net/tcpchannel.hxx>``.
                   auto make_tcp_endpoint(address<af> const &addr, \
                                   tcp_endpoint::port_type port) noexcept
 
-    Create a TCP endopint from an address and a port number.  The address family must
+    Create a TCP endpoint from an address and a port number.  The address family must
     be ``inet_family``, ``inet6_family`` or ``unspecified_family``.
 
 .. cpp:function:: auto make_tcp_endpoint(std::string const &str, \
                                   tcp_endpoint::port_type port) noexcept
 
     Create a TCP endpoint from an address literal and a port number.
+
+UNIX endpoints
+^^^^^^^^^^^^^^
+
+Defined in ``<sk/net/unixchannel.hxx>``.
+
+.. cpp:class:: unix_endpoint
+
+    Represents a UNIX socket endpoint.
+
+    .. cpp:type:: address_type = unix_address
+
+    .. cpp:type:: const_address_type = unix_address const
+
+    .. cpp:function:: auto address() const noexcept -> const_address_type &
+
+    .. cpp:function:: auto address() noexcept -> address_type &
+
+        Return the endpoint's address.
+
+    .. cpp:function:: auto as_sockaddr_storage() const noexcept -> sockaddr_storage
+
+        Return a ``sockaddr_storage`` structure representing the endpoint's address.
+
+.. cpp:function:: bool operator==(unix_endpoint const &a, unix_endpoint const &b) noexcept
+
+    Compare two ``unix_endpoint`` for equality.
+
+.. cpp:function:: bool operator<(unix_endpoint const &a, unix_endpoint const &b) noexcept
+
+    Compare two ``unix_endpoint`` for ordering.
+
+.. cpp:function:: auto str(unix_endpoint const &ep) -> std::string
+
+    Return the endpoint's path as a string.
+
+.. cpp:function:: auto make_unix_endpoint(unix_address const &addr) noexcept \
+        -> expected<unix_endpoint, std::error_code>;
+
+    Create a UNIX endpoint from a UNIX address.
+
+.. cpp:function:: auto make_unix_endpoint(address<> const &addr) noexcept \
+        -> expected<unix_endpoint, std::error_code>;
+
+    Create a UNIX endpoint from an ``address<>`` which holds a UNIX address.
+
+.. cpp:function:: auto make_unix_endpoint(std::filesystem::path const &addr) noexcept \
+        -> expected<unix_endpoint, std::error_code>;
+
+.. cpp:function:: auto make_unix_endpoint(std::string const &addr) noexcept \
+        -> expected<unix_endpoint, std::error_code>;
+
+    Create a UNIX endpoint from a filesystem path.
 
 Resolving endpoints
 -------------------

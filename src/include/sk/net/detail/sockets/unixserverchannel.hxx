@@ -81,9 +81,9 @@ namespace sk::net {
         static auto listen(unix_endpoint const &addr)
             -> expected<unixserverchannel, std::error_code>
         {
-            auto ss = addr.as_sockaddr_storage();
+            auto sun = addr.as_sockaddr_un();
             return _listen(
-                AF_UNIX, reinterpret_cast<sockaddr *>(&ss), sizeof(ss));
+                AF_UNIX, reinterpret_cast<sockaddr *>(&sun), sizeof(sun));
         }
     };
 

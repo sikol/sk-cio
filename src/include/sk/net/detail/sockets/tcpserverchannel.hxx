@@ -78,9 +78,21 @@ namespace sk::net {
 
         static auto listen(tcp_endpoint const &addr) -> expected<tcpserverchannel, std::error_code> {
             auto ss = addr.as_sockaddr_storage();
+            socklen_t len = 0;
+            switch (ss.ss_family) {
+            case AF_INET:
+                len = sizeof(sockaddr_in);
+                break;
+            case AF_INET6:
+                len = sizeof(sockaddr_in6);
+                break;
+            default:
+                return make_unexpected(std::make_error_code(std::errc::address_family_not_supported));
+            }
+
             return _listen(socket_address_family(addr.address()),
                            reinterpret_cast<sockaddr *>(&ss),
-                           sizeof(ss));
+                           len);
         }
     };
 
