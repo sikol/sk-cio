@@ -26,50 +26,27 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_NET_ADDRESS_MAKE_ADDRESS_HXX_INCLUDED
-#define SK_NET_ADDRESS_MAKE_ADDRESS_HXX_INCLUDED
+#include <catch.hpp>
 
-// Utility functions for creating addresses.
+#include "sk/wait.hxx"
+#include "sk/net/address.hxx"
+#include "sk/net/tcpchannel.hxx"
 
-#include <sk/net/address/address.hxx>
-#include <sk/net/address/unspec.hxx>
+TEST_CASE("tcp_endpoint_resolver") {
+    sk::net::tcp_endpoint_system_resolver res;
 
-namespace sk::net {
+    auto eps = wait(res.async_resolve("localhost", "http"));
+    REQUIRE(eps);
 
-    /*************************************************************************
-     * make_zero_address - return the zero unspecified_address for an AF.
-     */
-    [[nodiscard]] inline auto make_unspecified_zero_address(int af)
-        -> expected<unspecified_address, std::error_code>
-    {
-        switch (af) {
-        case AF_INET: {
-            sockaddr_in sin{};
-            sin.sin_family = AF_INET;
-            return address_cast<unspecified_address>(sin);
-        }
+    std::set<sk::net::tcp_endpoint> addrs;
+    std::ranges::copy(*eps, std::inserter(addrs, addrs.end()));
 
-        case AF_INET6: {
-            sockaddr_in6 sin6{};
-            sin6.sin6_family = AF_INET6;
+    REQUIRE(addrs.size() == 2);
+    auto &first = *addrs.begin();
+    auto &second = *(++addrs.begin());
 
-            return address_cast<unspecified_address>(sin6);
-        }
-
-#ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
-        case AF_UNIX: {
-            sockaddr_un sun{};
-            sun.sun_family = AF_UNIX;
-            return address_cast<unspecified_address>(sun);
-        }
-#endif
-
-        default:
-            return make_unexpected(
-                std::make_error_code(std::errc::address_family_not_supported));
-        }
-    }
-
-} // namespace sk::net
-
-#endif // SRC_INCLUDE_SK_NET_ADDRESS_MAKE_ADDRESS_HXX_INCLUDED
+    if (str(first) == "127.0.0.1:80")
+        REQUIRE(str(second) == "[::1]:80");
+    else if (str(first) == "[::1]:80")
+        REQUIRE(str(second) == "127.0.0.1:80");
+}

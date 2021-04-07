@@ -53,8 +53,8 @@ namespace sk::net {
         using value_type = std::byte;
 
         explicit tcpserverchannel(sk::net::detail::native_socket_type &&fd,
-                                  int address_family)
-            : socket_type(std::move(fd), address_family)
+                                  int af)
+            : socket_type(std::move(fd), af)
         {
         }
 
@@ -75,6 +75,13 @@ namespace sk::net {
         }
 
         ~tcpserverchannel() = default;
+
+        static auto listen(tcp_endpoint const &addr) -> expected<tcpserverchannel, std::error_code> {
+            auto ss = addr.as_sockaddr_storage();
+            return _listen(socket_address_family(addr.address()),
+                           reinterpret_cast<sockaddr *>(&ss),
+                           sizeof(ss));
+        }
     };
 
 } // namespace sk::net

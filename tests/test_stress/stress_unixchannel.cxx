@@ -46,7 +46,7 @@ constexpr auto run_for = 20s;
 
 auto const unix_listen_address =
     std::filesystem::current_path() / "__sk_test.sock";
-net::address<> unix_listen_addr;
+std::optional<net::unix_endpoint> unix_listen_addr;
 
 task<int> unix_stress_task()
 {
@@ -61,7 +61,7 @@ task<int> unix_stress_task()
 
         // Connect to the test host.
         net::unixchannel chnl;
-        auto ret = co_await chnl.async_connect(unix_listen_addr);
+        auto ret = co_await chnl.async_connect(*unix_listen_addr);
         if (!ret) {
             std::cerr << "stress_task: failed to connect: "
                       << ret.error().message() << "\n";
@@ -159,19 +159,19 @@ task<void> unix_server_task(net::unixserverchannel &chnl)
 TEST_CASE("unixchannel stress test")
 {
     // Create the server channel.
-    auto netaddr = net::make_unix_address(unix_listen_address);
-    if (!netaddr) {
+    auto ep = sk::net::make_unix_endpoint(unix_listen_address);
+    if (!ep) {
         fmt::print(stderr,
                    "{}:{}: {}\n",
                    unix_listen_address.generic_string(),
-                   netaddr.error().message());
+                   ep.error().message());
         return;
     }
 
-    unix_listen_addr = *netaddr;
+    *unix_listen_addr = *ep;
 
     std::ignore = std::remove(unix_listen_address.string().c_str());
-    auto server = net::unixserverchannel::listen(*netaddr);
+    auto server = net::unixserverchannel::listen(*unix_listen_addr);
     if (!server) {
         INFO(unix_listen_address);
         INFO(server.error().message());

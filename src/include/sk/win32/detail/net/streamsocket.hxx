@@ -59,12 +59,10 @@ namespace sk::win32::detail {
 
         ~streamsocket() = default;
 
-        template <int af>
-        [[nodiscard]] auto _async_connect(sk::net::address<af> const &addr)
+        [[nodiscard]] auto _async_connect(int af, sockaddr const *, socklen_t)
             -> task<expected<void, std::error_code>>;
 
-        template <int af>
-        [[nodiscard]] auto _connect(sk::net::address<af> const &addr)
+        [[nodiscard]] auto _connect(int af, sockaddr const *, socklen_t)
             -> expected<void, std::error_code>;
 
     public:
@@ -152,20 +150,16 @@ namespace sk::win32::detail {
      * streamsocket::async_connect()
      */
     template <int type, int protocol>
-    template <int af>
-    auto streamsocket<type, protocol>::_async_connect(
-        sk::net::address<af> const &addr)
+    auto streamsocket<type, protocol>::_async_connect(int af,
+                                                      sockaddr const *addr,
+                                                      socklen_t addrlen)
         -> task<expected<void, std::error_code>>
     {
 
         sk::detail::check(!is_open(), "attempt to re-connect an open channel");
 
-        auto sock = ::WSASocketW(address_family(addr),
-                                 SOCK_STREAM,
-                                 protocol,
-                                 nullptr,
-                                 0,
-                                 WSA_FLAG_OVERLAPPED);
+        auto sock = ::WSASocketW(
+            af, SOCK_STREAM, protocol, nullptr, 0, WSA_FLAG_OVERLAPPED);
 
         if (sock == INVALID_SOCKET)
             co_return make_unexpected(win32::get_last_winsock_error());
@@ -174,26 +168,19 @@ namespace sk::win32::detail {
 
         // Winsock requires binding the socket before we can use ConnectEx().
         // Bind it to the all-zeroes address.
-        auto zero_address =
-            sk::net::make_unspecified_zero_address(address_family(addr));
-        if (!zero_address)
-            co_return make_unexpected(zero_address.error());
+        sockaddr_storage zero_address{};
+        zero_address.ss_family = static_cast<ADDRESS_FAMILY>(af);
 
         if (::bind(sock,
-                   reinterpret_cast<sockaddr *>(&zero_address->native_address),
-                   zero_address->native_address_length) != 0)
+                   reinterpret_cast<sockaddr *>(&zero_address),
+                   sizeof(zero_address)) != 0)
             co_return make_unexpected(win32::get_last_winsock_error());
 
         reactor_handle::get_global_reactor().associate_handle(
             reinterpret_cast<HANDLE>(sock));
 
         auto ret = co_await win32::AsyncConnectEx(
-            sock,
-            reinterpret_cast<sockaddr const *>(&addr.native_address),
-            addr.native_address_length,
-            nullptr,
-            0,
-            nullptr);
+            sock, addr, addrlen, nullptr, 0, nullptr);
 
         if (!ret)
             co_return make_unexpected(ret.error());
@@ -206,19 +193,15 @@ namespace sk::win32::detail {
      * streamsocket::connect()
      */
     template <int type, int protocol>
-    template <int af>
-    auto
-    streamsocket<type, protocol>::_connect(sk::net::address<af> const &addr)
+    auto streamsocket<type, protocol>::_connect(int af,
+                                                sockaddr const *addr,
+                                                socklen_t addrlen)
         -> expected<void, std::error_code>
     {
         sk::detail::check(is_open(), "attempt to connect on a closed channel");
 
-        auto sock = ::WSASocketW(address_family(addr),
-                                 SOCK_STREAM,
-                                 protocol,
-                                 nullptr,
-                                 0,
-                                 WSA_FLAG_OVERLAPPED);
+        auto sock = ::WSASocketW(
+            af, SOCK_STREAM, protocol, nullptr, 0, WSA_FLAG_OVERLAPPED);
 
         if (sock == INVALID_SOCKET)
             return make_unexpected(win32::get_last_winsock_error());
@@ -227,25 +210,19 @@ namespace sk::win32::detail {
 
         // Winsock requires binding the socket before we can use ConnectEx().
         // Bind it to the all-zeroes address.
-        auto zero_address = sk::net::make_unspecified_zero_address(address_family(addr));
-        if (!zero_address)
-            return make_unexpected(zero_address.error());
+        sockaddr_storage zero_address{};
+        zero_address.ss_family = static_cast<ADDRESS_FAMILY>(af);
 
-        if (::bind(sock, *net::address_cast<sockaddr const *>(*zero_address),
-                   zero_address->native_address_length) != 0)
+        if (::bind(sock,
+                   reinterpret_cast<sockaddr *>(&zero_address),
+                   sizeof(zero_address)) != 0)
             return make_unexpected(win32::get_last_winsock_error());
 
         reactor_handle::get_global_reactor().associate_handle(
             reinterpret_cast<HANDLE>(sock));
 
         auto ret = ::WSAConnect(
-            sock,
-            reinterpret_cast<sockaddr const *>(&addr.native_address),
-            addr.native_address_length,
-            nullptr,
-            nullptr,
-            nullptr,
-            nullptr);
+            sock, addr, addrlen, nullptr, nullptr, nullptr, nullptr);
 
         if (ret)
             return make_unexpected(win32::get_last_winsock_error());

@@ -56,6 +56,10 @@ namespace sk::win32::detail {
         streamsocketserver &operator=(streamsocketserver &&) noexcept = default;
         ~streamsocketserver() = default;
 
+        [[nodiscard]] static auto
+        _listen(int af, sockaddr const *addr, socklen_t)
+            -> expected<server_type, std::error_code>;
+
     public:
         using value_type = std::byte;
         using native_handle_type = unique_socket;
@@ -64,10 +68,6 @@ namespace sk::win32::detail {
         streamsocketserver &operator=(streamsocketserver const &) = delete;
 
         [[nodiscard]] auto is_open() const -> bool;
-
-        template <int af>
-        [[nodiscard]] static auto listen(sk::net::address<af> const &addr)
-            -> expected<server_type, std::error_code>;
 
         [[nodiscard]] auto async_accept()
             -> task<expected<channel_type, std::error_code>>;
@@ -117,13 +117,12 @@ namespace sk::win32::detail {
               seqchannel channel_type,
               int type,
               int protocol>
-    template <int af>
-    auto streamsocketserver<server_type, channel_type, type, protocol>::listen(
-        sk::net::address<af> const &addr)
+    auto streamsocketserver<server_type, channel_type, type, protocol>::_listen(
+        int af, sockaddr const *addr, socklen_t addrlen)
         -> expected<server_type, std::error_code>
     {
         SOCKET listener;
-        listener = ::socket(address_family(addr), type, protocol);
+        listener = ::socket(af, type, protocol);
 
         if (listener == INVALID_SOCKET)
             return make_unexpected(win32::get_last_winsock_error());
@@ -135,7 +134,7 @@ namespace sk::win32::detail {
         // Setting SO_REUSEADDR on an AF_UNIX socket is pointless, but on
         // Windows it returns an error.
 #ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
-        if (address_family(addr) != AF_UNIX) {
+        if (af != AF_UNIX) {
 #endif
             DWORD one = 1;
             ret = ::setsockopt(listener,
@@ -149,9 +148,7 @@ namespace sk::win32::detail {
         }
 #endif
 
-        ret = ::bind(listener,
-                     *address_cast<sockaddr const *>(addr),
-                     addr.native_address_length);
+        ret = ::bind(listener, addr, addrlen);
         if (ret)
             return make_unexpected(win32::get_last_winsock_error());
 
@@ -162,7 +159,7 @@ namespace sk::win32::detail {
         reactor_handle::get_global_reactor().associate_handle(
             reinterpret_cast<HANDLE>(listener));
 
-        return server_type{std::move(listener_), address_family(addr)};
+        return server_type{std::move(listener_), af};
     }
 
     /*************************************************************************

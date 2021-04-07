@@ -42,6 +42,86 @@
 
 namespace sk::net {
 
+    /*************************************************************************
+     *
+     * unix_endpoint: an AF_UNIX path.
+     *
+     */
+
+    class unix_endpoint {
+    public:
+        using address_type = unix_address;
+        using const_address_type = unix_address const;
+
+    private:
+        address_type _address;
+
+    public:
+        unix_endpoint(address_type const &addr) : _address(addr) {}
+
+        [[nodiscard]] auto address() const noexcept -> const_address_type &
+        {
+            return _address;
+        }
+
+        [[nodiscard]] auto address() noexcept -> address_type &
+        {
+            return _address;
+        }
+
+        auto as_sockaddr_storage() const noexcept -> sockaddr_storage
+        {
+            sockaddr_storage ret{};
+            auto *sun = reinterpret_cast<sockaddr_un *>(&ret);
+
+            auto &chars = _address.value().path;
+
+            sun->sun_family = AF_UNIX;
+            static_assert(unix_family::address_size <=
+                          sizeof(sockaddr_un::sun_path));
+            std::ranges::copy(chars, &sun->sun_path[0]);
+            return ret;
+        }
+    };
+
+    inline auto str(unix_endpoint const &ep) -> std::string
+    {
+        return *str(ep.address());
+    }
+
+    inline auto make_unix_endpoint(unix_address const &addr)
+        -> expected<unix_endpoint, std::error_code>
+    {
+        return unix_endpoint(addr);
+    }
+
+    inline auto make_unix_endpoint(unspecified_address const &addr)
+        -> expected<unix_endpoint, std::error_code>
+    {
+        auto ua = address_cast<unix_address>(addr);
+        if (!ua)
+            return make_unexpected(ua.error());
+        return unix_endpoint(*ua);
+    }
+
+    inline auto make_unix_endpoint(std::filesystem::path const &path)
+        -> expected<unix_endpoint, std::error_code>
+    {
+        auto addr = make_unix_address(path);
+        if (!addr)
+            return make_unexpected(addr.error());
+        return make_unix_endpoint(*addr);
+    }
+
+    inline auto make_unix_endpoint(std::string const &str)
+        -> expected<unix_endpoint, std::error_code>
+    {
+        auto addr = make_unix_address(str);
+        if (!addr)
+            return make_unexpected(addr.error());
+        return make_unix_endpoint(*addr);
+    }
+
     class unixchannel : public detail::streamsocket<SOCK_STREAM, 0> {
         using socket_type = detail::streamsocket<SOCK_STREAM, 0>;
 
@@ -71,42 +151,20 @@ namespace sk::net {
 
         auto operator=(unixchannel const &) -> unixchannel & = delete;
 
-        template<int af>
-        [[nodiscard]] auto connect(sk::net::address<af> const &addr)
+        [[nodiscard]] auto connect(unix_endpoint const &ep)
             -> expected<void, std::error_code>
         {
-            if (address_family(addr) != AF_UNIX)
-                return make_unexpected(std::make_error_code(
-                    std::errc::address_family_not_supported));
-            return socket_type::_connect(addr);
+            auto ss = ep.as_sockaddr_storage();
+            return socket_type::_connect(
+                AF_UNIX, reinterpret_cast<sockaddr *>(&ss), sizeof(ss));
         }
 
-        [[nodiscard]] auto connect(std::filesystem::path const &path)
-            -> expected<void, std::error_code>
-        {
-            auto addr = net::make_unix_address(path);
-            if (!addr)
-                return make_unexpected(addr.error());
-            return socket_type::_connect(*addr);
-        }
-
-        template<int af>
-        [[nodiscard]] auto async_connect(sk::net::address<af> const &addr)
+        [[nodiscard]] auto async_connect(unix_endpoint const &ep)
             -> task<expected<void, std::error_code>>
         {
-            if (address_family(addr) != AF_UNIX)
-                co_return make_unexpected(std::make_error_code(
-                    std::errc::address_family_not_supported));
-            co_return co_await socket_type::_async_connect(addr);
-        }
-
-        [[nodiscard]] auto async_connect(std::filesystem::path const &path)
-            -> task<expected<void, std::error_code>>
-        {
-            auto addr = net::make_unix_address(path);
-            if (!addr)
-                co_return make_unexpected(addr.error());
-            co_return co_await socket_type::_async_connect(*addr);
+            auto ss = ep.as_sockaddr_storage();
+            co_return co_await socket_type::_async_connect(
+                AF_UNIX, reinterpret_cast<sockaddr *>(&ss), sizeof(ss));
         }
     };
 

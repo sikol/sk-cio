@@ -43,6 +43,7 @@
 #include <sk/posix/error.hxx>
 #include <sk/posix/fd.hxx>
 #include <sk/task.hxx>
+#include <sk/channel/error.hxx>
 
 namespace sk::posix::detail {
 
@@ -57,12 +58,10 @@ namespace sk::posix::detail {
 
         sk::posix::unique_fd _fd;
 
-        template<int af>
-        [[nodiscard]] auto _async_connect(sk::net::address<af> const &addr)
+        [[nodiscard]] auto _async_connect(int af, sockaddr const *, socklen_t)
         -> task<expected<void, std::error_code>>;
 
-        template<int af>
-        [[nodiscard]] auto _connect(sk::net::address<af> const &addr)
+        [[nodiscard]] auto _connect(int af, sockaddr const *, socklen_t)
         -> expected<void, std::error_code>;
 
     public:
@@ -147,14 +146,12 @@ namespace sk::posix::detail {
      * streamsocket::async_connect()
      */
     template<int type, int protocol>
-    template<int af>
-    auto streamsocket<type, protocol>::_async_connect(sk::net::address<af> const &addr)
+    auto streamsocket<type, protocol>::_async_connect(int af, sockaddr const *addr, socklen_t addrlen)
     -> task<expected<void, std::error_code>>
     {
-
         sk::detail::check(!is_open(), "attempt to re-connect an open channel");
 
-        auto sock = ::socket(address_family(addr), type, protocol);
+        auto sock = ::socket(af, type, protocol);
 
         if (sock == -1)
             co_return make_unexpected(sk::posix::get_errno());
@@ -162,9 +159,7 @@ namespace sk::posix::detail {
         sk::posix::unique_fd sock_(sock);
 
         auto ret = co_await sk::posix::async_fd_connect(
-            sock,
-            *address_cast<sockaddr const *>(addr),
-            addr.native_address_length);
+            sock, addr, addrlen);
 
         if (!ret)
             co_return make_unexpected(ret.error());
@@ -178,11 +173,10 @@ namespace sk::posix::detail {
      * streamsocket::connect()
      */
     template<int type, int protocol>
-    template<int af>
-    auto streamsocket<type, protocol>::_connect(sk::net::address<af> const &addr)
+    auto streamsocket<type, protocol>::_connect(int af, sockaddr const *addr, socklen_t addrlen)
     -> expected<void, std::error_code>
     {
-        return wait(_async_connect(addr));
+        return wait(_async_connect(af, addr, addrlen));
     }
 
     /*************************************************************************

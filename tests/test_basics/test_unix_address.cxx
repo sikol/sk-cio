@@ -33,9 +33,9 @@
 using namespace sk::net;
 
 TEST_CASE("unix_address: make_unix_address") {
-    auto addr = make_unix_address("/tmp/x.sock");
+    auto addr = make_address<unix_family>("/tmp/x.sock");
     REQUIRE(addr);
-    REQUIRE(address_family(*addr) == AF_UNIX);
+    REQUIRE(tag(*addr) == unix_family::tag);
 
     auto s = str(*addr);
     REQUIRE(s);
@@ -43,12 +43,12 @@ TEST_CASE("unix_address: make_unix_address") {
 }
 
 TEST_CASE("unix_address: address_cast to unspecified_address") {
-    auto uaddr = make_unix_address("/tmp/x.sock");
+    auto uaddr = make_address<unix_family>("/tmp/x.sock");
     REQUIRE(uaddr);
 
     auto unspec = address_cast<unspecified_address>(*uaddr);
     REQUIRE(unspec);
-    REQUIRE(address_family(*unspec) == AF_UNIX);
+    REQUIRE(tag(*unspec) == unix_family::tag);
 
     auto s = str(*unspec);
     if (!s) {
@@ -58,7 +58,7 @@ TEST_CASE("unix_address: address_cast to unspecified_address") {
     REQUIRE(*s == "/tmp/x.sock");
 
     auto unix2 = address_cast<unix_address>(*unspec);
-    REQUIRE(address_family(*unix2) == AF_UNIX);
+    REQUIRE(tag(*unix2) == unix_family::tag);
 
     s = str(*unix2);
     REQUIRE(s);
@@ -66,7 +66,7 @@ TEST_CASE("unix_address: address_cast to unspecified_address") {
 }
 
 TEST_CASE("unix_address: streaming output") {
-    auto addr = make_unix_address("/tmp/x.sock");
+    auto addr = make_address<unix_family>("/tmp/x.sock");
     REQUIRE(addr);
 
     std::ostringstream strm;

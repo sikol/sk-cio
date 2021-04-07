@@ -45,8 +45,8 @@ constexpr int nops = 500;
 constexpr auto run_for = 20s;
 
 std::string const tcp_listen_address = "127.0.0.1";
-std::string const tcp_listen_port = "5357";
-net::address<> *tcp_listen_addr;
+std::uint16_t const tcp_listen_port = 5357;
+std::optional<net::tcp_endpoint> tcp_listen_addr;
 
 task<int> tcp_stress_task()
 {
@@ -158,18 +158,18 @@ task<void> tcp_server_task(net::tcpserverchannel &chnl)
 TEST_CASE("tcpchannel stress test")
 {
     // Create the server channel.
-    auto netaddr = net::make_address(tcp_listen_address, tcp_listen_port);
-    if (!netaddr) {
+    auto ep = net::make_tcp_endpoint(tcp_listen_address, tcp_listen_port);
+    if (!ep) {
         fmt::print(stderr,
                    "{}:{}: {}\n",
                    tcp_listen_address,
                    tcp_listen_port,
-                   netaddr.error().message());
-        return;
+                   ep.error().message());
+        REQUIRE(false);
     }
-    tcp_listen_addr = &*netaddr;
 
-    auto server = net::tcpserverchannel::listen(*netaddr);
+    *tcp_listen_addr = *ep;
+    auto server = net::tcpserverchannel::listen(*ep);
     REQUIRE(server);
 
     co_detach(tcp_server_task(*server));

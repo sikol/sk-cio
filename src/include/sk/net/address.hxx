@@ -29,25 +29,1309 @@
 #ifndef SK_CIO_NET_ADDRESS_HXX_INCLUDED
 #define SK_CIO_NET_ADDRESS_HXX_INCLUDED
 
+#include <charconv>
 #include <cstring>
+#include <filesystem>
 #include <iostream>
+#include <set>
 #include <stdexcept>
 #include <system_error>
+#include <variant>
 
+#include <sk/async_invoke.hxx>
 #include <sk/detail/platform.hxx>
 #include <sk/detail/safeint.hxx>
 #include <sk/expected.hxx>
+#include <sk/overload.hxx>
+#include <sk/patricia.hxx>
 #include <sk/task.hxx>
 
-#include <sk/net/address/address.hxx>
-#include <sk/net/address/inet.hxx>
-#include <sk/net/address/inet6.hxx>
-
-#ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
-#include <sk/net/address/unix.hxx>
+#if defined(SK_CIO_PLATFORM_WINDOWS)
+#    include <sk/win32/windows.hxx>
+#    ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
+#        include <afunix.h>
+#    endif
+#elif defined(SK_CIO_PLATFORM_POSIX)
+#    define SK_CIO_PLATFORM_HAS_AF_UNIX
+#    include <sys/types.h>
+#    include <sys/socket.h>
+#    include <sys/un.h>
+#    include <arpa/inet.h>
+#    include <netdb.h>
+#else
+#    error address is not supported on this platform
 #endif
 
-#include <sk/net/address/make_address.hxx>
-#include <sk/net/address/resolve.hxx>
+namespace sk::net {
+
+    namespace detail {
+
+#ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
+        // We can support any maximum path length, but setting this larger than
+        // the system's sun_path size is unlikely to be useful.
+        static constexpr std::size_t max_unix_path_len =
+            sizeof(sockaddr_un::sun_path);
+#else
+        // 108 is the largest value typically supported on most platforms.
+        static constexpr std::size_t max_unix_path_len = 108;
+#endif
+
+    } // namespace detail
+
+    /*************************************************************************
+     *
+     * Address families.
+     *
+     */
+
+    using address_family_tag = std::uint8_t;
+
+    // clang-format off
+    template<typename T>
+    concept address_family = requires {
+            typename T::address_type;
+        }
+        and std::same_as<std::remove_cvref_t<decltype(T::tag)>, address_family_tag>
+        and requires(T &af, typename T::address_type &addr, std::string const &str) {
+            { af.to_string(addr) } -> std::convertible_to<std::string>;
+            { af.from_string(str) } -> std::same_as<expected<typename T::address_type, std::error_code>>;
+        };
+    // clang-format on
+
+    // INET (IPv4) address family.
+    struct inet_family {
+        static constexpr address_family_tag tag =
+            static_cast<address_family_tag>(AF_INET);
+
+        static constexpr std::size_t max_string_length =
+            sizeof("255.255.255.255") - 1;
+
+        static constexpr std::size_t address_size = 4;
+        struct address_type {
+            std::array<std::uint8_t, address_size> bytes;
+        };
+
+        static constexpr address_type zero_address{{}};
+
+        static auto as_bytes(address_type const &addr) noexcept
+            -> std::span<std::byte const, address_size>
+        {
+            return std::as_bytes(std::span(addr.bytes));
+        }
+
+        static auto to_string(address_type const &addr) -> std::string
+        {
+            char ret[max_string_length];
+            auto bytes = &addr.bytes[0];
+            std::to_chars_result p{&ret[0], std::errc()};
+
+            for (unsigned i = 0; i < 4; ++i) {
+                p = std::to_chars(p.ptr, &ret[sizeof(ret) - 1], bytes[i]);
+
+                sk::detail::check(p.ec == std::errc(), "to_chars failure");
+
+                if (i != 3)
+                    *p.ptr++ = '.';
+            }
+
+            return std::string(&ret[0], p.ptr);
+        }
+
+        static auto from_string(std::string const &s)
+            -> expected<address_type, std::error_code>
+        {
+            address_type addr;
+
+            auto ret = inet_pton(AF_INET, s.c_str(), &addr.bytes[0]);
+
+            if (ret != 1)
+                return make_unexpected(
+                    std::make_error_code(std::errc::invalid_argument));
+
+            return addr;
+        }
+
+        static auto from_in_addr_t(std::uint32_t a) -> address_type
+        {
+            address_type addr{};
+            std::memcpy(&addr.bytes[0], &a, sizeof(a));
+            return addr;
+        }
+    };
+
+    static_assert(address_family<inet_family>);
+
+    // INET6 (IPv6) address family.
+    struct inet6_family {
+        static constexpr address_family_tag tag =
+            static_cast<address_family_tag>(AF_INET6);
+
+        static constexpr std::size_t max_string_length =
+            sizeof("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff") - 1;
+
+        static constexpr std::size_t address_size = 128 / 8;
+        struct address_type {
+            std::array<std::uint8_t, address_size> bytes;
+        };
+
+        static constexpr address_type zero_address{{}};
+
+        static auto as_bytes(address_type const &addr) noexcept
+            -> std::span<std::byte const, address_size>
+        {
+            return std::as_bytes(std::span(addr.bytes));
+        }
+
+        static auto to_string(address_type const &addr) -> std::string
+        {
+            char buf[INET6_ADDRSTRLEN];
+            auto ret = inet_ntop(AF_INET6, &addr.bytes[0], buf, sizeof(buf));
+            sk::detail::check(ret != nullptr, "inet_ntop failure");
+
+            return std::string(buf);
+        }
+
+        static auto from_string(std::string const &s)
+            -> expected<address_type, std::error_code>
+        {
+            address_type addr;
+
+            auto ret = inet_pton(AF_INET6, s.c_str(), &addr.bytes[0]);
+
+            if (ret != 1)
+                return make_unexpected(
+                    std::make_error_code(std::errc::invalid_argument));
+
+            return addr;
+        }
+
+        static auto from_in6_addr(in6_addr a) -> address_type
+        {
+            address_type addr{};
+            std::memcpy(&addr.bytes[0], &a.s6_addr[0], sizeof(a.s6_addr));
+            return addr;
+        }
+    };
+
+    static_assert(address_family<inet6_family>);
+
+    // UNIX address family.
+    struct unix_family {
+        static constexpr address_family_tag tag =
+            static_cast<address_family_tag>(AF_UNIX);
+
+        static constexpr std::size_t address_size = detail::max_unix_path_len;
+        struct address_type {
+            std::array<char, address_size> path;
+        };
+
+        static constexpr address_type zero_address{{}};
+
+        static auto as_bytes(address_type const &addr) noexcept
+            -> std::span<std::byte const>
+        {
+            return std::as_bytes(std::span(addr.path.begin(),
+                                           std::ranges::find(addr.path, '\0')));
+        }
+
+        static auto to_string(address_type const &addr) -> std::string
+        {
+            return std::string(addr.path.begin(),
+                               std::ranges::find(addr.path, '\0'));
+        }
+
+        static auto from_string(std::string const &s)
+            -> expected<address_type, std::error_code>
+        {
+            address_type ret{};
+            if (s.size() > address_size)
+                return make_unexpected(
+                    std::make_error_code(std::errc::value_too_large));
+            std::ranges::copy(s, &ret.path[0]);
+            return ret;
+        }
+
+        static auto from_string(std::filesystem::path const &path)
+            -> expected<address_type, std::error_code>
+        {
+#ifdef _WIN32
+            auto native = path.u8string();
+            return from_string(std::string(
+                reinterpret_cast<char *>(&native[0]),
+                reinterpret_cast<char *>(&native[0]) + native.size()));
+#else
+            return from_string(path.native());
+#endif
+        }
+
+        static auto from_array(char const (&arr)[address_size]) -> address_type
+        {
+            address_type ret;
+            std::ranges::copy(arr, &ret.path[0]);
+            return ret;
+        }
+    };
+
+    static_assert(address_family<unix_family>);
+
+    // Unspecified address family.
+    struct unspecified_family {
+        static constexpr address_family_tag tag = AF_UNSPEC;
+
+        using address_type = std::variant<inet_family::address_type,
+                                          inet6_family::address_type,
+                                          unix_family::address_type>;
+
+        static auto as_bytes(address_type const &address)
+            -> std::span<std::byte const>
+        {
+            return std::visit(overload{[](inet_family::address_type const &a)
+                                           -> std::span<std::byte const> {
+                                           return std::span<std::byte const>(
+                                               inet_family::as_bytes(a));
+                                       },
+                                       [](inet6_family::address_type const &a)
+                                           -> std::span<std::byte const> {
+                                           return inet6_family::as_bytes(a);
+                                       },
+                                       [](unix_family::address_type const &a)
+                                           -> std::span<std::byte const> {
+                                           return unix_family::as_bytes(a);
+                                       }},
+                              address);
+        }
+
+        static auto to_string(address_type const &address) -> std::string
+        {
+            return std::visit(overload{[](inet_family::address_type const &a) {
+                                           return inet_family::to_string(a);
+                                       },
+                                       [](inet6_family::address_type const &a) {
+                                           return inet6_family::to_string(a);
+                                       },
+                                       [](unix_family::address_type const &a) {
+                                           return unix_family::to_string(a);
+                                       }},
+                              address);
+        }
+
+        static auto from_string(std::string const &s)
+            -> expected<address_type, std::error_code>
+        {
+            // unspecified from_string() supports inet and inet6, but not unix,
+            // because almost any valid is a valid unix address and that would
+            // be surprising to the user.
+            auto inet = inet_family::from_string(s);
+            if (inet)
+                return address_type(*inet);
+
+            auto inet6 = inet6_family::from_string(s);
+            if (inet6)
+                return address_type(*inet6);
+
+            return make_unexpected(
+                std::make_error_code(std::errc::invalid_argument));
+        }
+
+        static auto contained_tag(address_type const &address)
+            -> address_family_tag
+        {
+            return std::visit(
+                overload{
+                    [](inet_family::address_type const &)
+                        -> address_family_tag { return inet_family::tag; },
+                    [](inet6_family::address_type const &)
+                        -> address_family_tag { return inet6_family::tag; },
+                    [](unix_family::address_type const &)
+                        -> address_family_tag { return unix_family::tag; }},
+                address);
+        }
+    };
+
+    static_assert(address_family<unspecified_family>);
+
+    /*************************************************************************
+     *
+     * address: represents the address of a network endpoint; for IP endpoints
+     * this will be a hostname and port.
+     *
+     */
+
+    template <address_family family = unspecified_family>
+    class address;
+
+    // Create an address from a string.
+    template <address_family family = unspecified_family>
+    [[nodiscard]] auto make_address(std::string const &addr)
+        -> expected<address<family>, std::error_code> = delete;
+
+    template <address_family family = unspecified_family>
+    [[nodiscard]] inline auto make_address(sockaddr const *sa, socklen_t len)
+        -> expected<address<family>, std::error_code> = delete;
+
+    // Create a zero address.
+    template <address_family family = unspecified_family>
+    [[nodiscard]] auto make_zero_address()
+        -> expected<address<family>, std::error_code>
+    {
+        return address<family>(family::zero_address);
+    }
+
+    template <address_family family = unspecified_family>
+    [[nodiscard]] auto socket_address_family(address<family> const &) = delete;
+
+    template <address_family af>
+    [[nodiscard]] auto tag(address<af> const &) noexcept -> address_family_tag
+    {
+        return af::tag;
+    }
+
+    template <address_family af>
+    [[nodiscard]] auto str(address<af> const &) = delete;
+
+    template <address_family family>
+    inline auto operator<<(std::ostream &strm, address<family> const &addr)
+        -> std::ostream &
+    {
+        auto s = str(addr);
+
+        if (s)
+            strm << *s;
+        else
+            strm << "(invalid address)";
+
+        return strm;
+    }
+
+    template <typename To, typename From>
+    struct address_caster;
+
+    template <typename To, typename From>
+    auto address_cast(From &&from) -> expected<To, std::error_code>
+    {
+        return address_caster<std::remove_reference_t<To>,
+                              std::remove_cvref_t<From>>()
+            .cast(from);
+    }
+
+    template <address_family af1, address_family af2>
+    bool operator==(address<af1> const &a, address<af2> const &b)
+    {
+        address_family_tag af_a = tag(a);
+        address_family_tag af_b = tag(b);
+
+        if (af_a != af_b)
+            return false;
+
+        auto a_bytes = a.as_bytes();
+        auto b_bytes = b.as_bytes();
+
+        if (a_bytes.size() != b_bytes.size())
+            return false;
+
+        return std::lexicographical_compare_three_way(
+                   std::ranges::begin(a_bytes),
+                   std::ranges::end(a_bytes),
+                   std::ranges::begin(b_bytes),
+                   std::ranges::end(b_bytes)) == std::strong_ordering::equal;
+    }
+
+    template <address_family af1, address_family af2>
+    bool operator<(address<af1> const &a, address<af2> const &b)
+    {
+        address_family_tag af_a = tag(a);
+        address_family_tag af_b = tag(b);
+
+        if (af_a != af_b)
+            return af_a < af_b;
+
+        auto a_bytes = a.as_bytes();
+        auto b_bytes = b.as_bytes();
+
+        return std::lexicographical_compare_three_way(
+                   std::ranges::begin(a_bytes),
+                   std::ranges::end(a_bytes),
+                   std::ranges::begin(b_bytes),
+                   std::ranges::end(b_bytes)) == std::strong_ordering::less;
+    }
+
+    /*************************************************************************
+     *
+     * Address for the inet address family (IPv4).
+     *
+     */
+    template <>
+    class address<inet_family> {
+    public:
+        using address_family = inet_family;
+        using address_type = address_family::address_type;
+
+    private:
+        address_type _address{};
+
+    public:
+        address() noexcept = default;
+        address(address_type const &a) : _address(a) {}
+        address(address const &other) noexcept = default;
+        auto operator=(address const &other) noexcept -> address & = default;
+
+        static const address<inet_family> zero_address;
+
+        auto value() noexcept -> address_type &
+        {
+            return _address;
+        }
+
+        auto value() const noexcept -> address_type const &
+        {
+            return _address;
+        }
+
+        auto as_bytes() const noexcept
+            -> std::span<std::byte const, inet_family::address_size>
+        {
+            return inet_family::as_bytes(_address);
+        }
+    };
+
+    inline const address<inet_family> address<inet_family>::zero_address =
+        address<inet_family>(inet_family::zero_address);
+
+    using inet_address = address<inet_family>;
+
+    template <>
+    [[nodiscard]] inline auto make_address<inet_family>(sockaddr const *sa,
+                                                        socklen_t len)
+        -> expected<address<inet_family>, std::error_code>
+    {
+        if (sa->sa_family != AF_INET)
+            return make_unexpected(
+                std::make_error_code(std::errc::address_family_not_supported));
+
+        auto sin = reinterpret_cast<sockaddr_in const *>(sa);
+        if (len < sizeof(*sin))
+            return make_unexpected(
+                std::make_error_code(std::errc::invalid_argument));
+
+        return address<inet_family>(
+            inet_family::from_in_addr_t(sin->sin_addr.s_addr));
+    }
+
+    template <>
+    [[nodiscard]] inline auto make_address<inet_family>(std::string const &str)
+        -> expected<inet_address, std::error_code>
+    {
+        auto a = inet_family::from_string(str);
+        if (!a)
+            return make_unexpected(a.error());
+        return inet_address(*a);
+    }
+
+    [[nodiscard]] inline auto make_inet_address(std::uint32_t addr)
+        -> inet_address
+    {
+        return inet_address(inet_family::from_in_addr_t(addr));
+    }
+
+    [[nodiscard]] inline auto make_inet_address(std::string const &v)
+    {
+        return make_address<inet_family>(v);
+    }
+
+    [[nodiscard]] inline auto str(inet_address const &addr)
+        -> expected<std::string, std::error_code>
+    {
+        return inet_family::to_string(addr.value());
+    }
+
+    template <>
+    [[nodiscard]] inline auto
+    socket_address_family(address<inet_family> const &)
+    {
+        return AF_INET;
+    }
+
+    /*************************************************************************
+     *
+     * Address for the inet6 address family (IPv6).
+     *
+     */
+
+    template <>
+    class address<inet6_family> {
+    public:
+        using address_family = inet6_family;
+        using address_type = address_family::address_type;
+
+    private:
+        address_type _address{};
+
+    public:
+        address() noexcept = default;
+        address(address_type const &a) : _address(a) {}
+        address(address const &other) noexcept = default;
+        auto operator=(address const &other) noexcept -> address & = default;
+
+        static const address<inet6_family> zero_address;
+
+        auto value() noexcept -> address_type &
+        {
+            return _address;
+        }
+
+        auto value() const noexcept -> address_type const &
+        {
+            return _address;
+        }
+
+        auto as_bytes() const noexcept
+            -> std::span<std::byte const, inet6_family::address_size>
+        {
+            return inet6_family::as_bytes(_address);
+        }
+    };
+
+    inline const address<inet6_family> address<inet6_family>::zero_address =
+        address<inet6_family>(inet6_family::zero_address);
+
+    using inet6_address = address<inet6_family>;
+
+    template <>
+    [[nodiscard]] inline auto make_address<inet6_family>(sockaddr const *sa,
+                                                         socklen_t len)
+        -> expected<address<inet6_family>, std::error_code>
+    {
+        if (sa->sa_family != AF_INET6)
+            return make_unexpected(
+                std::make_error_code(std::errc::address_family_not_supported));
+
+        auto sin = reinterpret_cast<sockaddr_in6 const *>(sa);
+        if (len < sizeof(*sin))
+            return make_unexpected(
+                std::make_error_code(std::errc::invalid_argument));
+
+        return address<inet6_family>(
+            inet6_family::from_in6_addr(sin->sin6_addr));
+    }
+
+    template <>
+    inline auto make_address<inet6_family>(std::string const &str)
+        -> expected<inet6_address, std::error_code>
+    {
+        auto a = inet6_family::from_string(str);
+        if (!a)
+            return make_unexpected(a.error());
+        return inet6_address(*a);
+    }
+
+    [[nodiscard]] inline auto make_inet6_address(in6_addr const &addr)
+        -> inet6_address
+    {
+        return inet6_address(inet6_family::from_in6_addr(addr));
+    }
+
+    inline auto make_inet6_address(std::string const &str)
+    {
+        return make_address<inet6_family>(str);
+    }
+
+    inline auto str(inet6_address const &addr)
+        -> expected<std::string, std::error_code>
+    {
+        return inet6_family::to_string(addr.value());
+    }
+
+    template <>
+    [[nodiscard]] inline auto
+    socket_address_family(address<inet6_family> const &)
+    {
+        return AF_INET6;
+    }
+
+    /*************************************************************************
+     *
+     * Address for the UNIX address family.
+     *
+     */
+
+    template <>
+    class address<unix_family> {
+    public:
+        using address_family = unix_family;
+        using address_type = address_family::address_type;
+
+    private:
+        address_type _address{};
+
+    public:
+        address() noexcept = default;
+        address(address_type const &a) : _address(a) {}
+        address(address const &other) noexcept = default;
+        auto operator=(address const &other) noexcept -> address & = default;
+
+        auto value() noexcept -> address_type &
+        {
+            return _address;
+        }
+
+        auto value() const noexcept -> address_type const &
+        {
+            return _address;
+        }
+
+        auto as_bytes() const noexcept -> std::span<std::byte const>
+        {
+            return unix_family::as_bytes(_address);
+        }
+    };
+
+    using unix_address = address<unix_family>;
+
+    template <>
+    inline auto make_address<unix_family>(std::string const &str)
+        -> expected<unix_address, std::error_code>
+    {
+        auto a = unix_family::from_string(str);
+        if (!a)
+            return make_unexpected(a.error());
+        return unix_address(*a);
+    }
+
+    inline auto str(unix_address const &addr)
+        -> expected<std::string, std::error_code>
+    {
+        return unix_family::to_string(addr.value());
+    }
+
+    inline auto make_unix_address(std::string const &str)
+    {
+        return make_address<unix_family>(str);
+    }
+
+    inline auto make_unix_address(std::filesystem::path const &path)
+        -> expected<unix_address, std::error_code>
+    {
+        auto a = unix_family::from_string(path);
+        if (!a)
+            return make_unexpected(a.error());
+        return unix_address(*a);
+    }
+
+    template <>
+    [[nodiscard]] inline auto
+    socket_address_family(address<unix_family> const &)
+    {
+        return AF_UNIX;
+    }
+
+    /*************************************************************************
+     *
+     * Address for an unspecified address family.
+     *
+     */
+
+    template <>
+    class address<unspecified_family> {
+    public:
+        using address_family = unspecified_family;
+        using address_type = address_family::address_type;
+
+    private:
+        address_type _address{};
+
+    public:
+        address() noexcept = default;
+        address(address_type const &a) : _address(a) {}
+        address(address const &other) noexcept = default;
+        auto operator=(address const &other) noexcept -> address & = default;
+
+        auto value() noexcept -> address_type &
+        {
+            return _address;
+        }
+
+        auto value() const noexcept -> address_type const &
+        {
+            return _address;
+        }
+
+        auto as_bytes() const noexcept -> std::span<std::byte const>
+        {
+            return unspecified_family::as_bytes(_address);
+        }
+    };
+
+    using unspecified_address = address<unspecified_family>;
+
+    template <>
+    inline auto make_address<unspecified_family>(std::string const &str)
+        -> expected<unspecified_address, std::error_code>
+    {
+        auto a = unspecified_family::from_string(str);
+        if (!a)
+            return make_unexpected(a.error());
+        return unspecified_address(*a);
+    }
+
+    template <>
+    [[nodiscard]] inline auto
+    make_address<unspecified_family>(sockaddr const *sa, socklen_t len)
+        -> expected<address<unspecified_family>, std::error_code>
+    {
+        switch (sa->sa_family) {
+        case AF_INET:
+            if (len < sizeof(sockaddr_in))
+                return make_unexpected(
+                    std::make_error_code(std::errc::invalid_argument));
+
+            return unspecified_address(inet_family::from_in_addr_t(
+                reinterpret_cast<sockaddr_in const *>(sa)->sin_addr.s_addr));
+
+        case AF_INET6:
+            if (len < sizeof(sockaddr_in6))
+                return make_unexpected(
+                    std::make_error_code(std::errc::invalid_argument));
+
+            return unspecified_address(inet6_family::from_in6_addr(
+                reinterpret_cast<sockaddr_in6 const *>(sa)->sin6_addr));
+
+#ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
+        case AF_UNIX:
+            if (len < sizeof(sockaddr_un))
+                return make_unexpected(
+                    std::make_error_code(std::errc::invalid_argument));
+
+            return unspecified_address(unix_family::from_array(
+                reinterpret_cast<sockaddr_un const *>(sa)->sun_path));
+#endif
+
+        default:
+            return make_unexpected(
+                std::make_error_code(std::errc::address_family_not_supported));
+        }
+    }
+
+    inline auto str(unspecified_address const &addr)
+        -> expected<std::string, std::error_code>
+    {
+        return unspecified_family::to_string(addr.value());
+    }
+
+    template <>
+    [[nodiscard]] inline auto tag(address<unspecified_family> const &a) noexcept
+        -> address_family_tag
+    {
+        return unspecified_family::contained_tag(a.value());
+    }
+
+    template <>
+    [[nodiscard]] inline auto
+    socket_address_family(address<unspecified_family> const &addr)
+    {
+        switch (tag(addr)) {
+        case inet_family::tag:
+            return AF_INET;
+        case inet6_family::tag:
+            return AF_INET6;
+        case unix_family::tag:
+            return AF_UNIX;
+        default:
+            return AF_UNSPEC;
+        }
+    }
+
+    // unspecified_address <- inet_address
+    template <>
+    struct address_caster<unspecified_address, inet_address> {
+        auto cast(inet_address const &addr)
+        {
+            return unspecified_address(addr.value());
+        }
+    };
+
+    // inet_address <- unspecified_address
+    template <>
+    struct address_caster<inet_address, unspecified_address> {
+        auto cast(unspecified_address const &addr)
+            -> expected<inet_address, std::error_code>
+        {
+            return std::visit(
+                overload{[](inet_family::address_type const &a)
+                             -> expected<inet_address, std::error_code> {
+                             return inet_address(a);
+                         },
+                         [](auto const &)
+                             -> expected<inet_address, std::error_code> {
+                             return make_unexpected(std::make_error_code(
+                                 std::errc::address_family_not_supported));
+                         }},
+                addr.value());
+        }
+    };
+
+    // unspecified_address <- inet6_address
+    template <>
+    struct address_caster<unspecified_address, inet6_address> {
+        auto cast(inet6_address const &addr)
+        {
+            return unspecified_address(addr.value());
+        }
+    };
+
+    // inet6_address <- unspecified_address
+    template <>
+    struct address_caster<inet6_address, unspecified_address> {
+        auto cast(unspecified_address const &addr)
+            -> expected<inet6_address, std::error_code>
+        {
+            return std::visit(
+                overload{[](inet6_family::address_type const &a)
+                             -> expected<inet6_address, std::error_code> {
+                             return inet6_address(a);
+                         },
+                         [](auto const &)
+                             -> expected<inet6_address, std::error_code> {
+                             return make_unexpected(std::make_error_code(
+                                 std::errc::address_family_not_supported));
+                         }},
+                addr.value());
+        }
+    };
+
+    // unspecified_address <- unix_address
+    template <>
+    struct address_caster<unspecified_address, unix_address> {
+        auto cast(unix_address const &addr)
+        {
+            return unspecified_address(addr.value());
+        }
+    };
+
+    // unix_address <- unspecified_address
+    template <>
+    struct address_caster<unix_address, unspecified_address> {
+        auto cast(unspecified_address const &addr)
+            -> expected<unix_address, std::error_code>
+        {
+            return std::visit(
+                overload{[](unix_family::address_type const &a)
+                             -> expected<unix_address, std::error_code> {
+                             return unix_address(a);
+                         },
+                         [](auto const &)
+                             -> expected<unix_address, std::error_code> {
+                             return make_unexpected(std::make_error_code(
+                                 std::errc::address_family_not_supported));
+                         }},
+                addr.value());
+        }
+    };
+
+    /*************************************************************************
+     * make_unspecified_zero_address - return the zero unspecified_address
+     * for a particular address_family tag.
+     */
+
+    [[nodiscard]] inline auto
+    make_unspecified_zero_address(address_family_tag af)
+        -> expected<unspecified_address, std::error_code>
+    {
+        switch (af) {
+        case inet_family::tag:
+            return unspecified_address(inet_family::zero_address);
+
+        case inet6_family::tag:
+            return unspecified_address(inet6_family::zero_address);
+
+        case unix_family::tag:
+            return unspecified_address(unix_family::zero_address);
+
+        default:
+            return make_unexpected(
+                std::make_error_code(std::errc::address_family_not_supported));
+        }
+    }
+
+    /*************************************************************************
+     *
+     * Name resolver.
+     *
+     */
+
+    /*************************************************************************
+     *
+     * The resolver error category.
+     *
+     */
+    enum struct resolver_error : int {
+        no_error = 0,
+    };
+
+} // namespace sk::net
+
+namespace std {
+
+    template <>
+    struct is_error_code_enum<sk::net::resolver_error> : true_type {
+    };
+
+} // namespace std
+
+namespace sk::net {
+
+    namespace detail {
+
+        struct resolver_errc_category : std::error_category {
+            [[nodiscard]] auto name() const noexcept -> char const * final
+            {
+                return "cio:resolver";
+            }
+            [[nodiscard]] auto message(int c) const -> std::string final
+            {
+                return gai_strerror(c);
+            }
+        };
+
+#ifdef NI_MAXHOST
+        constexpr std::size_t ni_maxhost = NI_MAXHOST;
+#else
+        constexpr std::size_t ni_maxhost = 1025;
+#endif
+
+#ifdef NI_MAXSERV
+        constexpr std::size_t ni_maxserv = NI_MAXSERV;
+#else
+        constexpr std::size_t ni_maxserv = 32;
+#endif
+
+    } // namespace detail
+
+    [[nodiscard]] inline auto resolver_errc_category()
+        -> detail::resolver_errc_category const &
+    {
+        static detail::resolver_errc_category c;
+        return c;
+    }
+
+    [[nodiscard]] inline auto make_error_code(resolver_error e)
+        -> std::error_code
+    {
+        return {static_cast<int>(e), resolver_errc_category()};
+    }
+
+    namespace detail {
+
+        // A container that stores the result of a getaddrinfo() operation.
+        // It behaves like a normal container, and is also a range, so it can
+        // be iterated, copied to another container, etc.
+        // addrinfo_container does no allocations itself, but getaddrinfo()
+        // uses heap allocation.
+
+        struct addrinfo_deleter {
+            auto operator()(addrinfo *ai) const -> void
+            {
+                ::freeaddrinfo(ai);
+            }
+        };
+
+        template <address_family af>
+        struct addrinfo_address_transform {
+            using result_type = address<af>;
+
+            auto operator()(addrinfo **ai) const noexcept
+                -> std::optional<result_type>
+            {
+                while (*ai != nullptr) {
+                    auto addr = make_address<af>(
+                        (*ai)->ai_addr,
+                        static_cast<socklen_t>((*ai)->ai_addrlen));
+                    if (addr)
+                        return *addr;
+
+                    *ai = (*ai)->ai_next;
+                }
+
+                return {};
+            }
+        };
+
+        template <typename transformer>
+        class addrinfo_iterator {
+            addrinfo *_ai{};
+            transformer _xfrm;
+            typename transformer::result_type _addr;
+
+            auto _next_address() -> void
+            {
+                auto r = _xfrm(&_ai);
+                if (r)
+                    _addr = *r;
+                else
+                    _ai = nullptr;
+            }
+
+        public:
+            using iterator_category = std::forward_iterator_tag;
+            using difference_type = std::ptrdiff_t;
+            using value_type = typename transformer::result_type;
+            using const_value_type = value_type const;
+            using pointer = value_type *;
+            using const_pointer = const_value_type *;
+            using reference = value_type &;
+            using const_reference = const_value_type &;
+
+            addrinfo_iterator() noexcept = default;
+            addrinfo_iterator(addrinfo *ai_) noexcept : _ai(ai_)
+            {
+                _next_address();
+            }
+
+            addrinfo_iterator(addrinfo_iterator const &) noexcept = default;
+            addrinfo_iterator(addrinfo_iterator &&) noexcept = default;
+            auto operator=(addrinfo_iterator const &) noexcept
+                -> addrinfo_iterator & = default;
+            auto operator=(addrinfo_iterator &&) noexcept
+                -> addrinfo_iterator & = default;
+
+            auto operator++() noexcept -> addrinfo_iterator &
+            {
+                _ai = _ai->ai_next;
+                _next_address();
+                return *this;
+            }
+
+            auto operator++(int) noexcept -> addrinfo_iterator
+            {
+                addrinfo_iterator ret(*this);
+                ++*this;
+                return ret;
+            }
+
+            auto operator*() const noexcept -> reference
+            {
+                return const_cast<addrinfo_iterator *>(this)->_addr;
+            }
+
+            auto operator*() noexcept -> reference
+            {
+                return _addr;
+            }
+
+            auto operator->() const noexcept -> pointer
+            {
+                return &const_cast<addrinfo_iterator *>(this)->_addr;
+            }
+
+            auto operator->() noexcept -> pointer
+            {
+                return &_addr;
+            }
+
+            auto operator==(addrinfo_iterator const &other) const noexcept
+                -> bool
+            {
+                return _ai == other._ai;
+            }
+
+            auto get_addrinfo() -> addrinfo *
+            {
+                return _ai;
+            }
+        };
+
+        template <typename transform>
+        class addrinfo_container {
+            using addrinfo_ptr = std::unique_ptr<addrinfo, addrinfo_deleter>;
+            addrinfo_ptr _ai;
+
+        public:
+            using value_type = typename transform::result_type;
+            using iterator = addrinfo_iterator<transform>;
+
+            addrinfo_container() noexcept = default;
+            addrinfo_container(addrinfo_ptr &&ai) noexcept : _ai(std::move(ai))
+            {
+            }
+            addrinfo_container(addrinfo_container const &) noexcept = delete;
+            addrinfo_container(addrinfo_container &&) noexcept = default;
+            auto operator=(addrinfo_container const &) noexcept
+                -> addrinfo_container & = delete;
+            auto operator=(addrinfo_container &&) noexcept
+                -> addrinfo_container & = default;
+            ~addrinfo_container() = default;
+
+            auto begin() noexcept -> iterator
+            {
+                return iterator(_ai.get());
+            }
+
+            auto end() noexcept -> iterator
+            {
+                return iterator();
+            }
+        };
+
+        using async_getaddrinfo_result =
+            std::unique_ptr<addrinfo, addrinfo_deleter>;
+
+        [[nodiscard]] inline auto async_getaddrinfo(
+            addrinfo const &hints,
+            std::optional<std::string> const &hostname = {},
+            std::optional<std::string> const &service = {}) noexcept
+            -> task<expected<async_getaddrinfo_result, std::error_code>>
+        {
+            addrinfo *gai_result{};
+
+            auto ret = co_await async_invoke([&] {
+                return ::getaddrinfo(hostname ? hostname->c_str() : nullptr,
+                                     service ? service->c_str() : nullptr,
+                                     &hints,
+                                     &gai_result);
+            });
+
+            if (ret)
+                co_return make_unexpected(
+                    make_error_code(static_cast<resolver_error>(ret)));
+
+            co_return async_getaddrinfo_result(gai_result);
+        }
+
+        template <address_family af,
+                  typename transform,
+                  int socktype,
+                  int protocol>
+        class basic_system_resolver {
+            using container_type = detail::addrinfo_container<transform>;
+
+        public:
+            using result_type = typename transform::result_type;
+
+            auto async_resolve(
+                std::optional<std::string> const &name = {},
+                std::optional<std::string> const &service = {}) const noexcept
+                -> task<expected<container_type, std::error_code>>
+            {
+                addrinfo hints{};
+                hints.ai_family = af::tag;
+                hints.ai_socktype = socktype;
+                hints.ai_protocol = protocol;
+
+                auto gai_result =
+                    co_await async_getaddrinfo(hints, name, service);
+
+                if (!gai_result)
+                    co_return make_unexpected(gai_result.error());
+
+                co_return container_type(std::move(*gai_result));
+            }
+
+            template <std::output_iterator<result_type> Iterator>
+            auto async_resolve(Iterator &&it,
+                               std::optional<std::string> const &name = {},
+                               std::optional<std::string> const &service = {})
+                const noexcept -> task<expected<void, std::error_code>>
+            {
+                auto c = co_await async_resolve(name, service);
+                if (!c)
+                    co_return make_unexpected(c.error());
+                std::ranges::copy(*c, it);
+                co_return {};
+            }
+        };
+
+    } // namespace detail
+
+    // When resolving addresses, getaddrinfo() doesn't care about the
+    // socktype and protocol except to set the appropriate values in
+    // the returned addrinfo.  However, if we don't set them, it will
+    // return duplicate values (for example, both stream/tcp and
+    // dgram/udp).  To prevent that, request a TCP stream socket.
+    template <address_family af = unspecified_family>
+    using system_resolver =
+        detail::basic_system_resolver<af,
+                                      detail::addrinfo_address_transform<af>,
+                                      SOCK_STREAM,
+                                      IPPROTO_TCP>;
+
+} // namespace sk::net
+
+namespace sk {
+
+    // patricia_trie keymaker for inet_address
+    template <>
+    struct patricia_key_maker<net::inet_address> {
+        [[nodiscard]] auto
+        operator()(net::inet_address const &addr) const noexcept
+            -> sk::patricia_key
+        {
+            static_assert(sizeof(addr.value().bytes) == sizeof(std::uint32_t));
+
+            auto bytes = std::span(addr.value().bytes);
+            return sk::patricia_key(bytes, 32);
+        }
+    };
+
+    // patricia_trie keymaker for inet6_address
+    template <>
+    struct patricia_key_maker<net::inet6_address> {
+        [[nodiscard]] auto
+        operator()(net::inet6_address const &addr) const noexcept
+            -> sk::patricia_key
+        {
+            static_assert(sizeof(addr.value().bytes) == 16);
+
+            auto bytes = std::span(addr.value().bytes);
+            return sk::patricia_key(bytes, 128);
+        }
+    };
+
+    namespace net {
+
+        /*************************************************************************
+         *
+         * prefix: a combination of address and prefix length.  This
+         * could be defined for any numeric address type, but we only
+         * provide implementations for INET and INET6.
+         *
+         */
+
+        template <address_family family>
+        class prefix;
+
+        template <address_family af>
+        auto str(prefix<af> const &) -> std::string = delete;
+
+        /*************************************************************************
+         * INET prefix
+         */
+        template <>
+        class prefix<inet_family> {
+        public:
+            using address_type = inet_address;
+
+        private:
+            inet_address _addr;
+            unsigned _length;
+
+        public:
+            constexpr auto length() const noexcept -> unsigned
+            {
+                return _length;
+            }
+
+            auto address() const noexcept -> address_type const &
+            {
+                return _addr;
+            }
+        };
+
+        template <>
+        inline auto str(prefix<inet_family> const &p) -> std::string
+        {
+            return inet_family::to_string(p.address().value()) + "/" +
+                   std::to_string(p.length());
+        }
+    } // namespace net
+} // namespace sk
 
 #endif // SK_CIO_NET_ADDRESS_HXX_INCLUDED

@@ -36,79 +36,62 @@ using sk::expected;
 
 TEST_CASE("inet_address: make_inet_address")
 {
-    auto addr = make_inet_address("127.0.0.1");
+    auto addr = make_address<inet_family>("127.0.0.1");
     REQUIRE(addr);
-    REQUIRE(address_family(*addr) == AF_INET);
+    REQUIRE(tag(*addr) == inet_family::tag);
 
     auto s = str(*addr);
     REQUIRE(s);
     REQUIRE(*s == "127.0.0.1");
 
-    addr = make_inet_address("127.0.0.1", 80);
-    REQUIRE(addr);
-    s = str(*addr);
-    REQUIRE(s);
-    REQUIRE(*s == "127.0.0.1:80");
-
-    addr = make_inet_address("0.0.0.0");
+    addr = make_address<inet_family>("0.0.0.0");
     REQUIRE(addr);
     s = str(*addr);
     REQUIRE(s);
     REQUIRE(*s == "0.0.0.0");
 
-    addr = make_inet_address("1.2.3.4.5");
+    addr = make_address<inet_family>("1.2.3.4.5");
     REQUIRE(!addr);
-    addr = make_inet_address("::1");
+    addr = make_address<inet_family>("::1");
     REQUIRE(!addr);
 }
 
 TEST_CASE("inet_address: address_cast to unspecified_address")
 {
-    auto inet = make_inet_address("127.0.0.1", 80);
+    auto inet = make_address<inet_family>("127.0.0.1");
     REQUIRE(inet);
 
     auto unspec = address_cast<unspecified_address>(*inet);
     REQUIRE(unspec);
-    REQUIRE(address_family(*unspec) == AF_INET);
+    REQUIRE(tag(*unspec) == inet_family::tag);
 
     auto s = str(*unspec);
     if (!s) {
         INFO(s.error().message());
         REQUIRE(s);
     }
-    REQUIRE(*s == "127.0.0.1:80");
+    REQUIRE(*s == "127.0.0.1");
 
     auto inet2 = address_cast<inet_address>(*unspec);
-    REQUIRE(address_family(*inet2) == AF_INET);
+    REQUIRE(tag(*inet2) == inet_family::tag);
 
     s = str(*inet2);
     REQUIRE(s);
-    REQUIRE(*s == "127.0.0.1:80");
+    REQUIRE(*s == "127.0.0.1");
 }
 
 TEST_CASE("inet_address: make_unspecified_zero_address")
 {
-    auto unspec_zero = make_unspecified_zero_address(AF_INET);
+    auto unspec_zero = make_unspecified_zero_address(inet_family::tag);
     REQUIRE(*str(*unspec_zero) == "0.0.0.0");
     REQUIRE(unspec_zero);
 
-    REQUIRE(address_family(*unspec_zero) == AF_INET);
+    REQUIRE(tag(*unspec_zero) == inet_family::tag);
 
     auto inet_zero = address_cast<inet_address>(*unspec_zero);
     REQUIRE(inet_zero);
-    REQUIRE(address_family(*inet_zero) == AF_INET);
+    REQUIRE(tag(*inet_zero) == inet_family::tag);
     REQUIRE(*str(*inet_zero) == "0.0.0.0");
-}
-
-TEST_CASE("inet_address: make_address with port")
-{
-    auto addr = make_address("127.0.0.1", "80");
-    REQUIRE(addr);
-    REQUIRE(*str(*addr) == "127.0.0.1:80");
-
-    auto iaddr = address_cast<inet_address>(*addr);
-    REQUIRE(iaddr);
-    REQUIRE(*str(*iaddr) == "127.0.0.1:80");
 }
 
 TEST_CASE("inet_address: make_address without port")
@@ -124,24 +107,25 @@ TEST_CASE("inet_address: make_address without port")
 
 TEST_CASE("inet_address: streaming output")
 {
-    auto addr = make_address("127.0.0.1", "80");
+    auto addr = make_address("127.0.0.1");
     REQUIRE(addr);
 
     std::ostringstream strm;
     strm << *addr;
-    REQUIRE(strm.str() == "127.0.0.1:80");
+    REQUIRE(strm.str() == "127.0.0.1");
 }
 
 TEST_CASE("inet_address: resolve")
 {
-    expected<std::set<inet_address>, std::error_code> addr =
-        wait(async_resolve_address<AF_INET>("localhost"));
-    REQUIRE(addr);
-    REQUIRE(addr->size() == 1);
+    sk::net::system_resolver<inet_family> res;
+    std::vector<inet_address> addrs;
+    auto ret = wait(res.async_resolve(std::back_inserter(addrs), "localhost"));
+    REQUIRE(ret);
+    REQUIRE(addrs.size() == 1);
 
-    auto &first = *addr->begin();
+    auto &first = addrs.front();
 
-    REQUIRE(address_family(first) == AF_INET);
+    REQUIRE(tag(first) == inet_family::tag);
     REQUIRE(*str(first) == "127.0.0.1");
 }
 

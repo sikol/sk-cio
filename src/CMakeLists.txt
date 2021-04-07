@@ -86,5 +86,6 @@ if (WIN32)
 endif ()
 
 target_compile_features(sk-cio PUBLIC cxx_std_20)
+set_target_properties(sk-cio PROPERTIES CXX_EXTENSIONS off)
 
 install(DIRECTORY "include/sk" TYPE INCLUDE)

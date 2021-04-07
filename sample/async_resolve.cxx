@@ -37,20 +37,22 @@
 auto resolve(std::string const &name) -> sk::task<void> {
     std::cout << name << ": ";
 
-    auto addresses = co_await sk::net::async_resolve_address(name, "");
-    if (!addresses) {
-        std::cout << addresses.error().message() << '\n';
+    sk::net::system_resolver<> res;
+    std::vector<sk::net::address<>> addresses;
+    auto ret = co_await res.async_resolve(std::inserter(addresses, addresses.end()), name);
+    if (!ret) {
+        std::cout << ret.error().message() << '\n';
         co_return;
     }
 
-    if (addresses->empty()) {
+    if (addresses.empty()) {
         std::cout << "no addresses\n";
         co_return;
     }
 
     std::cout << '\n';
 
-    for (auto &&address : *addresses)
+    for (auto &&address : addresses)
         std::cout << '\t' << address << '\n';
 
     std::cout << '\n';

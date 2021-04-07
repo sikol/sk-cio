@@ -61,15 +61,15 @@ auto handle_client(sk::net::tcpchannel client) -> sk::task<void> {
     fmt::print(stderr, "handle_client() : return\n");
 }
 
-auto run(std::string const &addr, std::string const &port) -> sk::task<void> {
-    auto netaddr = sk::net::make_address(addr, port);
-    if (!netaddr) {
+auto run(std::string const &addr, std::int16_t port) -> sk::task<void> {
+    auto ep = sk::net::make_tcp_endpoint(addr, port);
+    if (!ep) {
         fmt::print(stderr, "{}:{}: {}\n", addr, port,
-                   netaddr.error().message());
+                   ep.error().message());
         co_return;
     }
 
-    auto server = sk::net::tcpserverchannel::listen(*netaddr);
+    auto server = sk::net::tcpserverchannel::listen(*ep);
 
     for (;;) {
         auto client = co_await server->async_accept();
@@ -93,7 +93,7 @@ auto main(int argc, char **argv) -> int try {
     }
 
     sk::reactor_handle reactor;
-    wait(run(argv[1], argv[2]));
+    wait(run(argv[1], std::atoi(argv[2])));
     return 0;
 } catch (std::exception const &e) {
     std::cerr << "unexpected exception: " << e.what() << '\n';

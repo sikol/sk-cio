@@ -29,9 +29,30 @@
 #ifndef SK_DETAIL_COROUTINE_HXX
 #define SK_DETAIL_COROUTINE_HXX
 
-#if defined(__cpp_impl_coroutine)
-// C++20 coroutines: GCC, MSVC.
-#    define SK_HAS_STD_COROUTINES
+#if __has_include(<version>)
+#    include <version>
+#endif
+
+#if defined(__cpp_impl_coroutine) && defined(__cpp_lib_coroutine) &&           \
+    __has_include(<coroutine>)
+#    if __cpp_impl_coroutine >= 201902L && __cpp_lib_coroutine >= 201902L
+#        include <coroutine>
+#        define SK_HAS_STD_COROUTINES
+#    endif
+#endif
+
+#ifndef SK_HAS_STD_COROUTINES
+#    if defined(__clang__) && (defined(_MSC_VER) || !__has_include(<experimental/coroutine>))
+#        define SK_HAS_CLANG_CL_COROUTINES
+#        define SK_HAS_TS_COROUTINES
+#        include <sk/detail/clang_experimental_coroutine.hxx>
+#    elif __has_include(<experimental/coroutine>)
+#        define SK_HAS_TS_COROUTINES
+#        include <experimental/coroutine>
+#    endif
+#endif
+
+#if defined(SK_HAS_STD_COROUTINES)
 #    include <coroutine>
 
 namespace sk {
@@ -43,20 +64,7 @@ namespace sk {
 
 } // namespace sk
 
-#elif defined(__clang__)
-// Clang: TS coroutines.
-
-#    define SK_HAS_TS_COROUTINES
-
-#    if defined(_MSC_VER) || !__has_include(<experimental/coroutine>)
-// If <experimental/coroutine> is not present (e.g., libstdc++) then provide
-// our own.  We also need to do this on Clang-cl because the Microsoft header
-// isn't ABI-compatible with Clang's coroutines.
-#        include <sk/detail/clang_experimental_coroutine.hxx>
-#    else
-#        include <experimental/coroutine>
-#    endif
-
+#elif defined(SK_HAS_TS_COROUTINES)
 namespace sk {
 
     using std::experimental::coroutine_handle;
@@ -66,6 +74,7 @@ namespace sk {
 } // namespace sk
 
 #else
+
 #    error could not detect a supported coroutine implementation
 
 #endif

@@ -26,6 +26,7 @@ author = 'SiKol Ltd.'
 # The full version, including alpha/beta/rc tags
 release = 'master'
 
+default_domain = 'cpp'
 
 # -- General configuration ---------------------------------------------------
 

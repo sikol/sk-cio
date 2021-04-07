@@ -2,77 +2,91 @@ Network addresses
 =================
 
 Using network channels requires a way to represent a network address, which is
-done with the ``sk::net::address`` class:
+done with the *address* and *endpoint* types.
 
-.. code-block:: c++
+Unless otherwise specified, all symbols described here are defined in ``<sk/net/address.hxx>``.
 
-    namespace sk::net {
+.. cpp:concept:: template<typename T> sk::net::address_family
 
-    template<int address_family>
-    struct address;
+    A concept that describes an address family.
 
-    }
+    ``address_family`` represents the characteristics of a particular address family,
+    such as IPv4 (INET), IPv6 (INET6), or UNIX sockets.  The address family types are
+    typically not used directly, but provide the template argument for ``address<>``.
 
-This class can store an address for any supported protocol, such as IPv4 (INET),
-IPv6 (INET6), or UNIX sockets.
+.. cpp:type:: sk::net::address_family_tag = implementation_defined
 
-``address<>`` is a template class, with one template parameter: the address
-family.  For example, ``address<AF_UNIX>`` refers to a UNIX socket address, and
-``address<AF_INET6>`` refers to an INET6 address.  This allows type safety when
-the type of address is known at compile time:
+    An integer type that represents an address family.
 
-.. code-block:: c++
+.. cpp:struct:: sk::net::inet_family
 
-    void unix_connect(address<AF_UNIX> const &addr);
+    The inet (IPv4) address family.
 
-    template<int af>
-    void tcp_connect(address<af> const &addr) {
-        static_assert(af == AF_INET || af == AF_INET6);
-        // ...
-    }
+.. cpp:struct:: sk::net::inet6_family
 
-For brevity, type aliases are available for the supported address types:
+    The inet6 (IPv6) address family.
 
-.. code-block:: c++
+.. cpp:struct:: sk::net::unix_family
 
-    namespace sk::net {
+    The UNIX socket address family.
 
-    using inet_address = address<AF_INET>;
-    using inet6_address = address<AF_INET6>;
-    using unix_address = address<AF_UNIX>;
+.. cpp:class:: template<address_family af> sk::net::address
 
-    }
+    An address.
 
-When the address type is not known at compile time, which is common when dealing
-with IP-based applications that need to support both IPv4 and IPv6, the type-erased
-``address<AF_UNSPEC>`` can be used instead.  This type is usually written as ``address<>``.
+    ``address<>`` represents a single network address, such as an IP address or UNIX path.
+    It can be templated on an address family, such as ``address<inet_family>``, or the
+    type-erased ``address<>`` can be used to store any kind of address (providing runtime
+    polymorphism over address type).
 
-``address<>`` stores an address of any supported type, and allows the address and
-family to be inspected at runtime.
+.. cpp:class:: sk::net::tcp_endpoint
+.. cpp:class:: sk::net::udp_endpoint
+.. cpp:class:: sk::net::unix_endpoint
 
-.. code-block:: c++
+    ``tcp_endpoint``, ``udp_endpoint`` and ``unix_endpoint`` represent a combination of a
+    network address and any additional details required for a network connection, such as
+    the port number for TCP and UDP.
 
-    template<int af>
-    void fn(address<af> const &addr) {
-        switch (af) {
-        case AF_INET:
-        case AF_INET6:
-            // We know the address family at compile time.
-            do_something(af);
-            break;
+Working with addresses
+----------------------
 
-        case AF_UNSPEC: {
-            // We can determine the address family at runtime.
-            int family = address_family(addr);
-            do_something(family);
-            break;
-        }
-        }
-    }
+Some generic functions are provided for working with address types.
 
-In most cases, determining the address type like this isn't necessary; ``address_family()``
-can be used on any ``address<...>`` object, and will be resolved at either compile
-time or runtime as appropriate.
+.. cpp:function:: template <address_family af> \
+                  auto sk::net::tag(address<af> const &) noexcept -> address_family_tag
+
+    Return the address tag for an address.  For ``address<>``, this is determined at runtime,
+    otherwise at compile time.
+
+.. cpp:function:: template <address_family family> \
+                  auto sk::net::socket_address_family(address<family> const &) -> int
+
+    Return the socket address family for an address, e.g. ``AF_INET`` or ``AF_UNIX``.
+
+.. cpp:function:: template<address_family af> \
+                  auto sk::net::str(address<af> const &) -> std::string
+
+    Convert an address to a string.
+
+.. cpp:function:: template <address_family family> \
+                  auto sk::net::operator<<(std::ostream &, address<family> const &) -> std::ostream &
+
+    Print ``str(addr)`` to ``strm``.
+
+.. cpp:function:: template <typename To, typename From> \
+                  auto sk::net::address_cast(From &&from) -> expected<To, std::error_code>
+
+    Convert one address type to another (described below).
+
+.. cpp:function:: template <address_family af1, address_family af2> \
+                  bool sk::net::operator==(address<af1> const &a, address<af2> const &b)
+
+    Compare addresses for ordering.
+
+.. cpp:function:: template <address_family af1, address_family af2> \
+                  bool sk::net::operator<(address<af1> const &a, address<af2> const &b)
+
+    Compare addresses for equality.
 
 Address types
 -------------
@@ -80,48 +94,97 @@ Address types
 INET addresses
 ^^^^^^^^^^^^^^
 
-An ``inet_address`` represents an IPv4 address, and optionally a port number.
+An ``inet_address`` represents an IPv4 address.
 
 .. code-block:: c++
 
-    namespace sk::net {
 
-    template <>
-    struct address<AF_INET> {
-        sockaddr_in native_address;
+        struct inet_family {
+            static constexpr address_family_tag tag = /* implementation-defined */;
 
-        socklen_t const native_address_length = sizeof(native_address);
+            static constexpr std::size_t address_size = 4;
+            struct address_type {
+                std::array<std::uint8_t, address_size> bytes;
+            };
+        };
 
-        auto port() const -> int;
-    };
+        template <>
+        class address<inet_family> {
+            using address_family = inet_family;
+            using address_type = address_family::address_type;
+
+            address() noexcept;
+            address(address_type const &a) : _address(a) {}
+            address(address const &other) noexcept;
+            auto operator=(address const &other) noexcept -> address &;
+
+            auto value() noexcept -> address_type &
+            auto value() const noexcept -> address_type const &
+            auto as_bytes() const noexcept
+                -> std::span<std::byte const, inet_family::address_size>
+        };
 
     }
 
-``native_address`` provides access to the native address type.  ``port()`` returns
-the port number (in host byte order) or zero if unspecified.
+A default-constructed ``inet_address`` stores the zero address (``0.0.0.0``).
+
+``value()`` returns the stored address as an array of bytes.  ``as_bytes()`` returns the
+stored address as an ``std::span``.
+
+.. cpp:function:: auto sk::net::make_inet_address(std::uint32_t) -> inet_address
+
+    Create an ``inet_address`` from an ``std::uint32_t`` representing an IP address
+    in MSB order.
+
+.. cpp:function:: auto sk::net::make_inet_address(std::string const &) \
+                  -> expected<inet_address, std::error_code>
+
+    Create an ``inet_address`` from a literal address string.
 
 INET6 addresses
 ^^^^^^^^^^^^^^^
 
-An ``inet6_address`` represents an IPv6 address, and optionally a port number.
+An ``inet6_address`` represents an IPv6 address.
 
 .. code-block:: c++
 
     namespace sk::net {
 
-    template <>
-    struct address<AF_INET6> {
-        sockaddr_in6 native_address{};
+        struct inet6_family {
+            static constexpr address_family_tag tag = /* implementation-defined */;
 
-        socklen_t const native_address_length = sizeof(native_address);
+            static constexpr std::size_t address_size = 128/8;
+            struct address_type {
+                std::array<std::uint8_t, address_size> bytes;
+            };
+        };
 
-        auto port() const -> int;
-    };
+        template <>
+        class address<inet6_family> {
+            using address_family = inet6_family;
+            using address_type = address_family::address_type;
+
+            auto value() noexcept -> address_type &
+            auto value() const noexcept -> address_type const &
+            auto as_bytes() const noexcept
+                -> std::span<std::byte const, inet6_family::address_size>
+        };
 
     }
 
-``native_address`` provides access to the native address type.  ``port()`` returns
-the port number (in host byte order) or zero if unspecified.
+A default-constructed ``inet_address`` stores the zero address (``::``).
+
+``value()`` returns the stored address as an array of bytes.  ``as_bytes`` returns the
+stored address as an ``std::span``.
+
+.. cpp:function:: auto make_inet6_address(in6_addr) -> inet_address
+
+    Create an ``inet6_address`` from an ``in6_addr``.
+
+.. cpp:function:: auto make_inet6_address(std::string const &) \
+                  -> expected<inet6_address, std::error_code>
+
+    Create an ``inet6_address`` from a literal address string.
 
 UNIX addresses
 ^^^^^^^^^^^^^^
@@ -132,210 +195,273 @@ A ``unix_address`` represents a UNIX socket address.
 
     namespace sk::net {
 
-    template <>
-    struct address<AF_UNIX> {
-        sockaddr_un native_address{};
+        struct unix_family {
+            static constexpr address_family_tag tag = /* implementation-defined */;
 
-        socklen_t const native_address_length = sizeof(native_address);
+            static constexpr std::size_t address_size = /* implementation-defined */;
+            struct address_type {
+                std::array<char, address_size> path;
+            };
+        };
 
-        std::string path() const;
-    };
+        template <>
+        class address<unix_family> {
+            using address_family = unix_family;
+            using address_type = address_family::address_type;
+
+            auto value() noexcept -> address_type &
+            auto value() const noexcept -> address_type const &
+            auto as_bytes() const noexcept
+                -> std::span<std::byte const>
+        };
 
     }
 
-``native_address`` provides access to the native address type.  ``path()`` returns
-the UNIX socket path (``sun_path``).
+A default-constructed ``inet_address`` stores an empty path, which is not a valid address
+and cannot be connected to or bound to.
 
-Creating addresses
-------------------
+``value()`` returns the stored address as an array.  This array is always the maximum
+possible length; if the stored path is shorter than the maximum, it will be NUL-terminated,
+otherwise there will be no NUL character.
 
-Several functions are available to create a new address:
+``as_bytes()`` returns the stored address as a variable-length ``std::span``.  The span
+is equal to the length of the stored path and will never contain a NUL character.
+
+.. cpp:function:: auto sk::net::make_unix_address(std::string const &) \
+                  -> expected<std::string, std::error_code>
+
+    Create a ``unix_address`` from a string path.
+
+.. cpp:function:: auto sk::net::make_unix_address(std::filesystem::path const &) \
+                  -> expected<unix_address, std::error_code>
+
+    Create a ``unix_address`` from a filesystem path.
+
+The unspecified address
+^^^^^^^^^^^^^^^^^^^^^^^
+
+An ``address<>`` (also spelled as ``unspecified_address``) represents an address that
+could be an IPv4 address, an IPv6 address or a UNIX socket.  ``address<>`` can be queried
+at runtime for the type of address it holds, converted to other address types using
+``address_cast<>``, or used directly to construct an endpoint.
 
 .. code-block:: c++
 
     namespace sk::net {
 
-    // Create an IPv4 address.
-    auto make_inet_address(std::string const &host, int port = 0)
-        -> expected<inet_address, std::error_code>;
+        struct unspecified_family {
+            static constexpr address_family_tag tag = /* implementation-defined */;
 
-    // Create an IPv6 address.
-    auto make_inet6_address(std::string const &host, int port = 0)
-        -> expected<inet6_address, std::error_code>;
+            static constexpr std::size_t address_size = /* implementation-defined */;
+            using address_type = /* implementation-defined */;
+        };
 
-    // Create an AF_UNIX address.
-    auto make_unix_address(std::filesystem::path const &path)
-        -> expected<unix_address, std::error_code>
-
-    // Create an address of any type.
-    auto make_address(std::string const &host,
-                      std::string const &service = "")
-        -> expected<address<>, std::error_code>
-
-    // Resolve a name to an address at runtime.
-    template<int af = AF_UNSPEC>
-    auto async_resolve_address(std::string const &hostname,
-                               std::string const &port)
-        -> task<expected<std::set<address<af>>, std::error_code>>;
+        template <>
+        class address<unspecified_family> {
+            using address_family = unspecified_family;
+            using address_type = address_family::address_type;
+        };
 
     }
 
-``make_xxx_address()`` returns an address from a literal address.  For example,
-``make_inet6_address("::1")`` and ``make_unix_address("/tmp/myapp.sock")`` are
-valid, but ``make_inet6_address("somehost.example.com")`` is not, because
-``somehost.example.com`` is not an address literal.  For INET and INET6
-addresses, an optional port number can also be passed; port 0 indicates the
-port is not specified.
+A default-constructed ``address<>`` stores an undefined value.
 
-``make_address()`` returns an ``address<>`` from a literal address; the
-specific type of address returned is determined at runtime based on the string
-passed.  Only INET and INET6 addresses are supported; UNIX socket paths are not.
+.. cpp:function:: template<> auto make_address<unspecified_family>(std::string const &) \
+                  -> expected<unspecified_address, std::error_code>
 
-``async_resolve_address()`` converts a string into a list of addresses using the
-system's address resolution mechanism (usually DNS, and possibly including NIS,
-LDAP or other mechanisms).  If the address family is ``AF_UNSPEC``, all addresses
-are returned; otherwise, only addresses for the given address family are returned.
+    Create an ``address<>`` from a string, which should be either an INET or INET6
+    address literal.  Creating UNIX paths with ``make_address()`` is not supported.
 
 Zero addresses
 --------------
 
-Many protocols support the concept of a zero address.  For INET and INET6,
-this is ``0.0.0.0`` or ``::``.  For UNIX, this is a null (empty) path.
-
-The default value of an address is the zero address:
-
-.. code-block:: c++
-
-    inet_address addr; // str(addr) == "0.0.0.0"
-
-To create a zero address at runtime, use ``make_unspecified_zero_address``:
+The INET and INET6 families support the concept of a zero address, which is
+``0.0.0.0`` or ``::``.  The value of a default-constructed address is the zero address,
+and a zero address constant is also available as a static class member:
 
 .. code-block:: c++
 
-    namespace sk::net {
+    inet6_address addr; // str(addr) == "::"
+    auto addr2 = inet6_address::zero_address; // str(addr) == "::"
+    addr == addr2; // true
 
-    auto make_unspecified_zero_address(int address_family)
-        -> expected<address<>, std::error_code>;
+To create a zero address for an ``address<>`` at runtime, use
+``make_unspecified_zero_address``.
 
-    }
+.. cpp:function:: auto make_unspecified_zero_address(address_family_tag af) \
+        -> expected<unspecified_address, std::error_code>
 
-This returns an ``address<>`` containing the zero address for the given
-address family.
-
-Printing addresses
-------------------
-
-Addresses can be printed to a stream, or converted to an ``std::string`` using
-the ``str()`` function:
-
-.. code-block:: c++
-
-    auto a = make_address("::1");
-
-    std::cout << *a << '\n';
-
-    std::string a_str = str(*a);
-
-The address is printed in the conventional manner for the address type:
-
-* For AF_INET, ``1.2.3.4`` or ``1.2.3.4:123``.
-* For AF_INET6, ``::1`` or ``[::1]:123``.
-* For AF_UNIX, the socket path is used.
-
-Inspecting addresses
---------------------
-
-Two utility functions are available to inspect an address:
-
-.. code-block:: c++
-
-    namespace sk::net {
-
-    template<int af>
-    auto address_family(address<af> const &) -> int;
-
-    }
-
-Returns the address family for the given address.
-
-.. code-block:: c++
-
-    namespace sk::net {
-
-    template<int af>
-    auto port(address<af> const &) -> expected<int, std::error_code>;
-
-    }
-
-If the address supports the concept of a port or service number (e.g. INET
-or INET6), return the port number or zero if unspecified.  Otherwise, returns
-an error.
+    Create an unspecified zero address for the given address family.  For example,
+    ``make_unspecified_zero_address(inet6_family::tag)``.
 
 Converting addresses
 --------------------
 
-Addresses can be converted between types using ``address_cast()``:
+Addresses can be converted between concrete address types and ``address<>``
+using ``address_cast``:
+
+.. cpp:function:: template <typename To, typename From> \
+                 auto sk::net::address_cast(From &&from)
+
+    Convert an address from the type ``From`` to the type ``To``.
+
+Converting an address type to ``address<>`` always succeeds, unless ``address<>`` cannot
+store the given address type, in which case an error is generated at compile-time.
 
 .. code-block:: c++
 
-    namespace sk::net {
+    inet6_address addr;
+    address<> uaddr = address_cast<address<>>(addr); // Cannot fail
 
-    template<typename To, typename From>
-    auto address_cast(From const &) -> expected<To, std::error_code>;
-
-    }
-
-For example:
-
-.. code-block:: c++
-
-    address<> unspec_address;
-    inet_address ia = address_cast<inet_address>(unspec_address);
-    if (!ia)
-        // Conversion failed...
-
-The following conversions can be performed with compile-time type checking
-(meaning if the cast compiles, the result is guaranteed to be a success):
-
-* From any address to ``sockaddr const *``.
-* From any address to ``sockaddr_storage const *``.
-* From ``inet_address`` to ``sockaddr_in const *``.
-* From ``sockaddr_in`` to ``inet_address``.
-* From ``inet6_address`` to ``sockaddr_in6 const *``.
-* From ``sockaddr_in6`` to ``inet6_address``.
-* From ``unix_address`` to ``sockaddr_un const *``.
-* From ``sockaddr_un`` to ``unix_address``.
-
-For example:
-
-.. code-block:: c++
-
-    sockaddr_in *addr;
-
-    // Always succeeds
-    inet_address = address_cast<inet_address>(*addr);
-
-    // Always succeeds.
-    auto caddr = address_cast<sockaddr_in const *>(*inet_address);
-
-The following conversions can be performed with runtime type checking
-(so the conversion may fail):
-
-* From ``address<>`` to ``address<af>`` for any ``af``.
-* From ``address<af>`` to ``address<>`` for any ``af``.
-* From any ``sockaddr``-like type to ``address<>`` or ``address<af>``.
-* From ``address<>`` to any ``sockaddr``-like type.
-
-For example:
+Converting an ``address<>`` to an address type may fail at runtime, depending on
+whether the ``address<>`` holds the requested address type.
 
 .. code-block:: c++
 
     address<> uaddr;
+    auto addr = address_cast<inet6_address>(uaddr);
+    if (addr)
+        std::cout << *addr; // Conversion succeeded
+    else
+        std::cout << addr.error().message(); // Conversion failed.
 
-    // Fails if uaddr is not an AF_INET address.
-    auto iaddr = address_cast<inet_address>(uaddr);
+Resolving addresses
+-------------------
 
-    sockaddr *saddr;
+Resolving symbolic hostnames to addresses is done with a *resolver* type.  Currently
+only one resolver is provided, ``sk::net::system_resolver<>``, which uses the operating
+system's resolver library.
 
-    // Fails if saddr is not an AF_UNIX address.
-    auto unix = address_cast<unix_address>(*saddr);
+.. cpp:class:: template<address_family af = unspecified_family> \
+               system_resolver
+
+    Resolve names using a system-specific resolver such as ``getaddrinfo()``.  Since
+    most systems do not provide true asynchronous resolvers, this requires spawning a
+    new thread to run the name resolution.
+
+    If ``system_resolver`` is instantiated over ``unspecified_family``, it will return
+    both INET and INET6 addresses.  If instantiated over ``inet_family`` or ``inet6_family``,
+    it will only return addresses for that address family.  No other address families
+    are supported.
+
+    ``system_resolver`` does not allocate any memory on the heap and cannot throw
+    exceptions.  However, the system resolver functions usually requires a heap
+    allocation.
+
+    .. cpp:function:: auto async_resolve(std::optional<std::string> const &name = {}, \
+                                         std::optional<std::string> const &service = {})\
+                        const noexcept \
+                        -> task<expected<__implementation_defined, std::error_code>>
+
+        Resolve the given ``name`` and ``service`` and return the results as an
+        implementation-defined container type, which can be forwarded-iterated over to
+        obtain the addresses.  The container will contain values of type ``address<af>``.
+        When resolving addresses, the ``service`` parameter has no effect and may be omitted.
+        If ``name`` is not specified, the zero address will be returned.
+
+    .. cpp:function:: template <std::output_iterator<address<af>> Iterator> \
+        auto async_resolve(Iterator &&it, std::optional<std::string> const &name = {}, \
+                           std::optional<std::string> const &service = {}) \
+                           const noexcept \
+            -> task<expected<void, std::error_code>>
+
+        Call ``async_resolve(name, service)`` and copy the result into the given output iterator.
+
+Example
+^^^^^^^
+
+.. code-block:: c++
+
+    sk::net::system_resolver<> res;
+
+    auto ret = co_await res.async_resolve(name);
+    if (ret)
+        std::ranges::copy(*ret, std::ostream_iterator<address<>>(std::cout, "\n"));
+    else
+        std::cout << ret.error().message() << '\n';
+
+
+Endpoints
+---------
+
+Connecting to a network resource, or binding a channel to accept incoming connections,
+requires an *endpoint*, which is a combination of an address (possibly the zero address)
+and optionally some protocol-specific additional data.  For INET and INET6 channels,
+this is the TCP or UDP port number.  UNIX endpoints do not have any additional data.
+
+TCP endpoints
+^^^^^^^^^^^^^
+
+Defined in ``<sk/net/tcpchannel.hxx>``.
+
+.. cpp:class:: tcp_endpoint
+
+    Represents an INET or INET6 address and TCP port number.
+
+    .. cpp:type:: port_type = std::uint16_t
+
+    .. cpp:function:: auto address() const noexcept -> const_address_type &
+
+    .. cpp:function:: auto address() noexcept -> address_type &
+
+        Return the endpoint's address.
+
+    .. cpp:function:: auto port() const noexcept -> port_type
+
+        Return the endpoint's port.
+
+    .. cpp:function:: auto port(port_type p) noexcept -> port_type
+
+        Change the endpoint's port.  Returns the old port.
+
+    .. cpp:function:: auto as_sockaddr_storage() const noexcept -> sockaddr_storage
+
+        Return a ``sockaddr_storage`` structure representing the endpoint's address
+        and port.
+
+.. cpp:function:: bool operator==(tcp_endpoint const &a, tcp_endpoint const &b) noexcept
+
+    Compare two ``tcp_endpoint`` for equality.
+
+.. cpp:function:: bool operator<(tcp_endpoint const &a, tcp_endpoint const &b) noexcept
+
+    Compare two ``tcp_endpoint`` for ordering.
+
+.. cpp:function:: auto str(tcp_endpoint const &ep) -> std::string
+
+    Return a string representation of the endpoint in the canonical form.  For INET
+    endpoints this is ``127.0.0.1:80``; for INET6 this is ``[::1]:80``.
+
+.. cpp:function:: template<address_family af> \
+                  auto make_tcp_endpoint(address<af> const &addr, \
+                                  tcp_endpoint::port_type port) noexcept
+
+    Create a TCP endopint from an address and a port number.  The address family must
+    be ``inet_family``, ``inet6_family`` or ``unspecified_family``.
+
+.. cpp:function:: auto make_tcp_endpoint(std::string const &str, \
+                                  tcp_endpoint::port_type port) noexcept
+
+    Create a TCP endpoint from an address literal and a port number.
+
+Resolving endpoints
+-------------------
+
+To resolve endpoints, use ``tcp_endpoint_system_resolver``.  This has the same interface as
+``system_resolver``, except it return ``tcp_endpoint`` objects.  Note that while the
+``service`` parameter to ``async_resolve()`` has no effect when resolving addresses, when
+resolving endpoints, it will be used to determine the endpoint's port number.  To create
+a listening endpoint for all addresses on the local system, use ``async_resolve({}, "service name")``.
+
+Example
+^^^^^^^
+
+.. code-block:: c++
+
+    sk::net::tcp_endpoint_system_resolver res;
+
+    auto ret = co_await res.async_resolve("localhost", "http");
+    if (ret)
+        std::ranges::copy(*ret, std::ostream_iterator<tcp_endpoint>(std::cout, "\n"));
+    else
+        std::cout << ret.error().message() << '\n';
