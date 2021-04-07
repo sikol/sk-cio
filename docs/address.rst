@@ -4,9 +4,67 @@ Network addresses
 Using network channels requires a way to represent a network address, which is
 done with the *address* and *endpoint* types.
 
-Unless otherwise specified, all symbols described here are defined in ``<sk/net/address.hxx>``.
+Unless otherwise specified, all symbols described here are defined in ``<sk/net/address.hxx>``
+and reside in the ``sk::net`` namespace.
 
-.. cpp:concept:: template<typename T> sk::net::address_family
+Addresses
+---------
+
+An address is a network address, such as an IP address.  The basic type for
+representing an address is ``address<>``, which is templated over an address
+family.
+
+.. code-block:: c++
+
+    address<inet_family> addr;  // IPv4 address
+    address<inet6_family> addr6; // IPv6 address
+    address<> uaddr; // Address of any type determined at runtime
+
+For convenience, typedefs are provided for ``inet_address``, ``inet6_address`` and
+``unix_address``.
+
+When templated over a specific address type, the address family is known at compile
+time.  When used as ``address<>``, the address family is dynamic and can only be
+determined at runtime.  This allows both compile-time type safety when dealing with
+a single address family, and runtime polymorphism when dealing with multiple address
+families, e.g. a TCP application that needs to support both IPv4 and IPv6.
+
+Addresses can be created with ``make_address()``.
+
+.. code-block:: c++
+
+    inet_address ipv4_localhost = make_address<inet_family>("127.0.0.1");
+    inet6_address ipv6_localhost = make_address<inet6_family>("::1");
+
+    address<> any_address = make_address("::1");
+
+    // Because any_address is an address<>, we can reassign a different type
+    // of address to it.
+    any_address = make_address("127.0.0.1");
+
+To determine the family of an address at runtime, use ``tag()``.  This returns the
+address family tag, which can be compared to the tag constants:
+
+.. code-block:: c++
+
+    template<address_family af>
+    auto get_address_type(address<af> const &addr) {
+        // We could also switch on af::tag to get the compile-time type of the
+        // address.  If this is an address<>, the compile-time tag will be
+        // unspecified_family::tag.
+
+        switch (tag(addr)) {
+        case inet_family::tag:
+            return "IPv4 address";
+        case inet6_family::tag:
+            return "IPv6 address";
+        case unix_family::tag:
+            return "UNIX address";
+        default:
+            return "unknown address";
+    }
+
+.. cpp:concept:: template<typename T> address_family
 
     A concept that describes an address family.
 
@@ -14,27 +72,27 @@ Unless otherwise specified, all symbols described here are defined in ``<sk/net/
     such as IPv4 (INET), IPv6 (INET6), or UNIX sockets.  The address family types are
     typically not used directly, but provide the template argument for ``address<>``.
 
-.. cpp:type:: sk::net::address_family_tag = implementation_defined
+.. cpp:type:: address_family_tag = implementation_defined
 
     An integer type that represents an address family.
 
-.. cpp:struct:: sk::net::inet_family
+.. cpp:struct:: inet_family
 
     The inet (IPv4) address family.
 
-.. cpp:struct:: sk::net::inet6_family
+.. cpp:struct:: inet6_family
 
     The inet6 (IPv6) address family.
 
-.. cpp:struct:: sk::net::unix_family
+.. cpp:struct:: unix_family
 
     The UNIX socket address family.
 
-.. cpp:struct:: sk::net::unspecified_family
+.. cpp:struct:: unspecified_family
 
     The unspecified address family (described below).
 
-.. cpp:class:: template<address_family af = unspecified_family> sk::net::address
+.. cpp:class:: template<address_family af = unspecified_family> address
 
     An address.
 
@@ -43,54 +101,46 @@ Unless otherwise specified, all symbols described here are defined in ``<sk/net/
     type-erased ``address<>`` can be used to store any kind of address (providing runtime
     polymorphism over address type).
 
-.. cpp:class:: sk::net::tcp_endpoint
-.. cpp:class:: sk::net::udp_endpoint
-.. cpp:class:: sk::net::unix_endpoint
-
-    ``tcp_endpoint``, ``udp_endpoint`` and ``unix_endpoint`` represent a combination of a
-    network address and any additional details required for a network connection, such as
-    the port number for TCP and UDP.
-
 Working with addresses
 ----------------------
 
 Some generic functions are provided for working with address types.
 
 .. cpp:function:: template <address_family af> \
-                  auto sk::net::tag(address<af> const &) noexcept -> address_family_tag
+                  auto tag(address<af> const &) noexcept -> address_family_tag
 
     Return the address tag for an address.  For ``address<>``, this is determined at runtime,
     otherwise at compile time.  The address tag can be used to determine the address family,
     by comparing it to a tag constant such as ``inet_family::tag``.
 
 .. cpp:function:: template <address_family family> \
-                  auto sk::net::socket_address_family(address<family> const &) -> int
+                  auto socket_address_family(address<family> const &) -> int
 
     Return the socket address family for an address, e.g. ``AF_INET`` or ``AF_UNIX``.
 
 .. cpp:function:: template<address_family af> \
-                  auto sk::net::str(address<af> const &) -> std::string
+                  auto str(address<af> const &) -> std::string
 
     Convert an address to a string in the canonical format.  For INET and INET6, this is the
     standard IP address representation; for UNIX addresses, it is the path.
 
 .. cpp:function:: template <address_family family> \
-                  auto sk::net::operator<<(std::ostream &, address<family> const &) -> std::ostream &
+                  auto operator<<(std::ostream &, address<family> const &) -> std::ostream &
 
     Print ``str(addr)`` to ``strm``.
 
 .. cpp:function:: template <typename To, typename From> \
-                  auto sk::net::address_cast(From &&from) -> expected<To, std::error_code>
+                  auto address_cast(From &&from) -> expected<To, std::error_code>
 
     Convert one address type to another (described below).
 
 .. cpp:function:: template <address_family af1, address_family af2> \
-                  bool sk::net::operator==(address<af1> const &a, address<af2> const &b)
+                  bool operator==(address<af1> const &a, address<af2> const &b)
 
     Compare addresses for ordering.
 
 .. cpp:function:: template <address_family af1, address_family af2> \
-                  bool sk::net::operator<(address<af1> const &a, address<af2> const &b)
+                  bool operator<(address<af1> const &a, address<af2> const &b)
 
     Compare addresses for equality.
 
@@ -137,12 +187,12 @@ A default-constructed ``inet_address`` stores the zero address (``0.0.0.0``).
 ``value()`` returns the stored address as an array of bytes.  ``as_bytes()`` returns the
 stored address as an ``std::span``.
 
-.. cpp:function:: auto sk::net::make_inet_address(std::uint32_t) -> inet_address
+.. cpp:function:: auto make_inet_address(std::uint32_t) -> inet_address
 
     Create an ``inet_address`` from an ``std::uint32_t`` representing an IP address
     in MSB order.
 
-.. cpp:function:: auto sk::net::make_inet_address(std::string const &) \
+.. cpp:function:: auto make_inet_address(std::string const &) \
                   -> expected<inet_address, std::error_code>
 
     Create an ``inet_address`` from a literal address string.
@@ -233,12 +283,12 @@ otherwise there will be no NUL character.
 ``as_bytes()`` returns the stored address as a variable-length ``std::span``.  The span
 is equal to the length of the stored path and will never contain a NUL character.
 
-.. cpp:function:: auto sk::net::make_unix_address(std::string const &) \
+.. cpp:function:: auto make_unix_address(std::string const &) \
                   -> expected<std::string, std::error_code>
 
     Create a ``unix_address`` from a string path.
 
-.. cpp:function:: auto sk::net::make_unix_address(std::filesystem::path const &) \
+.. cpp:function:: auto make_unix_address(std::filesystem::path const &) \
                   -> expected<unix_address, std::error_code>
 
     Create a ``unix_address`` from a filesystem path.
@@ -307,7 +357,7 @@ Addresses can be converted between concrete address types and ``address<>``
 using ``address_cast``:
 
 .. cpp:function:: template <typename To, typename From> \
-                 auto sk::net::address_cast(From &&from)
+                 auto address_cast(From &&from)
 
     Convert an address from the type ``From`` to the type ``To``.
 
@@ -335,7 +385,7 @@ Resolving addresses
 -------------------
 
 Resolving symbolic hostnames to addresses is done with a *resolver* type.  Currently
-only one resolver is provided, ``sk::net::system_resolver<>``, which uses the operating
+only one resolver is provided, ``system_resolver<>``, which uses the operating
 system's resolver library.
 
 .. cpp:class:: template<address_family af = unspecified_family> \
@@ -378,7 +428,7 @@ Example
 
 .. code-block:: c++
 
-    sk::net::system_resolver<> res;
+    system_resolver<> res;
 
     auto ret = co_await res.async_resolve(name);
     if (ret)
@@ -521,7 +571,7 @@ Example
 
 .. code-block:: c++
 
-    sk::net::tcp_endpoint_system_resolver res;
+    tcp_endpoint_system_resolver res;
 
     auto ret = co_await res.async_resolve("localhost", "http");
     if (ret)

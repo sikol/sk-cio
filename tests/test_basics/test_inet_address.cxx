@@ -121,7 +121,7 @@ TEST_CASE("inet_address: resolve")
     std::vector<inet_address> addrs;
     auto ret = wait(res.async_resolve(std::back_inserter(addrs), "localhost"));
     REQUIRE(ret);
-    REQUIRE(addrs.size() == 1);
+    REQUIRE(addrs.size() >= 1);
 
     auto &first = addrs.front();
 
