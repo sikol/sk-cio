@@ -64,6 +64,14 @@ address family tag, which can be compared to the tag constants:
             return "unknown address";
     }
 
+Addresses can be converted between ``address<>`` and family-specific types using
+``address_cast``:
+
+.. code-block:: c++
+
+    auto ipv4_localhost = make_address<inet_family>("127.0.0.1");
+    auto any_localhost = address_cast<address<>>(ipv4_localhost);
+
 .. cpp:concept:: template<typename T> address_family
 
     A concept that describes an address family.
