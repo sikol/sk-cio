@@ -20,7 +20,7 @@ family.
     address<inet6_family> addr6; // IPv6 address
     address<> uaddr; // Address of any type determined at runtime
 
-For convenience, typedefs are provided for ``inet_address``, ``inet6_address`` and
+For convenience, type aliases are provided for ``inet_address``, ``inet6_address`` and
 ``unix_address``.
 
 When templated over a specific address type, the address family is known at compile
@@ -29,12 +29,13 @@ determined at runtime.  This allows both compile-time type safety when dealing w
 a single address family, and runtime polymorphism when dealing with multiple address
 families, e.g. a TCP application that needs to support both IPv4 and IPv6.
 
-Addresses can be created with ``make_address()``.
+Addresses can be created from strings with ``make_XXX_address()``.  This doesn't do
+DNS resolution, so an address literal is required.
 
 .. code-block:: c++
 
-    inet_address ipv4_localhost = make_address<inet_family>("127.0.0.1");
-    inet6_address ipv6_localhost = make_address<inet6_family>("::1");
+    inet_address ipv4_localhost = make_inet_address("127.0.0.1");
+    inet6_address ipv6_localhost = make_inet6_address("::1");
 
     address<> any_address = make_address("::1");
 
@@ -71,6 +72,15 @@ Addresses can be converted between ``address<>`` and family-specific types using
 
     auto ipv4_localhost = make_address<inet_family>("127.0.0.1");
     auto any_localhost = address_cast<address<>>(ipv4_localhost);
+
+Addresses can be converted to strings using ``str()``, or printed directly to
+a stream:
+
+.. code-block:: c++
+
+    auto addr = make_address("::1");
+    std::string s = str(addr);
+    std::cout << addr << '\n';
 
 .. cpp:concept:: template<typename T> address_family
 
@@ -438,7 +448,7 @@ Example
 
     system_resolver<> res;
 
-    auto ret = co_await res.async_resolve(name);
+    auto ret = co_await res.async_resolve("hostname.example.com");
     if (ret)
         std::ranges::copy(*ret, std::ostream_iterator<address<>>(std::cout, "\n"));
     else
@@ -581,7 +591,7 @@ Example
 
     tcp_endpoint_system_resolver res;
 
-    auto ret = co_await res.async_resolve("localhost", "http");
+    auto ret = co_await res.async_resolve("hostname.example.com", "http");
     if (ret)
         std::ranges::copy(*ret, std::ostream_iterator<tcp_endpoint>(std::cout, "\n"));
     else
