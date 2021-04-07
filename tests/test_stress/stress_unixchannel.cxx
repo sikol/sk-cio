@@ -168,7 +168,7 @@ TEST_CASE("unixchannel stress test")
         return;
     }
 
-    *unix_listen_addr = *ep;
+    unix_listen_addr = *ep;
 
     std::ignore = std::remove(unix_listen_address.string().c_str());
     auto server = net::unixserverchannel::listen(*unix_listen_addr);

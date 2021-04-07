@@ -68,6 +68,8 @@ namespace sk {
             coroutine_handle<promise_type> coro_handle_) noexcept
             : coro_handle(coro_handle_)
         {
+            coro_handle.promise().task_executor =
+                reactor_handle::get_global_reactor().get_executor();
         }
 
         explicit detach_task(detach_task const &) = delete;

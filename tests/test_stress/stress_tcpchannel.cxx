@@ -168,7 +168,7 @@ TEST_CASE("tcpchannel stress test")
         REQUIRE(false);
     }
 
-    *tcp_listen_addr = *ep;
+    tcp_listen_addr = *ep;
     auto server = net::tcpserverchannel::listen(*ep);
     REQUIRE(server);
 

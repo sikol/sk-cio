@@ -73,6 +73,8 @@ namespace sk::posix::detail {
 
         int await_resume()
         {
+            // Don't allow the wait object to be destroyed until the reactor
+            // has released the lock.
             std::lock_guard lock(mutex);
             return ret;
         }
