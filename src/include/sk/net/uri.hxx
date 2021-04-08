@@ -37,6 +37,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <memory>
 
 #include <sk/expected.hxx>
 
@@ -139,8 +140,7 @@ namespace sk::net {
         std::optional<uri_authority> authority;
         std::optional<uri_path> path;
 
-        std::string original_data;
-        auto str() const -> std::string;
+        std::shared_ptr<char[]> original_data;
     };
 
     auto is_absolute(uri const &u) -> bool
@@ -500,16 +500,16 @@ namespace sk::net {
             return (a << 4) | b;
         }
 
-        inline auto decode_path(std::string *original_data,
+        inline auto decode_path(char *original_data,
                                 std::string_view *path_view) -> bool
         {
             // URL-decode the path, without causing original_data to reallocate
             // since that will invalidate all the string_views.
 
-            auto path_offset = path_view->data() - original_data->data();
+            auto path_offset = path_view->data() - original_data;
             auto original_length = path_view->size();
-            char *p = original_data->data() + path_offset, *q = p, *start = p;
-            char *end = original_data->data() + path_offset + original_length;
+            char *p = original_data + path_offset, *q = p, *start = p;
+            char *end = original_data + path_offset + original_length;
 
             while (p < end) {
                 // URL-encoded URLs should not have high-bit characters.
@@ -552,9 +552,11 @@ namespace sk::net {
             return make_unexpected(make_uri_error(uri_errors::no_data));
 
         uri ret;
-        ret.original_data = std::move(s);
+        auto len = s.size();
+        ret.original_data = std::shared_ptr<char[]>(new char[len]);
+        std::ranges::copy(s, ret.original_data.get());
 
-        std::string_view v(ret.original_data);
+        std::string_view v(ret.original_data.get(), len);
         std::tie(ret.scheme, v) = detail::match_scheme(v);
         std::tie(ret.authority, v) = detail::match_authority(v);
         std::tie(ret.path, v) = detail::match_path(v);
@@ -579,18 +581,18 @@ namespace sk::net {
             return make_unexpected(make_uri_error(uri_errors::parse_failed));
 
         if (ret.path && !(options & uri_options::skip_path_decode)) {
-            if (!detail::decode_path(&ret.original_data, &ret.path->path))
+            if (!detail::decode_path(ret.original_data.get(), &ret.path->path))
                 return make_unexpected(
                     make_uri_error(uri_errors::invalid_encoding));
 
             if (ret.path->query &&
-                !detail::decode_path(&ret.original_data,
+                !detail::decode_path(ret.original_data.get(),
                                      std::addressof(*ret.path->query)))
                 return make_unexpected(
                     make_uri_error(uri_errors::invalid_encoding));
 
             if (ret.path->fragment &&
-                !detail::decode_path(&ret.original_data,
+                !detail::decode_path(ret.original_data.get(),
                                      std::addressof(*ret.path->fragment)))
                 return make_unexpected(
                     make_uri_error(uri_errors::invalid_encoding));
@@ -635,10 +637,10 @@ namespace sk::net {
         return strm;
     }
 
-    inline auto uri::str() const -> std::string
+    inline auto str(uri const &u) -> std::string
     {
         std::ostringstream strm;
-        strm << *this;
+        strm << u;
         return strm.str();
     }
 

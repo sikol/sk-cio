@@ -351,7 +351,7 @@ TEST_CASE("str(uri) 1", "[uri]")
                 "/some/path?query=value&other=value#fragment.is.here";
     auto uri = parse_uri(text);
     REQUIRE(uri);
-    REQUIRE(uri->str() == text);
+    REQUIRE(str(*uri) == text);
 }
 
 TEST_CASE("uri invalid port", "[uri]")
@@ -409,4 +409,25 @@ TEST_CASE("scheme-only uri", "[uri]")
     REQUIRE(!uri);
     uri = parse_uri("http://");
     REQUIRE(!uri);
+}
+
+auto make_uri_copy() -> sk::net::uri {
+    auto uri = parse_uri("http://localhost/some/path");
+    auto uri2(uri);
+    return *uri2;
+}
+
+TEST_CASE("uri is copyable", "[uri]") {
+    auto uri = make_uri_copy();
+    REQUIRE(uri.path->path == "/some/path");
+}
+
+auto make_uri_move() -> sk::net::uri {
+    auto uri = parse_uri("http://localhost/some/path");
+    return std::move(*uri);
+}
+
+TEST_CASE("uri is movable", "[uri]") {
+    auto uri = make_uri_move();
+    REQUIRE(uri.path->path == "/some/path");
 }
