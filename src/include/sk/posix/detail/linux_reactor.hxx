@@ -122,6 +122,158 @@ namespace sk::posix::detail {
 #endif
     };
 
+    inline linux_reactor::linux_reactor()
+    {
+        _epoll = std::make_unique<epoll_reactor>(&_workq);
+
+#ifdef SK_CIO_HAVE_IO_URING
+        _uring = io_uring_reactor::make(&_workq);
+#endif
+    }
+
+    inline auto linux_reactor::associate_fd(int fd) -> void
+    {
+        _epoll->associate_fd(fd);
+    }
+
+    inline auto linux_reactor::deassociate_fd(int fd) -> void
+    {
+        _epoll->deassociate_fd(fd);
+    }
+
+    inline auto linux_reactor::start() -> void
+    {
+        _epoll->start();
+#ifdef SK_CIO_HAVE_IO_URING
+        if (_uring)
+            _uring->start();
+#endif
+    }
+
+    inline auto linux_reactor::stop() -> void
+    {
+        _epoll->stop();
+#ifdef SK_CIO_HAVE_IO_URING
+        if (_uring)
+            _uring->stop();
+#endif
+    }
+
+    inline auto linux_reactor::post(std::function<void()> &&fn) -> void
+    {
+        _workq.post(std::move(fn));
+    }
+
+    inline auto linux_reactor::get_executor() -> executor *
+    {
+        return &_workq;
+    }
+
+    /*
+     * File I/O functions.
+     */
+
+    inline auto
+    linux_reactor::async_fd_open(const char *path, int flags, int mode)
+        -> task<expected<int, std::error_code>>
+    {
+#ifdef SK_CIO_HAVE_IO_URING
+        if (_uring)
+            return _uring->async_fd_open(path, flags, mode);
+#endif
+        return _epoll->async_fd_open(path, flags, mode);
+    }
+
+    inline auto linux_reactor::async_fd_close(int fd)
+        -> task<expected<int, std::error_code>>
+    {
+#ifdef SK_CIO_HAVE_IO_URING
+        if (_uring)
+            return _uring->async_fd_close(fd);
+#endif
+        return _epoll->async_fd_close(fd);
+    }
+
+    inline auto linux_reactor::async_fd_read(int fd, void *buf, std::size_t n)
+        -> task<expected<ssize_t, std::error_code>>
+    {
+#ifdef SK_CIO_HAVE_IO_URING
+        if (_uring)
+            return _uring->async_fd_read(fd, buf, n);
+#endif
+        return _epoll->async_fd_read(fd, buf, n);
+    }
+
+    inline auto
+    linux_reactor::async_fd_pread(int fd, void *buf, std::size_t n, off_t offs)
+        -> task<expected<ssize_t, std::error_code>>
+    {
+#ifdef SK_CIO_HAVE_IO_URING
+        if (_uring)
+            return _uring->async_fd_pread(fd, buf, n, offs);
+#endif
+        return _epoll->async_fd_pread(fd, buf, n, offs);
+    }
+
+    inline auto
+    linux_reactor::async_fd_write(int fd, const void *buf, std::size_t n)
+        -> task<expected<ssize_t, std::error_code>>
+    {
+#ifdef SK_CIO_HAVE_IO_URING
+        if (_uring)
+            return _uring->async_fd_write(fd, buf, n);
+#endif
+        return _epoll->async_fd_write(fd, buf, n);
+    }
+
+    inline auto linux_reactor::async_fd_pwrite(int fd,
+                                               const void *buf,
+                                               std::size_t n,
+                                               off_t offs)
+        -> task<expected<ssize_t, std::error_code>>
+    {
+#ifdef SK_CIO_HAVE_IO_URING
+        if (_uring)
+            return _uring->async_fd_pwrite(fd, buf, n, offs);
+#endif
+        return _epoll->async_fd_pwrite(fd, buf, n, offs);
+    }
+
+    /*
+     * Socket I/O functions.  Go directly to epoll and do not pass io_uring.
+     */
+
+    inline auto
+    linux_reactor::async_fd_recv(int fd, void *buf, std::size_t n, int flags)
+        -> task<expected<ssize_t, std::error_code>>
+    {
+        return _epoll->async_fd_recv(fd, buf, n, flags);
+    }
+
+    inline auto linux_reactor::async_fd_send(int fd,
+                                             const void *buf,
+                                             std::size_t n,
+                                             int flags)
+        -> task<expected<ssize_t, std::error_code>>
+    {
+        return _epoll->async_fd_send(fd, buf, n, flags);
+    }
+
+    inline auto linux_reactor::async_fd_connect(int fd,
+                                                const sockaddr *addr,
+                                                socklen_t addrlen)
+        -> task<expected<void, std::error_code>>
+    {
+        return _epoll->async_fd_connect(fd, addr, addrlen);
+    }
+
+    inline auto
+    linux_reactor::async_fd_accept(int fd, sockaddr *addr, socklen_t *addrlen)
+        -> task<expected<int, std::error_code>>
+    {
+        return _epoll->async_fd_accept(fd, addr, addrlen);
+    }
+
 } // namespace sk::posix::detail
 
 #endif // SK_POSIX_DETAIL_LINUX_REACTOR_HXX_INCLUDED

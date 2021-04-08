@@ -29,7 +29,10 @@
 #ifndef SK_CIO_ASYNC_INVOKE_HXX_INCLUDED
 #define SK_CIO_ASYNC_INVOKE_HXX_INCLUDED
 
-#include <sk/reactor.hxx>
+#include <future>
+
+#include <sk/detail/coroutine.hxx>
+#include <sk/task.hxx>
 
 namespace sk {
 
@@ -54,14 +57,17 @@ namespace sk {
             return false;
         }
 
-        auto await_suspend(coroutine_handle<> coro_handle_) -> bool
+        template <typename P>
+        auto await_suspend(coroutine_handle<P> coro_handle_) -> bool
         {
             coro_handle = coro_handle_;
             std::lock_guard lock(mtx);
 
+            auto executor = coro_handle_.promise().task_executor;
+
             future = std::async(std::launch::async, [&]() -> result_type {
                 auto ret = c();
-                reactor_handle::get_global_reactor().post([&] {
+                executor->post([&] {
                     std::unique_lock lock_(mtx);
                     lock_.unlock();
                     coro_handle.resume();

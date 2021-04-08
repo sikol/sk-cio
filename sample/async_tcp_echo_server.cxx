@@ -93,7 +93,7 @@ auto main(int argc, char **argv) -> int try {
     }
 
     sk::reactor_handle reactor;
-    wait(run(argv[1], std::atoi(argv[2])));
+    wait(run(argv[1], static_cast<std::uint16_t>(std::atoi(argv[2]))));
     return 0;
 } catch (std::exception const &e) {
     std::cerr << "unexpected exception: " << e.what() << '\n';

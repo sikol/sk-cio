@@ -39,6 +39,7 @@
 #include <sk/expected.hxx>
 #include <sk/posix/detail/linux_reactor.hxx>
 #include <sk/task.hxx>
+#include <sk/reactor.hxx>
 
 namespace sk::posix {
 

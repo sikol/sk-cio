@@ -87,6 +87,86 @@ namespace sk::win32::detail {
         std::jthread completion_thread;
     };
 
+    inline iocp_reactor::iocp_reactor()
+    {
+        auto hdl =
+            ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0);
+        completion_port.assign(hdl);
+    }
+
+    inline auto iocp_reactor::completion_thread_fn() -> void
+    {
+        auto port_handle = completion_port.native_handle();
+
+        for (;;) {
+            DWORD bytes_transferred;
+            ULONG_PTR completion_key;
+            iocp_coro_state *overlapped = nullptr;
+
+            auto ret = ::GetQueuedCompletionStatus(
+                port_handle,
+                &bytes_transferred,
+                &completion_key,
+                reinterpret_cast<OVERLAPPED **>(&overlapped),
+                INFINITE);
+
+            if (overlapped == nullptr)
+                // Happens when our completion port is closed.
+                return;
+
+            {
+                std::lock_guard lock(overlapped->mutex);
+
+                if (overlapped->was_pending) {
+                    overlapped->success = ret;
+                    if (!overlapped->success)
+                        overlapped->error = ::GetLastError();
+                    else
+                        overlapped->error = 0;
+                    overlapped->bytes_transferred = bytes_transferred;
+                }
+            }
+
+            auto &h = overlapped->coro_handle;
+            sk::detail::check(
+                overlapped->executor != nullptr,
+                "iocp_reactor: trying to resume without executor");
+
+            overlapped->executor->post([&] { h.resume(); });
+        }
+    }
+
+    inline auto iocp_reactor::start() -> void
+    {
+        WSADATA wsadata;
+        ::WSAStartup(MAKEWORD(2, 2), &wsadata);
+
+        completion_thread =
+            std::jthread(&iocp_reactor::completion_thread_fn, this);
+        _workq.start_threads();
+    }
+
+    inline auto iocp_reactor::stop() -> void
+    {
+        _workq.stop();
+        completion_port.close();
+        completion_thread.join();
+    }
+
+    inline auto iocp_reactor::associate_handle(HANDLE h) -> void
+    {
+        ::CreateIoCompletionPort(h, completion_port.native_handle(), 0, 0);
+    }
+
+    inline auto iocp_reactor::post(std::function<void()> fn) -> void
+    {
+        _workq.post(std::move(fn));
+    }
+
+    inline auto iocp_reactor::get_executor() -> executor * {
+        return &_workq;
+    }
+
 }; // namespace sk::win32::detail
 
 #endif // SK_CIO_WIN32_IOCP_REACTOR_HXX_INCLUDED

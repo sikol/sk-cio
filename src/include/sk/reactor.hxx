@@ -72,9 +72,33 @@ namespace sk {
         static auto get_global_reactor() -> system_reactor_type &;
 
     private:
-        static int _refs;
-        static std::mutex _mutex;
+        inline static int _refs;
+        inline static std::mutex _mutex;
     };
+
+    inline reactor_handle::reactor_handle()
+    {
+        std::lock_guard<std::mutex> lock(_mutex);
+        if (++_refs > 1)
+            return;
+
+        get_global_reactor().start();
+    }
+
+    inline reactor_handle::~reactor_handle()
+    {
+        std::lock_guard<std::mutex> lock(_mutex);
+        if (--_refs > 0)
+            return;
+
+        get_global_reactor().stop();
+    }
+
+    inline auto reactor_handle::get_global_reactor() -> system_reactor_type &
+    {
+        static system_reactor_type global_reactor;
+        return global_reactor;
+    }
 
 } // namespace sk
 

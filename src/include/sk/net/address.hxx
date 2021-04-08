@@ -45,6 +45,7 @@
 #include <sk/overload.hxx>
 #include <sk/patricia.hxx>
 #include <sk/task.hxx>
+#include <sk/check.hxx>
 
 #if defined(SK_CIO_PLATFORM_WINDOWS)
 #    include <sk/win32/windows.hxx>

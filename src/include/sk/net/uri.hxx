@@ -119,7 +119,7 @@ namespace sk::net {
     /*
      * A URI.
      *
-     * scheme://[username:password@]host[:port][/path[&query][#fragment]]
+     * [scheme://[username[:password]@]host[:port]][/path[&query][#fragment]]
      */
 
     struct uri_authority {
@@ -529,7 +529,7 @@ namespace sk::net {
                 if (n == -1)
                     return false;
 
-                *q++ = n;
+                *q++ = static_cast<char>(static_cast<unsigned char>(n));
                 p += 2;
             }
 

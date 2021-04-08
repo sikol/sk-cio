@@ -61,31 +61,118 @@ namespace sk::win32 {
     namespace detail {
 
         struct win32_errc_category : std::error_category {
-            auto name() const noexcept -> char const * final;
-            auto message(int c) const -> std::string final;
+            auto win32_errc_category::name() const noexcept -> char const *
+            {
+                return "win32";
+            }
+
+            auto win32_errc_category::message(int c) const -> std::string
+            {
+                LPSTR msgbuf;
+
+                auto len = ::FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER |
+                                            FORMAT_MESSAGE_FROM_SYSTEM |
+                                            FORMAT_MESSAGE_IGNORE_INSERTS,
+                                            nullptr,
+                                            c,
+                                            0,
+                                            reinterpret_cast<LPSTR>(&msgbuf),
+                                            0,
+                                            nullptr);
+
+                if (len == 0)
+                    return "[FormatMessageA() failed]";
+
+                // FormatMessage() sometimes puts newline character on the end
+                // of the string.  Why?  Who knows.
+                while (msgbuf[len - 1] == '\r' || msgbuf[len - 1] == '\n')
+                    len--;
+
+                std::string ret(msgbuf, len);
+                ::LocalFree(msgbuf);
+
+                return ret;
+            }
         };
 
     } // namespace detail
 
-    auto win32_errc_category() -> detail::win32_errc_category const &;
-    auto make_error_code(error e) -> std::error_code;
+    inline auto win32_errc_category() -> detail::win32_errc_category const &
+    {
+        static detail::win32_errc_category c;
+        return c;
+    }
 
-    // Construct a Win32 error from an error code.
-    auto make_win32_error(int e) -> std::error_code;
-    auto make_win32_error(DWORD e) -> std::error_code;
-    auto make_win32_error(LSTATUS e) -> std::error_code;
+    inline auto make_error_code(error e) -> std::error_code
+    {
+        switch (static_cast<DWORD>(e)) {
+        case ERROR_HANDLE_EOF:
+            return sk::error::end_of_file;
+        default:
+            return {static_cast<int>(e), win32_errc_category()};
+        }
+    }
 
-    // Return a Win32 error representing GetLastError()
-    auto get_last_error() -> std::error_code;
+    inline auto make_win32_error(int e) -> std::error_code
+    {
+        return make_error_code(static_cast<error>(e));
+    }
 
-    // Return a Win32 error representing WSAGetLastError()
-    auto get_last_winsock_error() -> std::error_code;
+    inline auto make_win32_error(DWORD e) -> std::error_code
+    {
+        return make_error_code(static_cast<error>(e));
+    }
+
+    inline auto make_win32_error(LSTATUS e) -> std::error_code
+    {
+        return make_error_code(static_cast<error>(e));
+    }
+
+    // Not safe to call across a coroutine suspend point, because the error
+    // value is thread-specific.
+    inline auto get_last_error() -> std::error_code
+    {
+        return make_win32_error(::GetLastError());
+    }
+
+    inline auto get_last_winsock_error() -> std::error_code
+    {
+        return make_win32_error(::WSAGetLastError());
+    }
 
     // Convert a Win32 error into a std::generic_category error if
     // there's an appropriate conversion.  This is used by the portable
     // I/O parts of the library so that the user only has to test for
     // a single error code.
-    auto win32_to_generic_error(std::error_code) -> std::error_code;
+    inline auto win32_to_generic_error(std::error_code ec) -> std::error_code
+    {
+        // If it's not a Win32 error to begin with, return it as-is.
+        if (&ec.category() != &win32_errc_category())
+            return ec;
+
+        switch (ec.value()) {
+        case ERROR_HANDLE_EOF:
+            return sk::error::end_of_file;
+
+        case ERROR_FILE_NOT_FOUND:
+        case ERROR_PATH_NOT_FOUND:
+            return std::make_error_code(std::errc::no_such_file_or_directory);
+
+        case ERROR_TOO_MANY_OPEN_FILES:
+            return std::make_error_code(
+                std::errc::too_many_files_open_in_system);
+
+        case ERROR_ACCESS_DENIED:
+            return std::make_error_code(std::errc::permission_denied);
+
+        case ERROR_NOT_ENOUGH_MEMORY:
+        case ERROR_OUTOFMEMORY:
+            return std::make_error_code(std::errc::not_enough_memory);
+
+        default:
+            return ec;
+        }
+    }
 
 } // namespace sk::win32
 

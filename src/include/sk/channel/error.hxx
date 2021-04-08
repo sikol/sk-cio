@@ -74,14 +74,58 @@ namespace sk {
     namespace detail {
 
         struct cio_errc_category : std::error_category {
-            [[nodiscard]] auto name() const noexcept -> char const * final;
-            [[nodiscard]] auto message(int c) const -> std::string final;
+            [[nodiscard]] auto name() const noexcept -> char const *
+            {
+                return "cio";
+            }
+
+            [[nodiscard]] auto message(int c) const -> std::string
+            {
+                switch (static_cast<error>(c)) {
+                case error::no_error:
+                    return "success";
+
+                case error::end_of_file:
+                    return "end of file";
+
+                    //            case error::no_space_in_buffer:
+                    //                return "no space in buffer";
+
+                    //            case error::no_data_in_buffer:
+                    //                return "no data in buffer";
+
+                case error::filechannel_invalid_flags:
+                    return "invalid filechannel flags";
+
+                case error::channel_already_open:
+                    return "channel is already open";
+
+#ifdef _WIN32
+                case error::winsock_no_connectex:
+                    return "Winsock implementation missing ConnectEx";
+
+                case error::winsock_no_acceptex:
+                    return "Winsock implementation missing AcceptEx";
+#endif
+
+                default:
+                    return "unknown error";
+                }
+            }
         };
 
     } // namespace detail
 
-    auto cio_errc_category() -> detail::cio_errc_category const &;
-    auto make_error_code(error e) -> std::error_code;
+    inline auto cio_errc_category() -> detail::cio_errc_category const &
+    {
+        static detail::cio_errc_category c;
+        return c;
+    }
+
+    inline auto make_error_code(error e) -> std::error_code
+    {
+        return {static_cast<int>(e), cio_errc_category()};
+    }
 
 } // namespace sk
 

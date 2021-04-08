@@ -34,29 +34,12 @@ enable_testing()
 
 find_package(Threads REQUIRED)
 
-add_library(sk-cio)
+add_library(sk-cio INTERFACE)
 
-target_link_libraries(sk-cio PUBLIC Threads::Threads)
-
-target_sources(sk-cio PRIVATE
-    error.cxx
-    reactor.cxx
-)
-
-if (WIN32)
-    target_sources(sk-cio PRIVATE
-        win32/error.cxx
-        win32/iocp_reactor.cxx
-        win32/async_api.cxx
-        )
-endif ()
+target_link_libraries(sk-cio INTERFACE Threads::Threads)
 
 if (UNIX)
     if (CMAKE_SYSTEM_NAME STREQUAL Linux)
-        target_sources(sk-cio PRIVATE
-            posix/epoll_reactor.cxx
-            posix/linux_reactor.cxx)
-
         check_include_file_cxx("linux/io_uring.h" HAVE_IO_URING_HEADER LANGUAGE CXX)
         find_library(URING_LIBRARY uring)
 
@@ -72,20 +55,18 @@ if (UNIX)
     endif ()
 
     if (SK_CIO_HAVE_IO_URING)
-        target_sources(sk-cio PRIVATE posix/io_uring_reactor.cxx)
-        target_compile_definitions(sk-cio PUBLIC SK_CIO_HAVE_IO_URING)
-        target_link_libraries(sk-cio PRIVATE uring)
+        target_compile_definitions(sk-cio INTERFACE SK_CIO_HAVE_IO_URING)
+        target_link_libraries(sk-cio INTERFACE uring)
     endif ()
 endif ()
 
-target_include_directories(sk-cio PUBLIC include)
-target_link_libraries(sk-cio PUBLIC sk-thirdparty-tl-expected)
+target_include_directories(sk-cio INTERFACE include)
+target_link_libraries(sk-cio INTERFACE sk-thirdparty-tl-expected)
 
 if (WIN32)
-    target_link_libraries(sk-cio PUBLIC wsock32 ws2_32)
+    target_link_libraries(sk-cio INTERFACE wsock32 ws2_32)
 endif ()
 
-target_compile_features(sk-cio PUBLIC cxx_std_20)
-set_target_properties(sk-cio PROPERTIES CXX_EXTENSIONS off)
+target_compile_features(sk-cio INTERFACE cxx_std_20)
 
 install(DIRECTORY "include/sk" TYPE INCLUDE)
