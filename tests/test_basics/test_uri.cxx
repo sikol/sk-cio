@@ -31,8 +31,8 @@
 #include "sk/net/uri.hxx"
 
 using sk::net::parse_uri;
-using sk::net::uri_options;
 using sk::net::uri_errors;
+using sk::net::uri_options;
 
 TEST_CASE("URI 1", "[uri]")
 {
@@ -255,6 +255,47 @@ TEST_CASE("URI 13", "[uri]")
     REQUIRE(u->path->fragment == "fragment.is.here");
 }
 
+TEST_CASE("URI with invalid high-bit characters", "[uri]")
+{
+    auto u = parse_uri("http://localhost/some/\xABpath");
+    REQUIRE(!u);
+    u = parse_uri("http://local\xABhost/some/path");
+    REQUIRE(!u);
+}
+
+TEST_CASE("URI with URL-encoded ASCII path", "[uri]")
+{
+    auto u = parse_uri("http://localhost/%73%6F%6d%65/%70%61%74%68");
+    REQUIRE(u);
+    REQUIRE(u->path);
+    REQUIRE(u->path->path == "/some/path");
+}
+
+TEST_CASE("URI with URL-encoded UTF-8 path", "[uri]")
+{
+    auto u = parse_uri("http://localhost/s%C3%B3m%C3%A9/p%C3%A1th" //
+                       "?qparam=s%C3%B3m%C3%A9d%C3%A1t%C3%A1"      //
+                       "#%66%72%C3%A1%67%6D%C3%A9%6E%74");
+    REQUIRE(u);
+    REQUIRE(u->path);
+    REQUIRE(u->path->path ==
+            "\x2F\x73\xC3\xB3\x6D\xC3\xA9\x2F\x70\xC3\xA1\x74\x68");
+    REQUIRE(u->path->query);
+    REQUIRE(*u->path->query == "qparam=sómédátá");
+    REQUIRE(u->path->fragment);
+    REQUIRE(*u->path->fragment == "frágmént");
+}
+
+TEST_CASE("URI with raw UTF-8 path", "[uri]")
+{
+    auto u = parse_uri(
+        "http://localhost/\x73\xC3\xB3\x6D\xC3\xA9/\x70\xC3\xA1\x74\x68",
+        uri_options::skip_path_decode);
+    REQUIRE(u);
+    REQUIRE(u->path);
+    REQUIRE(u->path->path == "/\x73\xC3\xB3\x6D\xC3\xA9/\x70\xC3\xA1\x74\x68");
+}
+
 TEST_CASE("relative URI", "[uri]")
 {
     auto u = parse_uri("/some/relative/path", uri_options::allow_relative);
@@ -273,8 +314,7 @@ TEST_CASE("relative URI without flag", "[uri]")
 {
     auto u = parse_uri("/some/relative/path");
     REQUIRE(!u);
-    REQUIRE(u.error() ==
-            sk::net::make_uri_error(uri_errors::relative));
+    REQUIRE(u.error() == sk::net::make_uri_error(uri_errors::relative));
 }
 
 TEST_CASE("URI 15", "[uri]")
@@ -285,7 +325,8 @@ TEST_CASE("URI 15", "[uri]")
 
 TEST_CASE("protocol-relative URI", "[uri]")
 {
-    auto u = parse_uri("//proto.col/relative", uri_options::allow_protocol_relative);
+    auto u =
+        parse_uri("//proto.col/relative", uri_options::allow_protocol_relative);
     REQUIRE(u);
     REQUIRE(!u->scheme);
     REQUIRE(u->authority);
@@ -318,6 +359,38 @@ TEST_CASE("uri invalid port", "[uri]")
     auto text = "http://localhost:808080";
     auto uri = parse_uri(text);
     REQUIRE(!uri);
-    REQUIRE(uri.error() ==
-            sk::net::make_uri_error(uri_errors::invalid_port));
+    REQUIRE(uri.error() == sk::net::make_uri_error(uri_errors::invalid_port));
+}
+
+TEST_CASE("dehex", "[uri]")
+{
+    using sk::net::detail::dehex;
+
+    REQUIRE(dehex('0') == 0);
+    REQUIRE(dehex('1') == 1);
+    REQUIRE(dehex('2') == 2);
+    REQUIRE(dehex('3') == 3);
+    REQUIRE(dehex('4') == 4);
+    REQUIRE(dehex('5') == 5);
+    REQUIRE(dehex('6') == 6);
+    REQUIRE(dehex('7') == 7);
+    REQUIRE(dehex('8') == 8);
+    REQUIRE(dehex('9') == 9);
+    REQUIRE(dehex('A') == 10);
+    REQUIRE(dehex('B') == 11);
+    REQUIRE(dehex('C') == 12);
+    REQUIRE(dehex('D') == 13);
+    REQUIRE(dehex('E') == 14);
+    REQUIRE(dehex('F') == 15);
+    REQUIRE(dehex('a') == 10);
+    REQUIRE(dehex('b') == 11);
+    REQUIRE(dehex('c') == 12);
+    REQUIRE(dehex('d') == 13);
+    REQUIRE(dehex('e') == 14);
+    REQUIRE(dehex('f') == 15);
+    REQUIRE(dehex('g') == -1);
+    REQUIRE(dehex('@') == -1);
+    REQUIRE(dehex('`') == -1);
+    REQUIRE(dehex('/') == -1);
+    REQUIRE(dehex(':') == -1);
 }

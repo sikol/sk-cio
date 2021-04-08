@@ -31,6 +31,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <iostream>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -48,6 +49,7 @@ namespace sk::net {
         no_data = 3,
         relative = 4,
         protocol_relative = 5,
+        invalid_encoding = 6,
     };
 
 }
@@ -90,6 +92,9 @@ namespace sk::net {
 
                 case uri_errors::protocol_relative:
                     return "protocol-relative URI not allowed";
+
+                case uri_errors::invalid_encoding:
+                    return "URI encoding is invalid";
 
                 default:
                     return "unknown URI error";
@@ -155,17 +160,15 @@ namespace sk::net {
 
     namespace detail {
 
-        enum char_type {
-            hostc = 1u << 1,
-            userc = 1u << 2,
-            pathc = 1u << 3,
-            highc = 1u << 4,
-            schemec = 1u << 5,
-            numc = 1u << 6,
-            queryc = 1u << 7,
-            fragc = 1u << 8,
-            ip6c = 1u << 9,
-        };
+        static constexpr std::uint_fast16_t hostc = 1u << 1;
+        static constexpr std::uint_fast16_t userc = 1u << 2;
+        static constexpr std::uint_fast16_t pathc = 1u << 3;
+        static constexpr std::uint_fast16_t highc = 1u << 4;
+        static constexpr std::uint_fast16_t schemec = 1u << 5;
+        static constexpr std::uint_fast16_t numc = 1u << 6;
+        static constexpr std::uint_fast16_t queryc = 1u << 7;
+        static constexpr std::uint_fast16_t fragc = 1u << 8;
+        static constexpr std::uint_fast16_t ip6c = 1u << 9;
 
         // A different implementation will be needed for PDP-10.
         static_assert(std::numeric_limits<unsigned char>::max() == 255);
@@ -185,7 +188,7 @@ namespace sk::net {
             /* 22, " */     0,
             /* 23, # */     0,
             /* 24, $ */     userc | hostc | pathc | queryc | fragc,
-            /* 25, % */     0,
+            /* 25, % */     pathc | queryc | fragc,
             /* 26, & */     userc | hostc | pathc | queryc | fragc,
             /* 27, ' */     userc | hostc | pathc | queryc | fragc,
             /* 28, ( */     userc | hostc | pathc | queryc | fragc,
@@ -307,12 +310,12 @@ namespace sk::net {
         };
         // clang-format on
 
-        inline auto isc(char_type what, char c) -> bool
+        inline auto isc(int what, char c) -> bool
         {
             return (chars[static_cast<unsigned char>(c)] & what) != 0;
         }
 
-        inline auto span(std::string_view s, char_type what)
+        inline auto span(std::string_view s, int what)
             -> std::pair<std::string_view, std::string_view>
         {
             auto split = std::ranges::find_if_not(
@@ -415,7 +418,7 @@ namespace sk::net {
                 return {{}, s};
 
             std::string_view path;
-            std::tie(path, s) = span(s, pathc);
+            std::tie(path, s) = span(s, pathc | highc);
             return {path, s};
         }
 
@@ -426,7 +429,7 @@ namespace sk::net {
                 return {{}, s};
 
             std::string_view query;
-            std::tie(query, s) = span(s.substr(1), queryc);
+            std::tie(query, s) = span(s.substr(1), queryc | highc);
             return {query, s};
         }
 
@@ -437,7 +440,7 @@ namespace sk::net {
                 return {{}, s};
 
             std::string_view frag;
-            std::tie(frag, s) = span(s.substr(1), fragc);
+            std::tie(frag, s) = span(s.substr(1), fragc | highc);
             return {frag, s};
         }
 
@@ -476,14 +479,74 @@ namespace sk::net {
             return {auth, v};
         }
 
+        inline auto dehex(char c) -> int
+        {
+            if (c >= '0' && c <= '9')
+                return c - '0';
+            if (c >= 'A' && c <= 'F')
+                return c - 'A' + 10;
+            if (c >= 'a' && c <= 'f')
+                return c - 'a' + 10;
+            return -1;
+        }
+
+        inline auto dehex(char const *p) -> int
+        {
+            int a = dehex(*p), b = dehex(*(p + 1));
+
+            if (a == -1 || b == -1)
+                return -1;
+
+            return (a << 4) | b;
+        }
+
+        inline auto decode_path(std::string *original_data,
+                                std::string_view *path_view) -> bool
+        {
+            // URL-decode the path, without causing original_data to reallocate
+            // since that will invalidate all the string_views.
+
+            auto path_offset = path_view->data() - original_data->data();
+            auto original_length = path_view->size();
+            char *p = original_data->data() + path_offset, *q = p, *start = p;
+            char *end = original_data->data() + path_offset + original_length;
+
+            while (p < end) {
+                // URL-encoded URLs should not have high-bit characters.
+                if (static_cast<unsigned char>(static_cast<int>(*p)) & 0x80u)
+                    return false;
+
+                if (*p != '%') {
+                    *q++ = *p++;
+                    continue;
+                }
+
+                p++;
+                if ((end - p) < 2)
+                    return false;
+
+                int n = dehex(p);
+                if (n == -1)
+                    return false;
+
+                *q++ = n;
+                p += 2;
+            }
+
+            *path_view = std::string_view(start, q);
+            return true;
+        }
+
     } // namespace detail
 
     enum uri_options {
         allow_relative = 1u << 1,
         allow_protocol_relative = 1u << 2,
+        skip_path_decode = 1u << 3,
     };
 
-    inline auto parse_uri(std::string s, unsigned options = 0) -> expected<uri, std::error_code>
+    inline auto parse_uri(std::string s, unsigned options = 0)
+        -> expected<uri, std::error_code>
     {
         uri ret;
         ret.original_data = std::move(s);
@@ -501,14 +564,34 @@ namespace sk::net {
             return make_unexpected(make_uri_error(uri_errors::invalid_port));
 
         if (is_protocol_relative(ret) && !(options & allow_protocol_relative))
-            return make_unexpected(make_uri_error(uri_errors::protocol_relative));
+            return make_unexpected(
+                make_uri_error(uri_errors::protocol_relative));
 
-        if (!is_absolute(ret) && !(options & (allow_relative | allow_protocol_relative)))
+        if (!is_absolute(ret) &&
+            !(options & (allow_relative | allow_protocol_relative)))
             return make_unexpected(make_uri_error(uri_errors::relative));
 
         // "authority-relative" URLs (https:/some/path) are not allowed.
         if (ret.scheme && !ret.authority)
             return make_unexpected(make_uri_error(uri_errors::parse_failed));
+
+        if (ret.path && !(options & skip_path_decode)) {
+            if (!detail::decode_path(&ret.original_data, &ret.path->path))
+                return make_unexpected(
+                    make_uri_error(uri_errors::invalid_encoding));
+
+            if (ret.path->query &&
+                !detail::decode_path(&ret.original_data,
+                                     std::addressof(*ret.path->query)))
+                return make_unexpected(
+                    make_uri_error(uri_errors::invalid_encoding));
+
+            if (ret.path->fragment &&
+                !detail::decode_path(&ret.original_data,
+                                     std::addressof(*ret.path->fragment)))
+                return make_unexpected(
+                    make_uri_error(uri_errors::invalid_encoding));
+        }
 
         return ret;
     }
@@ -556,6 +639,6 @@ namespace sk::net {
         return strm.str();
     }
 
-} // namespace sk
+} // namespace sk::net
 
 #endif // SK_NET_URI_HXX_INCLUDED
