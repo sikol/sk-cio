@@ -394,3 +394,19 @@ TEST_CASE("dehex", "[uri]")
     REQUIRE(dehex('/') == -1);
     REQUIRE(dehex(':') == -1);
 }
+
+TEST_CASE("empty uri", "[uri]")
+{
+    auto text = "";
+    auto uri = parse_uri(text);
+    REQUIRE(!uri);
+    REQUIRE(uri.error() == sk::net::make_uri_error(uri_errors::no_data));
+}
+
+TEST_CASE("scheme-only uri", "[uri]")
+{
+    auto uri = parse_uri("http:");
+    REQUIRE(!uri);
+    uri = parse_uri("http://");
+    REQUIRE(!uri);
+}

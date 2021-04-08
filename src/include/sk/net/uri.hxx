@@ -548,6 +548,9 @@ namespace sk::net {
     inline auto parse_uri(std::string s, unsigned options = 0)
         -> expected<uri, std::error_code>
     {
+        if (s.empty())
+            return make_unexpected(make_uri_error(uri_errors::no_data));
+
         uri ret;
         ret.original_data = std::move(s);
 
