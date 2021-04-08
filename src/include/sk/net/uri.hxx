@@ -174,7 +174,7 @@ namespace sk::net {
         static_assert(std::numeric_limits<unsigned char>::max() == 255);
 
         // clang-format off
-        inline int chars[256] = {
+        inline constexpr int chars[256] = {
             0, /* 00, NUL */ 0, /* 01, SOH */ 0, /* 02, STX */ 0, /* 03, ETX */
             0, /* 04, EOT */ 0, /* 05, ENQ */ 0, /* 06, ACK */ 0, /* 07, BEL */
             0, /* 08, BS */  0, /* 09, HT */  0, /* 0A, LF */  0, /* 0B, VT */
@@ -310,7 +310,7 @@ namespace sk::net {
         };
         // clang-format on
 
-        inline auto isc(int what, char c) -> bool
+        inline constexpr auto isc(int what, char c) -> bool
         {
             return (chars[static_cast<unsigned char>(c)] & what) != 0;
         }
@@ -539,10 +539,10 @@ namespace sk::net {
 
     } // namespace detail
 
-    enum uri_options {
-        allow_relative = 1u << 1,
-        allow_protocol_relative = 1u << 2,
-        skip_path_decode = 1u << 3,
+    struct uri_options {
+        static constexpr std::uint_fast8_t allow_relative = 1u << 1;
+        static constexpr std::uint_fast8_t allow_protocol_relative = 1u << 2;
+        static constexpr std::uint_fast8_t skip_path_decode = 1u << 3;
     };
 
     inline auto parse_uri(std::string s, unsigned options = 0)
@@ -566,19 +566,19 @@ namespace sk::net {
             *ret.authority->port > 65535u)
             return make_unexpected(make_uri_error(uri_errors::invalid_port));
 
-        if (is_protocol_relative(ret) && !(options & allow_protocol_relative))
+        if (is_protocol_relative(ret) && !(options & uri_options::allow_protocol_relative))
             return make_unexpected(
                 make_uri_error(uri_errors::protocol_relative));
 
         if (!is_absolute(ret) &&
-            !(options & (allow_relative | allow_protocol_relative)))
+            !(options & (uri_options::allow_relative | uri_options::allow_protocol_relative)))
             return make_unexpected(make_uri_error(uri_errors::relative));
 
         // "authority-relative" URLs (https:/some/path) are not allowed.
         if (ret.scheme && !ret.authority)
             return make_unexpected(make_uri_error(uri_errors::parse_failed));
 
-        if (ret.path && !(options & skip_path_decode)) {
+        if (ret.path && !(options & uri_options::skip_path_decode)) {
             if (!detail::decode_path(&ret.original_data, &ret.path->path))
                 return make_unexpected(
                     make_uri_error(uri_errors::invalid_encoding));
