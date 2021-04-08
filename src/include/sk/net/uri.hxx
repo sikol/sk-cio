@@ -545,7 +545,7 @@ namespace sk::net {
         static constexpr std::uint_fast8_t skip_path_decode = 1u << 3;
     };
 
-    inline auto parse_uri(std::string s, unsigned options = 0)
+    inline auto parse_uri(std::string const &s, unsigned options = 0)
         -> expected<uri, std::error_code>
     {
         if (s.empty())
