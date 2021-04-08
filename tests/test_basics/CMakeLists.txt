@@ -49,6 +49,7 @@ add_executable(test_basics
     test_unix_address.cxx
     test_patricia.cxx
     test_tcpchannel.cxx
+    test_uri.cxx
     )
 
 target_link_libraries(test_basics PRIVATE sk-cio catch fmt)
