@@ -152,8 +152,13 @@ task<void> unix_server_task(net::unixserverchannel &chnl)
             co_return;
         }
 
-        co_detach(unix_handle_client(std::move(*client)));
+        co_await co_detach(unix_handle_client(std::move(*client)));
     }
+}
+
+auto run_unix_stress_task(std::promise<int> &promise) -> task<void> {
+    auto ret = co_await unix_stress_task();
+    promise.set_value(ret);
 }
 
 TEST_CASE("unixchannel stress test")
@@ -178,24 +183,23 @@ TEST_CASE("unixchannel stress test")
         REQUIRE(server);
     }
 
-    co_detach(unix_server_task(*server));
+    mt_executor xer;
+    xer.start_threads();
+
+    wait(co_detach(unix_server_task(*server), &xer));
 
     std::this_thread::sleep_for(1s);
-    std::cerr << "starting stress tasks\n";
 
-    std::vector<std::future<int>> futures;
+    std::vector<std::promise<int>> promises;
 
-    for (int i = 0; i < nthreads; ++i)
-        futures.emplace_back(std::async(std::launch::async, [&]() -> int {
-            return wait(unix_stress_task());
-        }));
-
-    std::cerr << "joining stress tasks\n";
+    for (int i = 0; i < nthreads; ++i) {
+        wait(co_detach(run_unix_stress_task(promises[i]), &xer));
+    }
 
     int errors = 0;
 
-    for (auto &&future : futures) {
-        auto ret = future.get();
+    for (auto &&promise : promises) {
+        auto ret = promise.get_future().get();
         errors += ret;
     }
 

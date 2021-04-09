@@ -151,8 +151,13 @@ task<void> tcp_server_task(net::tcpserverchannel &chnl)
             co_return;
         }
 
-        co_detach(tcp_handle_client(std::move(*client)));
+        co_await co_detach(tcp_handle_client(std::move(*client)));
     }
+}
+
+auto run_tcp_stress_task(std::promise<int> &promise) -> task<void> {
+  auto ret = co_await tcp_stress_task();
+  promise.set_value(ret);
 }
 
 TEST_CASE("tcpchannel stress test")
@@ -172,23 +177,21 @@ TEST_CASE("tcpchannel stress test")
     auto server = net::tcpserverchannel::listen(*ep);
     REQUIRE(server);
 
-    co_detach(tcp_server_task(*server));
+    mt_executor xer;
+    xer.start_threads();
 
-    std::cerr << "starting stress tasks\n";
+    wait(co_detach(tcp_server_task(*server), &xer));
 
-    std::vector<std::future<int>> futures;
+    std::vector<std::promise<int>> promises(nthreads);
 
-    for (int i = 0; i < nthreads; ++i)
-        futures.emplace_back(std::async(std::launch::async, [&]() -> int {
-            return wait(tcp_stress_task());
-        }));
-
-    std::cerr << "joining stress tasks\n";
+    for (int i = 0; i < nthreads; ++i) {
+        wait(co_detach(run_tcp_stress_task(promises[i]), &xer));
+    }
 
     int errors = 0;
 
-    for (auto &&future : futures) {
-        auto ret = future.get();
+    for (auto &&promise : promises) {
+        auto ret = promise.get_future().get();
         errors += ret;
     }
 

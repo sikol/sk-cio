@@ -131,6 +131,21 @@ namespace sk::posix::detail {
 
         unique_fd listener_(listener);
 
+#ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
+        if (af != AF_UNIX) {
+#endif
+            int one = 1, ret;
+            ret = ::setsockopt(listener,
+                               SOL_SOCKET,
+                               SO_REUSEADDR,
+                               reinterpret_cast<char const *>(&one),
+                               sizeof(one));
+            if (ret)
+                return make_unexpected(sk::posix::get_errno());
+#ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
+        }
+#endif
+
         auto ret = ::bind(listener, addr, addrlen);
         if (ret == -1)
             return make_unexpected(sk::posix::get_errno());

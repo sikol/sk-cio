@@ -183,7 +183,8 @@ namespace sk {
         {
             auto &promise = coro_handle.promise();
             promise.previous = h;
-            promise.task_executor = h.promise().task_executor;
+            if (!promise.task_executor)
+                promise.task_executor = h.promise().task_executor;
             return coro_handle;
         }
 #else
@@ -193,7 +194,8 @@ namespace sk {
         {
             auto &promise = coro_handle.promise();
             promise.previous = h;
-            promise.task_executor = h.promise().task_executor;
+            if (!promise.task_executor)
+                promise.task_executor = h.promise().task_executor;
             coro_handle.resume();
             return !promise.ready.exchange(true, std::memory_order_acq_rel);
         }

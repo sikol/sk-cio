@@ -54,6 +54,7 @@ namespace sk {
      */
 
     struct mt_executor final : executor {
+        ~mt_executor();
         using work_type = std::function<void()>;
 
         // Post work to the queue
@@ -77,6 +78,11 @@ namespace sk {
         std::vector<std::thread> _threads;
         bool _stop = false;
     };
+
+    inline mt_executor::~mt_executor() {
+        if (!_threads.empty())
+            stop();
+    }
 
     inline void mt_executor::post(work_type &&work)
     {
@@ -113,6 +119,8 @@ namespace sk {
             _threads.back().join();
             _threads.pop_back();
         }
+
+        _threads.clear();
     }
 
     inline auto mt_executor::start_threads(unsigned int nthreads) -> void

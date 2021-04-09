@@ -69,7 +69,7 @@ auto detached1(std::promise<int> *p) -> sk::task<void>
 
 auto detached2(std::promise<int> *p) -> sk::task<void>
 {
-    sk::co_detach(detached1(p));
+    co_await sk::co_detach(detached1(p));
     co_return;
 }
 
@@ -78,7 +78,7 @@ auto test_detached1() -> sk::task<int>
     std::promise<int> p;
     std::future f = p.get_future();
 
-    co_detach(detached1(&p));
+    co_await co_detach(detached1(&p));
     co_return f.get();
 }
 
@@ -87,7 +87,7 @@ auto test_detached2() -> sk::task<int>
     std::promise<int> p;
     std::future f = p.get_future();
 
-    co_detach(detached2(&p));
+    co_await co_detach(detached2(&p));
     co_return f.get();
 }
 

@@ -73,8 +73,6 @@ auto co_main(int argc, char **argv) -> sk::task<int> {
         co_return 1;
     }
 
-    sk::reactor_handle reactor;
-
     for (auto &&file : std::span(argv + 1, argv + argc)) {
         co_await print_file(file);
     }

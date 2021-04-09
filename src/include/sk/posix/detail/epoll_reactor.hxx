@@ -319,6 +319,9 @@ namespace sk::posix::detail {
         {
             std::lock_guard lock(cstate.mutex);
             cstate.task_executor = coro_handle_.promise().task_executor;
+            sk::detail::check(cstate.task_executor != nullptr,
+                              "attempt to suspend with no executor");
+
             cstate.coro_handle = coro_handle_;
             reactor.register_read_interest(fd, &cstate);
             return true;
@@ -347,6 +350,9 @@ namespace sk::posix::detail {
         {
             std::lock_guard lock(cstate.mutex);
             cstate.task_executor = coro_handle_.promise().task_executor;
+            sk::detail::check(cstate.task_executor != nullptr,
+                              "attempt to suspend with no executor");
+
             cstate.coro_handle = coro_handle_;
             reactor.register_write_interest(fd, &cstate);
             return true;

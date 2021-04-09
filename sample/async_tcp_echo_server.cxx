@@ -70,8 +70,6 @@ auto co_main(int argc, char **argv) -> sk::task<int> {
         co_return 1;
     }
 
-    sk::reactor_handle reactor;
-
     auto ep = sk::net::make_tcp_endpoint(argv[1], std::atoi(argv[2]));
     if (!ep) {
         fmt::print(stderr, "{}:{}: {}\n", argv[1], argv[2],
@@ -89,7 +87,7 @@ auto co_main(int argc, char **argv) -> sk::task<int> {
             co_return 1;
         }
 
-        sk::co_detach(handle_client(std::move(*client)));
+        co_await sk::co_detach(handle_client(std::move(*client)));
     }
 
     co_return 0;

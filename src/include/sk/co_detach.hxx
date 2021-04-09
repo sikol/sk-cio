@@ -56,7 +56,7 @@ namespace sk {
 
             void unhandled_exception()
             {
-                throw;
+                std::rethrow_exception(std::current_exception());
             }
 
             void return_void() noexcept {}
@@ -98,17 +98,26 @@ namespace sk {
     };
 
     template <typename T>
-    auto _internal_detach(task<T> &&task_) -> detach_task
+    [[nodiscard]] auto _internal_detach(task<T> &&task_) -> detach_task
     {
         task<T> taskp(std::move(task_));
-        taskp.coro_handle.promise().task_executor = co_await co_get_executor();
-        taskp.coro_handle.promise().previous = {};
+        auto &promise = taskp.coro_handle.promise();
+        promise.previous = {};
         co_await taskp;
     }
 
     template <typename T>
-    void co_detach(task<T> &&task_)
+    [[nodiscard]] auto co_detach(task<T> &&task_, executor *xer = nullptr) -> task<void>
     {
+        auto &promise = task_.coro_handle.promise();
+        if (xer)
+            promise.task_executor = xer;
+        else
+            promise.task_executor = co_await co_get_executor();
+
+        sk::detail::check(promise.task_executor != nullptr,
+                          "_internal_detach: no executor?");
+
         auto detach_task = _internal_detach(std::move(task_));
         detach_task.start();
     }
