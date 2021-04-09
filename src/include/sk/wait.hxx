@@ -92,6 +92,8 @@ namespace sk {
         wait_task(wait_task &&other) noexcept
             : coro_handle(std::exchange(other.coro_handle, {}))
         {
+            coro_handle.promise().task_executor =
+                reactor_handle::get_global_reactor().get_executor();
         }
 
         ~wait_task()

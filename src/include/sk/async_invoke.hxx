@@ -49,6 +49,7 @@ namespace sk {
         std::future<result_type> future;
         std::mutex mtx;
         coroutine_handle<> coro_handle;
+        executor *task_executor{};
 
         explicit co_async_invoke_awaiter(Callable &&c_) : c(std::move(c_)) {}
 
@@ -63,11 +64,11 @@ namespace sk {
             coro_handle = coro_handle_;
             std::lock_guard lock(mtx);
 
-            auto executor = coro_handle_.promise().task_executor;
+            task_executor = coro_handle_.promise().task_executor;
 
             future = std::async(std::launch::async, [&]() -> result_type {
                 auto ret = c();
-                executor->post([&] {
+                task_executor->post([&] {
                     std::unique_lock lock_(mtx);
                     lock_.unlock();
                     coro_handle.resume();

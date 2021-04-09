@@ -84,9 +84,9 @@ namespace sk {
 #ifndef SK_HAS_CPP20_COROUTINES
             std::atomic<bool> ready = false;
 #endif
-            coroutine_handle<> previous;
-            std::exception_ptr exception{nullptr};
-            executor *task_executor;
+            coroutine_handle<> previous{};
+            std::exception_ptr exception{};
+            executor *task_executor{};
 
             auto get_return_object()
             {
