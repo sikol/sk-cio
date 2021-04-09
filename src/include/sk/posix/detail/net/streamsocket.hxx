@@ -54,7 +54,7 @@ namespace sk::posix::detail {
         explicit streamsocket(sk::posix::unique_fd &&);
         streamsocket(streamsocket &&) noexcept = default;
         auto operator=(streamsocket &&) noexcept -> streamsocket & = default;
-        ~streamsocket() = default;
+        ~streamsocket();
 
         sk::posix::unique_fd _fd;
 
@@ -98,6 +98,17 @@ namespace sk::posix::detail {
     streamsocket<type, protocol>::streamsocket(sk::posix::unique_fd &&sock)
         : _fd(std::move(sock))
     {
+    }
+
+    /*************************************************************************
+     * streamsocket::~streamsocket()
+     */
+
+    template<int type, int protocol>
+    streamsocket<type, protocol>::~streamsocket()
+    {
+        if (_fd)
+            reactor_handle::get_global_reactor().deassociate_fd(_fd.value());
     }
 
     /*************************************************************************

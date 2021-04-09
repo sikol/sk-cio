@@ -80,9 +80,6 @@ namespace sk::posix::detail {
 
         auto get_system_executor() -> mt_executor *;
 
-        // Post work to the reactor's thread pool.
-        auto post(std::function<void()> &&fn) -> void;
-
         auto async_fd_open(char const *path, int flags, int mode = 0777)
             -> task<expected<int, std::error_code>>;
 

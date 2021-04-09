@@ -57,7 +57,7 @@ namespace sk::posix::detail {
         streamsocketserver(streamsocketserver &&) noexcept = default;
         auto operator=(streamsocketserver &&) noexcept
             -> streamsocketserver & = default;
-        ~streamsocketserver() = default;
+        ~streamsocketserver();
 
         [[nodiscard]] static auto
         _listen(int af, sockaddr const *addr, socklen_t)
@@ -95,6 +95,21 @@ namespace sk::posix::detail {
         streamsocketserver(unique_fd &&sock, int /*address_family*/)
         : _fd(std::move(sock))
     {
+    }
+
+    /*************************************************************************
+     * streamsocketserver::~streamsocketserver()
+     */
+
+    template <typename server_type,
+              seqchannel channel_type,
+              int type,
+              int protocol>
+    streamsocketserver<server_type, channel_type, type, protocol>::
+        ~streamsocketserver()
+    {
+        if (_fd)
+            reactor_handle::get_global_reactor().deassociate_fd(_fd.value());
     }
 
     /*************************************************************************
