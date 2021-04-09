@@ -177,15 +177,13 @@ TEST_CASE("tcpchannel stress test")
     auto server = net::tcpserverchannel::listen(*ep);
     REQUIRE(server);
 
-    mt_executor xer;
-    xer.start_threads();
-
-    wait(co_detach(tcp_server_task(*server), &xer));
+    auto *xer = reactor_handle::get_global_reactor().get_system_executor();
+    wait(co_detach(tcp_server_task(*server), xer));
 
     std::vector<std::promise<int>> promises(nthreads);
 
     for (int i = 0; i < nthreads; ++i) {
-        wait(co_detach(run_tcp_stress_task(promises[i]), &xer));
+        wait(co_detach(run_tcp_stress_task(promises[i]), xer));
     }
 
     int errors = 0;

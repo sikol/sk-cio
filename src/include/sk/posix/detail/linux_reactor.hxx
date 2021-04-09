@@ -78,7 +78,7 @@ namespace sk::posix::detail {
         // Stop this reactor.
         auto stop() -> void;
 
-        auto get_executor() -> executor *;
+        auto get_system_executor() -> mt_executor *;
 
         // Post work to the reactor's thread pool.
         auto post(std::function<void()> &&fn) -> void;
@@ -126,6 +126,13 @@ namespace sk::posix::detail {
 #ifdef SK_CIO_HAVE_IO_URING
         _uring = io_uring_reactor::make();
 #endif
+        get_system_executor()->start_threads();
+    }
+
+    inline auto linux_reactor::get_system_executor() -> mt_executor *
+    {
+        static mt_executor xer;
+        return &xer;
     }
 
     inline auto linux_reactor::associate_fd(int fd) -> void

@@ -183,17 +183,15 @@ TEST_CASE("unixchannel stress test")
         REQUIRE(server);
     }
 
-    mt_executor xer;
-    xer.start_threads();
-
-    wait(co_detach(unix_server_task(*server), &xer));
+    auto *xer = reactor_handle::get_global_reactor().get_system_executor();
+    wait(co_detach(unix_server_task(*server), xer));
 
     std::this_thread::sleep_for(1s);
 
-    std::vector<std::promise<int>> promises;
+    std::vector<std::promise<int>> promises(nthreads);
 
     for (int i = 0; i < nthreads; ++i) {
-        wait(co_detach(run_unix_stress_task(promises[i]), &xer));
+        wait(co_detach(run_unix_stress_task(promises[i]), xer));
     }
 
     int errors = 0;

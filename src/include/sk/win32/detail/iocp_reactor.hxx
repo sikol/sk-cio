@@ -75,6 +75,8 @@ namespace sk::win32::detail {
         // Stop this reactor.
         auto stop() -> void;
 
+        auto get_system_executor() -> mt_executor *;
+
     private:
         void completion_thread_fn(void);
         std::jthread completion_thread;
@@ -85,6 +87,13 @@ namespace sk::win32::detail {
         auto hdl =
             ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0);
         completion_port.assign(hdl);
+        get_system_executor()->start_threads();
+    }
+
+    inline auto iocp_reactor::get_system_executor() -> mt_executor *
+    {
+        static mt_executor xer;
+        return &xer;
     }
 
     inline auto iocp_reactor::completion_thread_fn() -> void
