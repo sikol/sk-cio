@@ -32,7 +32,8 @@
 
 #include <fmt/core.h>
 
-#include "sk/cio.hxx"
+#include <sk/cio.hxx>
+#include <sk/co_main.hxx>
 
 auto handle_client(sk::net::tcpchannel client) -> sk::task<void> {
     for (;;) {
@@ -61,12 +62,21 @@ auto handle_client(sk::net::tcpchannel client) -> sk::task<void> {
     fmt::print(stderr, "handle_client() : return\n");
 }
 
-auto run(std::string const &addr, std::int16_t port) -> sk::task<void> {
-    auto ep = sk::net::make_tcp_endpoint(addr, port);
+auto co_main(int argc, char **argv) -> sk::task<int> try {
+    using namespace std::chrono_literals;
+
+    if (argc != 3) {
+        fmt::print(stderr, "usage: {} <address> <port>", argv[0]);
+        co_return 1;
+    }
+
+    sk::reactor_handle reactor;
+
+    auto ep = sk::net::make_tcp_endpoint(argv[1], std::atoi(argv[2]));
     if (!ep) {
-        fmt::print(stderr, "{}:{}: {}\n", addr, port,
+        fmt::print(stderr, "{}:{}: {}\n", argv[1], argv[2],
                    ep.error().message());
-        co_return;
+        co_return 1;
     }
 
     auto server = sk::net::tcpserverchannel::listen(*ep);
@@ -76,26 +86,14 @@ auto run(std::string const &addr, std::int16_t port) -> sk::task<void> {
         if (!client) {
             fmt::print(stderr, "async_accept(): {}\n",
                        client.error().message());
-            co_return;
+            co_return 1;
         }
 
         sk::co_detach(handle_client(std::move(*client)));
     }
-}
 
-
-auto main(int argc, char **argv) -> int try {
-    using namespace std::chrono_literals;
-
-    if (argc != 3) {
-        fmt::print(stderr, "usage: {} <address> <port>", argv[0]);
-        return 1;
-    }
-
-    sk::reactor_handle reactor;
-    wait(run(argv[1], static_cast<std::uint16_t>(std::atoi(argv[2]))));
-    return 0;
+    co_return 0;
 } catch (std::exception const &e) {
-    std::cerr << "unexpected exception: " << e.what() << '\n';
-    return 1;
+    fmt::print("unexpected exception: {}\n", e.what());
+    co_return 1;
 }

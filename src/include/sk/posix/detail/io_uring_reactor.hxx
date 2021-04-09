@@ -273,8 +273,6 @@ namespace sk::posix::detail {
 
     inline auto io_uring_reactor::stop() -> void
     {
-        std::cerr << "stopping reactor\n";
-
         io_uring_sqe shutdown_sqe{};
         io_uring_prep_nop(&shutdown_sqe);
         shutdown_sqe.fd = -1;

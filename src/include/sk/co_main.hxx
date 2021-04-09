@@ -26,61 +26,17 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <cstdio>
-#include <iostream>
-#include <ranges>
+#ifndef SK_CO_MAIN_HXX_INCLUDED
+#define SK_CO_MAIN_HXX_INCLUDED
 
-#include <fmt/core.h>
+#include <sk/task.hxx>
+#include <sk/reactor.hxx>
 
-#include <sk/cio.hxx>
-#include <sk/co_main.hxx>
+auto co_main(int argc, char **argv) -> sk::task<int>;
 
-auto print_file(std::string const &name) -> sk::task<void> {
-    sk::iseqfilechannel chnl;
-
-    auto err = co_await chnl.async_open(name);
-    if (!err) {
-        std::cerr << name << ": " << err.error().message() << "\n";
-        co_return;
-    }
-
-    for (;;) {
-        sk::fixed_buffer<std::byte, 1024> buf;
-        auto nbytes = co_await sk::async_read_some(chnl, buf);
-
-        if (!nbytes) {
-            if (nbytes.error() != sk::error::end_of_file)
-                std::cerr << name << ": " << nbytes.error().message() << "\n";
-            break;
-        }
-
-        for (auto &&range : buf.readable_ranges())
-            std::cout.write(
-                reinterpret_cast<char const *>(std::ranges::data(range)),
-                std::ranges::size(range));
-
-        buf.discard(*nbytes);
-    }
-
-    co_await chnl.async_close();
-}
-
-auto co_main(int argc, char **argv) -> sk::task<int> try {
-    using namespace std::chrono_literals;
-
-    if (argc < 2) {
-        fmt::print(stderr, "usage: {} <file> [file...]", argv[0]);
-        co_return 1;
-    }
-
+auto main(int argc, char **argv) -> int {
     sk::reactor_handle reactor;
-
-    for (auto &&file : std::span(argv + 1, argv + argc)) {
-        co_await print_file(file);
-    }
-
-    co_return 0;
-} catch (std::exception const &e) {
-    fmt::print(stderr,"unexpected exception: {}\n", e.what());
-    co_return 1;
+    return wait(co_main(argc, argv));
 }
+
+#endif // SK_CO_MAIN_HXX_INCLUDED
