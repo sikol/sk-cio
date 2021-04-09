@@ -59,7 +59,7 @@ auto resolve(std::string const &name) -> sk::task<void> {
     std::cout << '\n';
 }
 
-auto co_main(int argc, char **argv) -> sk::task<int> try {
+auto co_main(int argc, char **argv) -> sk::task<int> {
     if (argc < 2) {
         fmt::print(stderr, "usage: {} <file> [file...]", argv[0]);
         co_return 1;
@@ -71,7 +71,4 @@ auto co_main(int argc, char **argv) -> sk::task<int> try {
         co_await resolve(name);
 
     co_return 0;
-} catch (std::exception const &e) {
-    std::cerr << "unexpected exception: " << e.what() << '\n';
-    co_return 1;
 }

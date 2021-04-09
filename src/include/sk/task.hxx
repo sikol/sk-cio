@@ -213,6 +213,24 @@ namespace sk {
         }
     };
 
+    struct co_get_executor {
+        executor *task_executor = nullptr;
+
+        auto await_ready() noexcept -> bool {
+            return false;
+        }
+
+        template<typename P>
+        auto await_suspend(coroutine_handle<P> h) noexcept -> bool {
+            task_executor = h.promise().task_executor;
+            return false;
+        }
+
+        auto await_resume() noexcept -> executor * {
+            return task_executor;
+        }
+    };
+
 } // namespace sk
 
 #endif // SK_CIO_TASK_HXX_INCLUDED

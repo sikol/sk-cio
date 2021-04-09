@@ -37,7 +37,6 @@
 #include <sk/win32/handle.hxx>
 #include <sk/win32/windows.hxx>
 #include <sk/task.hxx>
-#include <sk/workq.hxx>
 #include <sk/executor.hxx>
 
 namespace sk::win32::detail {
@@ -76,13 +75,7 @@ namespace sk::win32::detail {
         // Stop this reactor.
         auto stop() -> void;
 
-        // Post work to the reactor's thread pool.
-        auto post(std::function<void()> fn) -> void;
-
-        auto get_executor() -> executor *;
-
     private:
-        workq _workq;
         void completion_thread_fn(void);
         std::jthread completion_thread;
     };
@@ -143,12 +136,10 @@ namespace sk::win32::detail {
 
         completion_thread =
             std::jthread(&iocp_reactor::completion_thread_fn, this);
-        _workq.start_threads();
     }
 
     inline auto iocp_reactor::stop() -> void
     {
-        _workq.stop();
         completion_port.close();
         completion_thread.join();
     }
@@ -156,15 +147,6 @@ namespace sk::win32::detail {
     inline auto iocp_reactor::associate_handle(HANDLE h) -> void
     {
         ::CreateIoCompletionPort(h, completion_port.native_handle(), 0, 0);
-    }
-
-    inline auto iocp_reactor::post(std::function<void()> fn) -> void
-    {
-        _workq.post(std::move(fn));
-    }
-
-    inline auto iocp_reactor::get_executor() -> executor * {
-        return &_workq;
     }
 
 }; // namespace sk::win32::detail

@@ -34,129 +34,71 @@
 
 namespace sk {
 
-    struct wait_task {
-        struct promise_type {
-            std::promise<void> promise;
-            executor *task_executor;
+    /*************************************************************************
+     *
+     * wait_executor: execute work on the current thread until the given task
+     * is finished.
+     */
+    template<typename T>
+    struct wait_executor final : executor {
+        using work_type = std::function<void()>;
 
-            auto get_return_object()
-            {
-                return wait_task(
-                    coroutine_handle<promise_type>::from_promise(*this));
-            }
+        wait_executor(task<T> &taskp) : _task(taskp) {}
 
-            auto initial_suspend() -> suspend_always
-            {
-                return {};
-            }
+        auto post(work_type &&work) -> void;
+        auto run() -> void;
 
-            struct final_awaiter {
-                auto await_ready() noexcept -> bool
-                {
-                    return false;
-                }
-
-                void await_resume() noexcept {}
-
-                void await_suspend(coroutine_handle<promise_type> h) noexcept
-                {
-                    h.promise().promise.set_value();
-                }
-            };
-
-            auto final_suspend() noexcept -> final_awaiter
-            {
-                return {};
-            }
-
-            void unhandled_exception()
-            {
-                throw;
-            }
-
-            void return_void() noexcept {}
-        };
-        coroutine_handle<promise_type> coro_handle;
-
-        explicit wait_task(coroutine_handle<promise_type> coro_handle_)
-            : coro_handle(coro_handle_)
-        {
-            coro_handle.promise().task_executor =
-                reactor_handle::get_global_reactor().get_executor();
-        }
-
-        wait_task(wait_task const &) = delete;
-        auto operator=(wait_task const &) -> wait_task & = delete;
-        auto operator=(wait_task &&other) -> wait_task & = delete;
-
-        wait_task(wait_task &&other) noexcept
-            : coro_handle(std::exchange(other.coro_handle, {}))
-        {
-            coro_handle.promise().task_executor =
-                reactor_handle::get_global_reactor().get_executor();
-        }
-
-        ~wait_task()
-        {
-            if (coro_handle) {
-                try {
-                    coro_handle.destroy();
-                } catch (...) {
-                    std::terminate();
-                }
-            }
-        }
-
-        void start()
-        {
-            coro_handle.resume();
-        }
+    private:
+        task<T> &_task;
+        std::condition_variable _cv;
+        std::mutex _mtx;
+        std::deque<work_type> _work;
     };
 
-    template <typename T>
-    auto _internal_wait(task<T> &&task_, T *v) -> wait_task
+    // Called from the reactor thread.
+    template<typename T>
+    inline void wait_executor<T>::post(work_type &&work)
     {
-        *v = co_await task_;
+        std::lock_guard<std::mutex> lock(_mtx);
+        _work.push_back(std::move(work));
+        _cv.notify_one();
     }
 
-    inline auto _internal_wait(task<void> &&task_) -> wait_task
+    // Called from the main thread.
+    template<typename T>
+    inline auto wait_executor<T>::run() -> void
     {
-        co_await task_;
+        for (;;) {
+            std::unique_lock<std::mutex> lock(_mtx);
+            _cv.wait(lock, [&] { return !_work.empty() || _task.coro_handle.done(); });
+
+            if (_task.coro_handle.done())
+                return;
+
+            auto work = _work.front();
+            _work.pop_front();
+            lock.unlock();
+
+            work();
+        }
     }
 
-    template <typename T>
-    auto wait(task<T> &&task_) -> T
-    {
-        T ret;
-
-        auto waitable = _internal_wait(std::move(task_), &ret);
-
-        auto future = waitable.coro_handle.promise().promise.get_future();
-        waitable.start();
-        future.wait();
-
-        return ret;
+    template<typename T>
+    auto wait(task<T> &&taskp) -> T {
+        wait_executor<T> xer(taskp);
+        taskp.coro_handle.promise().task_executor = &xer;
+        taskp.start();
+        xer.run();
+        return taskp.await_resume();
     }
 
-    template <typename T>
-    auto wait(task<T> &task_) -> T
-    {
-        return wait(std::move(task_));
-    }
-
-    template <>
-    inline void wait(task<void> &&task_)
-    {
-        auto waitable = _internal_wait(std::move(task_));
-        auto future = waitable.coro_handle.promise().promise.get_future();
-        waitable.start();
-        future.wait();
-    }
-
-    template <>
-    inline void wait(task<void> &task_)
-    {
-        return wait(std::move(task_));
+    template<>
+    inline auto wait(task<void> &&taskp) -> void {
+        wait_executor<void> xer(taskp);
+        taskp.coro_handle.promise().task_executor = &xer;
+        taskp.start();
+        xer.run();
+        taskp.await_resume();
     }
 
 } // namespace sk

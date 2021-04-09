@@ -45,8 +45,7 @@
 #include <liburing.h>
 
 #include <sk/posix/fd.hxx>
-#include <sk/task.hxx>
-#include <sk/workq.hxx>
+#include <sk/executor.hxx>
 
 namespace sk::posix::detail {
 
@@ -54,7 +53,7 @@ namespace sk::posix::detail {
 
         // Try to create a new io_uring_reactor; returns NULL if we can't
         // use io_uring on this system.
-        static auto make(workq *) -> std::unique_ptr<io_uring_reactor>;
+        static auto make() -> std::unique_ptr<io_uring_reactor>;
 
         io_uring_reactor(io_uring_reactor const &) = delete;
         auto operator=(io_uring_reactor const &) -> io_uring_reactor & = delete;
@@ -68,9 +67,6 @@ namespace sk::posix::detail {
 
         // Stop this reactor.
         auto stop() -> void;
-
-        // Post work to the reactor's thread pool.
-        auto post(std::function<void()> fn) -> void;
 
         // POSIX async API
         [[nodiscard]] auto async_fd_open(char const *path, int flags, int mode)
@@ -98,14 +94,13 @@ namespace sk::posix::detail {
         auto _put_sq(io_uring_sqe *sqe) -> void;
 
     private:
-        explicit io_uring_reactor(workq *);
+        explicit io_uring_reactor();
 
         std::mutex _sq_mutex;
 
         void io_uring_thread_fn();
         std::thread io_uring_thread;
 
-        workq &_workq;
         io_uring ring{};
 
         // must be called with _sq_mutex held
@@ -128,6 +123,7 @@ namespace sk::posix::detail {
         std::int32_t ret = -1;
         std::uint32_t flags = 0;
         coroutine_handle<> coro_handle;
+        executor *task_executor = nullptr;
         std::mutex mutex;
 
         bool await_ready()
@@ -135,9 +131,14 @@ namespace sk::posix::detail {
             return false;
         }
 
-        bool await_suspend(coroutine_handle<> coro_handle_)
+        template<typename P>
+        bool await_suspend(coroutine_handle<P> coro_handle_)
         {
             coro_handle = coro_handle_;
+            task_executor = coro_handle_.promise().task_executor;
+            sk::detail::check(task_executor != nullptr,
+                              "suspending a task with no executor");
+
             std::lock_guard lock(mutex);
             reactor->_put_sq(sqe);
             return true;
@@ -152,10 +153,10 @@ namespace sk::posix::detail {
         }
     };
 
-    inline auto io_uring_reactor::make(workq *q) -> std::unique_ptr<io_uring_reactor>
+    inline auto io_uring_reactor::make() -> std::unique_ptr<io_uring_reactor>
     {
         // Create the ring.
-        auto reactor_ = new io_uring_reactor(q);
+        auto reactor_ = new io_uring_reactor();
         auto reactor = std::unique_ptr<io_uring_reactor>(reactor_);
 
         auto ret = io_uring_queue_init(
@@ -218,7 +219,7 @@ namespace sk::posix::detail {
             _pending.push_back(newsqe);
     }
 
-    inline io_uring_reactor::io_uring_reactor(workq *q) : _workq(*q) {}
+    inline io_uring_reactor::io_uring_reactor() = default;
 
     inline auto io_uring_reactor::io_uring_thread_fn() -> void
     {
@@ -242,7 +243,7 @@ namespace sk::posix::detail {
                 std::lock_guard h_lock(cstate->mutex);
                 cstate->ret = cqe->res;
                 cstate->flags = cqe->flags;
-                _workq.post([&handle=cstate->coro_handle] { handle.resume(); });
+                cstate->task_executor->post([&handle=cstate->coro_handle] { handle.resume(); });
 
                 io_uring_cqe_seen(&ring, cqe);
                 ++did_requests;
@@ -268,7 +269,6 @@ namespace sk::posix::detail {
     {
         io_uring_thread =
             std::thread(&io_uring_reactor::io_uring_thread_fn, this);
-        _workq.start_threads();
     }
 
     inline auto io_uring_reactor::stop() -> void
@@ -278,13 +278,7 @@ namespace sk::posix::detail {
         shutdown_sqe.fd = -1;
         _put_sq(&shutdown_sqe);
 
-        _workq.stop();
         io_uring_thread.join();
-    }
-
-    inline auto io_uring_reactor::post(std::function<void()> fn) -> void
-    {
-        _workq.post(std::move(fn));
     }
 
     /*************************************************************************

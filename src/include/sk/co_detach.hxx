@@ -36,7 +36,7 @@ namespace sk {
 
     struct detach_task {
         struct promise_type {
-            executor *task_executor;
+            executor *task_executor = nullptr;
 
             auto get_return_object() -> detach_task
             {
@@ -68,8 +68,6 @@ namespace sk {
             coroutine_handle<promise_type> coro_handle_) noexcept
             : coro_handle(coro_handle_)
         {
-            coro_handle.promise().task_executor =
-                reactor_handle::get_global_reactor().get_executor();
         }
 
         explicit detach_task(detach_task const &) = delete;
@@ -79,8 +77,6 @@ namespace sk {
         detach_task(detach_task &&other) noexcept
             : coro_handle(std::exchange(other.coro_handle, {}))
         {
-            coro_handle.promise().task_executor =
-                reactor_handle::get_global_reactor().get_executor();
         }
 
         ~detach_task()
@@ -105,6 +101,7 @@ namespace sk {
     auto _internal_detach(task<T> &&task_) -> detach_task
     {
         task<T> taskp(std::move(task_));
+        taskp.coro_handle.promise().task_executor = co_await co_get_executor();
         taskp.coro_handle.promise().previous = {};
         co_await taskp;
     }

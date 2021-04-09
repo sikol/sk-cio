@@ -62,7 +62,7 @@ auto handle_client(sk::net::tcpchannel client) -> sk::task<void> {
     fmt::print(stderr, "handle_client() : return\n");
 }
 
-auto co_main(int argc, char **argv) -> sk::task<int> try {
+auto co_main(int argc, char **argv) -> sk::task<int> {
     using namespace std::chrono_literals;
 
     if (argc != 3) {
@@ -93,7 +93,4 @@ auto co_main(int argc, char **argv) -> sk::task<int> try {
     }
 
     co_return 0;
-} catch (std::exception const &e) {
-    fmt::print("unexpected exception: {}\n", e.what());
-    co_return 1;
 }

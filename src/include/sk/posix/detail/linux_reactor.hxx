@@ -35,7 +35,6 @@
 
 #include <sk/expected.hxx>
 #include <sk/posix/detail/epoll_reactor.hxx>
-#include <sk/task.hxx>
 
 #include <sk/detail/platform.hxx>
 
@@ -114,8 +113,6 @@ namespace sk::posix::detail {
             -> task<expected<int, std::error_code>>;
 
     private:
-        workq _workq;
-
         std::unique_ptr<epoll_reactor> _epoll;
 #ifdef SK_CIO_HAVE_IO_URING
         std::unique_ptr<io_uring_reactor> _uring;
@@ -124,10 +121,10 @@ namespace sk::posix::detail {
 
     inline linux_reactor::linux_reactor()
     {
-        _epoll = std::make_unique<epoll_reactor>(&_workq);
+        _epoll = std::make_unique<epoll_reactor>();
 
 #ifdef SK_CIO_HAVE_IO_URING
-        _uring = io_uring_reactor::make(&_workq);
+        _uring = io_uring_reactor::make();
 #endif
     }
 
@@ -157,16 +154,6 @@ namespace sk::posix::detail {
         if (_uring)
             _uring->stop();
 #endif
-    }
-
-    inline auto linux_reactor::post(std::function<void()> &&fn) -> void
-    {
-        _workq.post(std::move(fn));
-    }
-
-    inline auto linux_reactor::get_executor() -> executor *
-    {
-        return &_workq;
     }
 
     /*

@@ -65,7 +65,7 @@ auto print_file(std::string const &name) -> sk::task<void> {
     co_await chnl.async_close();
 }
 
-auto co_main(int argc, char **argv) -> sk::task<int> try {
+auto co_main(int argc, char **argv) -> sk::task<int> {
     using namespace std::chrono_literals;
 
     if (argc < 2) {
@@ -80,7 +80,4 @@ auto co_main(int argc, char **argv) -> sk::task<int> try {
     }
 
     co_return 0;
-} catch (std::exception const &e) {
-    fmt::print(stderr,"unexpected exception: {}\n", e.what());
-    co_return 1;
 }

@@ -44,8 +44,7 @@
 #include <sk/expected.hxx>
 #include <sk/posix/error.hxx>
 #include <sk/posix/fd.hxx>
-#include <sk/task.hxx>
-#include <sk/workq.hxx>
+#include <sk/executor.hxx>
 
 namespace sk::posix::detail {
 
@@ -55,6 +54,7 @@ namespace sk::posix::detail {
         int error;
         coroutine_handle<> coro_handle;
         std::mutex mutex;
+        executor *task_executor = nullptr;
     };
 
     struct fd_state final {
@@ -74,7 +74,7 @@ namespace sk::posix::detail {
 
     struct epoll_reactor final {
 
-        explicit epoll_reactor(workq *);
+        explicit epoll_reactor();
         ~epoll_reactor() = default;
 
         // Not copyable.
@@ -100,9 +100,6 @@ namespace sk::posix::detail {
 
         // Stop this reactor.
         auto stop() -> void;
-
-        // Post work to the reactor's thread pool.
-        auto post(std::function<void()> fn) -> void;
 
         // POSIX async API
         [[nodiscard]] auto
@@ -142,8 +139,6 @@ namespace sk::posix::detail {
             -> task<expected<int, std::error_code>>;
 
     private:
-        workq &_workq;
-
         std::mutex _state_mtx;
         std::vector<std::unique_ptr<fd_state>> _state;
 
@@ -152,7 +147,7 @@ namespace sk::posix::detail {
         std::array<int, 2> _shutdown_pipe;
     };
 
-    inline epoll_reactor::epoll_reactor(workq *q) : _workq(*q)
+    inline epoll_reactor::epoll_reactor()
     {
         ::pipe(_shutdown_pipe.data());
 
@@ -189,9 +184,10 @@ namespace sk::posix::detail {
                     if (state->read_waiter) {
                         std::lock_guard h_lock(state->read_waiter->mutex);
                         auto &h = state->read_waiter->coro_handle;
+                        auto *x = state->read_waiter->task_executor;
                         state->read_waiter = nullptr;
                         state->event.events &= ~EPOLLIN;
-                        _workq.post([&] { h.resume(); });
+                        x->post([&] { h.resume(); });
                     }
                 }
 
@@ -199,9 +195,10 @@ namespace sk::posix::detail {
                     if (state->write_waiter) {
                         std::lock_guard h_lock(state->write_waiter->mutex);
                         auto h = state->write_waiter->coro_handle;
+                        auto *x = state->write_waiter->task_executor;
                         state->write_waiter = nullptr;
                         state->event.events &= ~EPOLLOUT;
-                        _workq.post([&] { h.resume(); });
+                        x->post([&] { h.resume(); });
                     }
                 }
             }
@@ -211,13 +208,11 @@ namespace sk::posix::detail {
     inline auto epoll_reactor::start() -> void
     {
         _epoll_thread = std::thread(&epoll_reactor::epoll_thread_fn, this);
-        _workq.start_threads();
     }
 
     inline auto epoll_reactor::stop() -> void
     {
         ::write(_shutdown_pipe[1], "", 1);
-        _workq.stop();
         epoll_fd.close();
         _epoll_thread.join();
     }
@@ -251,11 +246,6 @@ namespace sk::posix::detail {
         int r = epoll_ctl(*epoll_fd, EPOLL_CTL_DEL, fd, nullptr);
         assert(r == 0);
         _state[fd].reset();
-    }
-
-    inline auto epoll_reactor::post(std::function<void()> fn) -> void
-    {
-        _workq.post(std::move(fn));
     }
 
     inline auto epoll_reactor::register_read_interest(int fd,
@@ -319,14 +309,16 @@ namespace sk::posix::detail {
         {
         }
 
-        bool await_ready()
+        auto await_ready() -> bool
         {
             return false;
         }
 
-        bool await_suspend(coroutine_handle<> coro_handle_)
+        template<typename P>
+        auto await_suspend(coroutine_handle<P> coro_handle_) -> bool
         {
             std::lock_guard lock(cstate.mutex);
+            cstate.task_executor = coro_handle_.promise().task_executor;
             cstate.coro_handle = coro_handle_;
             reactor.register_read_interest(fd, &cstate);
             return true;
@@ -350,9 +342,11 @@ namespace sk::posix::detail {
             return false;
         }
 
-        bool await_suspend(coroutine_handle<> coro_handle_)
+        template<typename P>
+        auto await_suspend(coroutine_handle<P> coro_handle_) -> bool
         {
             std::lock_guard lock(cstate.mutex);
+            cstate.task_executor = coro_handle_.promise().task_executor;
             cstate.coro_handle = coro_handle_;
             reactor.register_write_interest(fd, &cstate);
             return true;

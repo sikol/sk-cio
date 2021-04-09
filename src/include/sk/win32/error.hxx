@@ -61,12 +61,12 @@ namespace sk::win32 {
     namespace detail {
 
         struct win32_errc_category : std::error_category {
-            auto win32_errc_category::name() const noexcept -> char const *
+            auto name() const noexcept -> char const *
             {
                 return "win32";
             }
 
-            auto win32_errc_category::message(int c) const -> std::string
+            auto message(int c) const -> std::string
             {
                 LPSTR msgbuf;
 

@@ -32,6 +32,7 @@
 #include <functional>
 #include <future>
 #include <memory>
+#include <deque>
 
 namespace sk {
 
@@ -46,19 +47,117 @@ namespace sk {
 
     /*************************************************************************
      *
-     * local_executor: dispatch tasks on this thread.
+     * mt_executor: thread-pool executor.
+     *
+     * The mt_executor runs forever until its stop() method is called.
      *
      */
-#if 0
-    class local_executor final : executor {
-        std::promise<void> _promise;
-        std::future<void> _future = _promise.get_future();
 
-        auto post(std::function<void()> fn) -> void override {
+    struct mt_executor final : executor {
+        using work_type = std::function<void()>;
 
-        }
+        // Post work to the queue
+        auto post(work_type &&work) -> void;
+
+        // Run the workq until the exit flag is set.
+        auto run() -> void;
+
+        // Start n threads which all run the workq.
+        auto start_threads(unsigned int nthreads =
+                               std::thread::hardware_concurrency()) -> void;
+
+        // Shut down the work queue and wait for all executing
+        // threads to exit.
+        auto stop() -> void;
+
+    private:
+        std::condition_variable _cv;
+        std::mutex _mtx;
+        std::deque<work_type> _work;
+        std::vector<std::thread> _threads;
+        bool _stop = false;
     };
-#endif
+
+    inline void mt_executor::post(work_type &&work)
+    {
+        std::lock_guard<std::mutex> lock(_mtx);
+        _work.push_back(std::move(work));
+        _cv.notify_one();
+    }
+
+    inline auto mt_executor::run() -> void
+    {
+        for (;;) {
+            std::unique_lock<std::mutex> lock(_mtx);
+            _cv.wait(lock, [&] { return !_work.empty() || _stop; });
+
+            if (_stop)
+                return;
+
+            auto work = _work.front();
+            _work.pop_front();
+            lock.unlock();
+
+            work();
+        }
+    }
+
+    inline auto mt_executor::stop() -> void
+    {
+        std::unique_lock<std::mutex> lock(_mtx);
+        _stop = true;
+        _cv.notify_all();
+        lock.unlock();
+
+        while (!_threads.empty()) {
+            _threads.back().join();
+            _threads.pop_back();
+        }
+    }
+
+    inline auto mt_executor::start_threads(unsigned int nthreads) -> void
+    {
+        if (nthreads == 0)
+            nthreads = 1;
+
+        while (nthreads-- > 0u)
+            _threads.emplace_back(&mt_executor::run, this);
+    }
+
+    /*************************************************************************
+     *
+     * st_executor: single-threaded executor.
+     *
+     * The st_executor runs until no more work is available, then it returns.
+     * At least one work item should be post()ed before calling run().
+     */
+
+    struct st_executor final : executor {
+        using work_type = std::function<void()>;
+
+        // Post work to the queue
+        auto post(work_type &&work) -> void;
+
+        // Run the executor until no work is available.
+        auto run() -> void;
+
+    private:
+        std::deque<work_type> _work;
+    };
+
+    inline void st_executor::post(work_type &&work)
+    {
+        _work.push_back(std::move(work));
+    }
+
+    inline auto st_executor::run() -> void
+    {
+        while (!_work.empty()) {
+            auto work = _work.front();
+            _work.pop_front();
+            work();
+        }
+    }
 
 } // namespace sk
 
