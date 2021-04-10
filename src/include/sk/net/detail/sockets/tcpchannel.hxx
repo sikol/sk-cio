@@ -214,16 +214,18 @@ namespace sk::net {
                                   socklen_t addrlen) noexcept
         -> expected<tcp_endpoint, std::error_code>
     {
+        SK_CHECK(addrlen > 0, "invalid address length");
+
         switch (sa->sa_family) {
         case AF_INET:
-            if (addrlen < sizeof(sockaddr_in))
+            if (addrlen < static_cast<socklen_t>(sizeof(sockaddr_in)))
                 return make_unexpected(
                     std::make_error_code(std::errc::invalid_argument));
 
             return make_tcp_endpoint(reinterpret_cast<sockaddr_in const *>(sa));
 
         case AF_INET6:
-            if (addrlen < sizeof(sockaddr_in6))
+            if (addrlen < static_cast<socklen_t>(sizeof(sockaddr_in6)))
                 return make_unexpected(
                     std::make_error_code(std::errc::invalid_argument));
 
@@ -298,15 +300,17 @@ namespace sk::net {
             -> expected<void, std::error_code>
         {
             auto ss = addr.as_sockaddr_storage();
-            socklen_t len = 0;
+            socklen_t len;
 
             switch (ss.ss_family) {
             case AF_INET:
                 len = sizeof(sockaddr_in);
                 break;
+
             case AF_INET6:
                 len = sizeof(sockaddr_in6);
                 break;
+
             default:
                 return make_unexpected(std::make_error_code(
                     std::errc::address_family_not_supported));
@@ -320,15 +324,17 @@ namespace sk::net {
             -> task<expected<void, std::error_code>>
         {
             auto ss = addr.as_sockaddr_storage();
-            socklen_t len = 0;
+            socklen_t len;
 
             switch (ss.ss_family) {
             case AF_INET:
                 len = sizeof(sockaddr_in);
                 break;
+
             case AF_INET6:
                 len = sizeof(sockaddr_in6);
                 break;
+
             default:
                 co_return make_unexpected(std::make_error_code(
                     std::errc::address_family_not_supported));

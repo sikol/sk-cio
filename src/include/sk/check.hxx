@@ -57,7 +57,7 @@ namespace sk::detail {
 
 #else
 
-#    define SK_CHECK(cond, msg) ((void)0);
+#    define SK_CHECK(cond, msg) ((void)0)
 
 #endif
 

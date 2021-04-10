@@ -506,12 +506,14 @@ namespace sk::net {
                                                         socklen_t len)
         -> expected<address<inet_family>, std::error_code>
     {
+        SK_CHECK(len > 0, "invalid address len");
+
         if (sa->sa_family != AF_INET)
             return make_unexpected(
                 std::make_error_code(std::errc::address_family_not_supported));
 
         auto sin = reinterpret_cast<sockaddr_in const *>(sa);
-        if (len < sizeof(*sin))
+        if (static_cast<std::size_t>(len) < sizeof(*sin))
             return make_unexpected(
                 std::make_error_code(std::errc::invalid_argument));
 
@@ -603,12 +605,14 @@ namespace sk::net {
                                                          socklen_t len)
         -> expected<address<inet6_family>, std::error_code>
     {
+        SK_CHECK(len > 0, "invalid address len");
+
         if (sa->sa_family != AF_INET6)
             return make_unexpected(
                 std::make_error_code(std::errc::address_family_not_supported));
 
         auto sin = reinterpret_cast<sockaddr_in6 const *>(sa);
-        if (len < sizeof(*sin))
+        if (static_cast<std::size_t>(len) < sizeof(*sin))
             return make_unexpected(
                 std::make_error_code(std::errc::invalid_argument));
 
@@ -780,9 +784,11 @@ namespace sk::net {
     make_address<unspecified_family>(sockaddr const *sa, socklen_t len)
         -> expected<address<unspecified_family>, std::error_code>
     {
+        SK_CHECK(len > 0, "invalid address len");
+
         switch (sa->sa_family) {
         case AF_INET:
-            if (len < sizeof(sockaddr_in))
+            if (static_cast<std::size_t>(len) < sizeof(sockaddr_in))
                 return make_unexpected(
                     std::make_error_code(std::errc::invalid_argument));
 
@@ -790,7 +796,7 @@ namespace sk::net {
                 reinterpret_cast<sockaddr_in const *>(sa)->sin_addr.s_addr));
 
         case AF_INET6:
-            if (len < sizeof(sockaddr_in6))
+            if (static_cast<std::size_t>(len) < sizeof(sockaddr_in6))
                 return make_unexpected(
                     std::make_error_code(std::errc::invalid_argument));
 
@@ -799,7 +805,7 @@ namespace sk::net {
 
 #ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
         case AF_UNIX:
-            if (len < sizeof(sockaddr_un))
+            if (static_cast<std::size_t>(len) < sizeof(sockaddr_un))
                 return make_unexpected(
                     std::make_error_code(std::errc::invalid_argument));
 

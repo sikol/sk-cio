@@ -24,7 +24,7 @@ jobs:
             BUILD_TYPE: Release
             CC: gcc-10
             CXX: g++-10
-            CXXFLAGS: "-O2 -DNDEBUG -fcoroutines -W -Wall -Wextra -Werror"
+            CMAKE_CXXFLAGS: "-O2 -DNDEBUG -fcoroutines -W -Wall -Wextra -Werror"
             CMAKE_FLAGS: >
               -DSK_CIO_DISABLE_IO_URING=ON
 
@@ -33,7 +33,7 @@ jobs:
             BUILD_TYPE: Release
             CC: clang-11
             CXX: clang++-11
-            CXXFLAGS: "-O2 -DNDEBUG -fcoroutines-ts -W -Wall -Wextra -Werror"
+            CMAKE_CXXFLAGS: "-O2 -DNDEBUG -fcoroutines-ts -W -Wall -Wextra -Werror"
             CMAKE_FLAGS: >
               -DSK_CIO_DISABLE_IO_URING=ON
 
@@ -42,14 +42,14 @@ jobs:
             BUILD_TYPE: Release
             CC: cl
             CXX: cl
-            CXXFLAGS: "/O2 /MD /EHsc /W4 /WX"
+            CMAKE_CXXFLAGS: "/O2 /Ob2 /MD /GR /EHsc /W4 /WX /DNDEBUG"
 
           - name: x64-windows-clang-release
             os: windows-latest
             BUILD_TYPE: Release
             CC: clang-cl
             CXX: clang-cl
-            CXXFLAGS: "-m64 /O2 /MD /EHsc /W4 /WX"
+            CMAKE_CXXFLAGS: "-m64 /O2 /Ob2 /MD /GR /EHsc /W4 /WX /DNDEBUG"
 
     steps:
       - uses: actions/checkout@v2
@@ -66,6 +66,7 @@ jobs:
           call "%VCVARS_PATH%"
           cmake -G Ninja                            ^
               -DCMAKE_BUILD_TYPE=%BUILD_TYPE%       ^
+              -DCMAKE_CXX_FLAGS="%CMAKE_CXXFLAGS%"  ^
               %CMAKE_FLAGS                          ^
               ..
         if: ${{ matrix.os == 'windows-latest' }}
@@ -73,9 +74,10 @@ jobs:
       - name: Configure CMake (Unix)
         working-directory: ${{github.workspace}}/build
         run: |
-          cmake                                 \
-              -DCMAKE_BUILD_TYPE=$BUILD_TYPE    \
-              $CMAKE_FLAGS                      \
+          cmake                                   \
+              -DCMAKE_BUILD_TYPE=$BUILD_TYPE      \
+              -DCMAKE_CXX_FLAGS="$CMAKE_CXXFLAGS" \
+              $CMAKE_FLAGS                        \
               ..
         if: ${{ matrix.os != 'windows-latest' }}
 
