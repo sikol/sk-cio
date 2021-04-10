@@ -44,8 +44,8 @@
 
 #include <liburing.h>
 
-#include <sk/posix/fd.hxx>
 #include <sk/executor.hxx>
+#include <sk/posix/fd.hxx>
 
 namespace sk::posix::detail {
 
@@ -53,7 +53,8 @@ namespace sk::posix::detail {
 
         // Try to create a new io_uring_reactor; returns NULL if we can't
         // use io_uring on this system.
-        static auto make() -> std::unique_ptr<io_uring_reactor>;
+        static auto make() noexcept
+            -> expected<std::unique_ptr<io_uring_reactor>, std::error_code>;
 
         io_uring_reactor(io_uring_reactor const &) = delete;
         auto operator=(io_uring_reactor const &) -> io_uring_reactor & = delete;
@@ -63,48 +64,53 @@ namespace sk::posix::detail {
         ~io_uring_reactor() = default;
 
         // Start this reactor.
-        auto start() -> void;
+        [[nodiscard]] auto start() noexcept -> expected<void, std::error_code>;
 
         // Stop this reactor.
-        auto stop() -> void;
+        auto stop() noexcept -> void;
 
         // POSIX async API
-        [[nodiscard]] auto async_fd_open(char const *path, int flags, int mode)
+        [[nodiscard]] auto
+        async_fd_open(char const *path, int flags, int mode) noexcept
             -> task<expected<int, std::error_code>>;
 
-        [[nodiscard]] auto async_fd_close(int fd)
+        [[nodiscard]] auto async_fd_close(int fd) noexcept
             -> task<expected<int, std::error_code>>;
 
-        [[nodiscard]] auto async_fd_read(int fd, void *buf, std::size_t n)
+        [[nodiscard]] auto
+        async_fd_read(int fd, void *buf, std::size_t n) noexcept
             -> task<expected<ssize_t, std::error_code>>;
 
         [[nodiscard]] auto
-        async_fd_pread(int fd, void *buf, std::size_t n, off_t offs)
+        async_fd_pread(int fd, void *buf, std::size_t n, off_t offs) noexcept
             -> task<expected<ssize_t, std::error_code>>;
 
         [[nodiscard]] auto
-        async_fd_write(int fd, void const *buf, std::size_t n)
+        async_fd_write(int fd, void const *buf, std::size_t n) noexcept
             -> task<expected<ssize_t, std::error_code>>;
 
-        [[nodiscard]] auto
-        async_fd_pwrite(int fd, void const *buf, std::size_t n, off_t offs)
+        [[nodiscard]] auto async_fd_pwrite(int fd,
+                                           void const *buf,
+                                           std::size_t n,
+                                           off_t offs) noexcept
             -> task<expected<ssize_t, std::error_code>>;
 
         // Possibly shouldn't be public.
-        auto _put_sq(io_uring_sqe *sqe) -> void;
+        [[nodiscard]] auto _put_sq(io_uring_sqe *sqe) noexcept
+            -> expected<void, std::error_code>;
 
     private:
-        explicit io_uring_reactor();
+        explicit io_uring_reactor() noexcept;
 
         std::mutex _sq_mutex;
 
-        void io_uring_thread_fn();
+        void io_uring_thread_fn() noexcept;
         std::thread io_uring_thread;
 
         io_uring ring{};
 
         // must be called with _sq_mutex held
-        [[nodiscard]] auto _try_put_sq(io_uring_sqe *sqe) -> bool;
+        [[nodiscard]] auto _try_put_sq(io_uring_sqe *sqe) noexcept -> bool;
 
         // This is the queue size we request, it may be smaller in practice.
         static constexpr unsigned _max_queue_size = 512;
@@ -112,7 +118,7 @@ namespace sk::posix::detail {
     };
 
     struct co_sqe_wait final {
-        co_sqe_wait(io_uring_reactor *reactor_, io_uring_sqe *sqe_)
+        co_sqe_wait(io_uring_reactor *reactor_, io_uring_sqe *sqe_) noexcept
             : reactor(reactor_), sqe(sqe_)
         {
             io_uring_sqe_set_data(sqe, this);
@@ -126,13 +132,14 @@ namespace sk::posix::detail {
         executor *task_executor = nullptr;
         std::mutex mutex;
 
-        bool await_ready()
+        // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
+        auto await_ready() noexcept -> bool
         {
             return false;
         }
 
-        template<typename P>
-        bool await_suspend(coroutine_handle<P> coro_handle_)
+        template <typename P>
+        bool await_suspend(coroutine_handle<P> coro_handle_) noexcept
         {
             coro_handle = coro_handle_;
             task_executor = coro_handle_.promise().task_executor;
@@ -140,11 +147,16 @@ namespace sk::posix::detail {
                               "suspending a task with no executor");
 
             std::lock_guard lock(mutex);
-            reactor->_put_sq(sqe);
+            if (auto pret = reactor->_put_sq(sqe); !pret) {
+                errno = pret.error().value();
+                ret = -1;
+                return false;
+            }
+
             return true;
         }
 
-        int await_resume()
+        int await_resume() noexcept
         {
             // Don't allow the wait object to be destroyed until the reactor
             // has released the lock.
@@ -153,10 +165,15 @@ namespace sk::posix::detail {
         }
     };
 
-    inline auto io_uring_reactor::make() -> std::unique_ptr<io_uring_reactor>
+    inline auto io_uring_reactor::make() noexcept
+        -> expected<std::unique_ptr<io_uring_reactor>, std::error_code>
     {
         // Create the ring.
-        auto reactor_ = new io_uring_reactor();
+        auto reactor_ = new (std::nothrow) io_uring_reactor();
+        if (!reactor_)
+            return make_unexpected(
+                std::make_error_code(std::errc::not_enough_memory));
+
         auto reactor = std::unique_ptr<io_uring_reactor>(reactor_);
 
         auto ret = io_uring_queue_init(
@@ -165,7 +182,8 @@ namespace sk::posix::detail {
             return nullptr;
 
         // Check the ring supports the features we need.
-        unsigned required_features = IORING_FEAT_NODROP | IORING_FEAT_RW_CUR_POS;
+        unsigned required_features =
+            IORING_FEAT_NODROP | IORING_FEAT_RW_CUR_POS;
         if ((reactor->ring.features & required_features) != required_features)
             return nullptr;
 
@@ -192,7 +210,8 @@ namespace sk::posix::detail {
     }
 
     // Caller must call io_uring_submit().
-    inline auto io_uring_reactor::_try_put_sq(io_uring_sqe *newsqe) -> bool
+    inline auto io_uring_reactor::_try_put_sq(io_uring_sqe *newsqe) noexcept
+        -> bool
     {
         auto sqe = io_uring_get_sqe(&ring);
         if (!sqe)
@@ -202,26 +221,33 @@ namespace sk::posix::detail {
         return true;
     }
 
-    inline auto io_uring_reactor::_put_sq(io_uring_sqe *newsqe) -> void
+    inline auto io_uring_reactor::_put_sq(io_uring_sqe *newsqe) noexcept
+        -> expected<void, std::error_code>
     {
         // Lock here to avoid a race between multiple threads calling
         // io_uring_submit().
         std::lock_guard _(_sq_mutex);
 
-        // std::cerr << "trying to queue\n";
         if (_try_put_sq(newsqe)) {
             auto r = io_uring_submit(&ring);
             if (r >= 0 || r == -EBUSY)
-                return;
+                return {};
             else
-                abort();
-        } else
-            _pending.push_back(newsqe);
+                return make_unexpected(get_errno());
+        } else {
+            try {
+                _pending.push_back(newsqe);
+                return {};
+            } catch (std::bad_alloc const &) {
+                return make_unexpected(
+                    std::make_error_code(std::errc::not_enough_memory));
+            }
+        }
     }
 
-    inline io_uring_reactor::io_uring_reactor() = default;
+    inline io_uring_reactor::io_uring_reactor() noexcept = default;
 
-    inline auto io_uring_reactor::io_uring_thread_fn() -> void
+    inline auto io_uring_reactor::io_uring_thread_fn() noexcept -> void
     {
         io_uring_cqe *cqe{};
 
@@ -243,7 +269,8 @@ namespace sk::posix::detail {
                 std::lock_guard h_lock(cstate->mutex);
                 cstate->ret = cqe->res;
                 cstate->flags = cqe->flags;
-                cstate->task_executor->post([&handle=cstate->coro_handle] { handle.resume(); });
+                cstate->task_executor->post(
+                    [&handle = cstate->coro_handle] { handle.resume(); });
 
                 io_uring_cqe_seen(&ring, cqe);
                 ++did_requests;
@@ -265,20 +292,29 @@ namespace sk::posix::detail {
         }
     }
 
-    inline auto io_uring_reactor::start() -> void
+    inline auto io_uring_reactor::start() noexcept
+        -> expected<void, std::error_code>
     {
-        io_uring_thread =
-            std::thread(&io_uring_reactor::io_uring_thread_fn, this);
+        try {
+            io_uring_thread =
+                std::thread(&io_uring_reactor::io_uring_thread_fn, this);
+        } catch (std::system_error const &e) {
+            return make_unexpected(e.code());
+        }
+
+        return {};
     }
 
-    inline auto io_uring_reactor::stop() -> void
+    inline auto io_uring_reactor::stop() noexcept -> void
     {
         io_uring_sqe shutdown_sqe{};
         io_uring_prep_nop(&shutdown_sqe);
         shutdown_sqe.fd = -1;
-        _put_sq(&shutdown_sqe);
+        // XXX - decide what to do here (shutdown flag?)
+        std::ignore = _put_sq(&shutdown_sqe);
 
-        io_uring_thread.join();
+        if (io_uring_thread.joinable())
+            io_uring_thread.join();
     }
 
     /*************************************************************************
@@ -287,24 +323,27 @@ namespace sk::posix::detail {
      *
      */
 
-    inline auto io_uring_reactor::async_fd_open(char const *path, int flags, int mode)
-    -> task<expected<int, std::error_code>>
+    inline auto io_uring_reactor::async_fd_open(char const *path,
+                                                int flags,
+                                                int mode) noexcept
+        -> task<expected<int, std::error_code>>
     {
         io_uring_sqe sqe{};
         io_uring_prep_openat(&sqe, AT_FDCWD, path, flags, mode);
         co_return co_await co_sqe_wait(this, &sqe);
     }
 
-    inline auto io_uring_reactor::async_fd_close(int fd)
-    -> task<expected<int, std::error_code>>
+    inline auto io_uring_reactor::async_fd_close(int fd) noexcept
+        -> task<expected<int, std::error_code>>
     {
         io_uring_sqe sqe{};
         io_uring_prep_close(&sqe, fd);
         co_return co_await co_sqe_wait(this, &sqe);
     }
 
-    inline auto io_uring_reactor::async_fd_read(int fd, void *buf, std::size_t n)
-    -> task<expected<ssize_t, std::error_code>>
+    inline auto
+    io_uring_reactor::async_fd_read(int fd, void *buf, std::size_t n) noexcept
+        -> task<expected<ssize_t, std::error_code>>
     {
         io_uring_sqe sqe{};
         io_uring_prep_read(&sqe, fd, buf, n, -1);
@@ -312,19 +351,20 @@ namespace sk::posix::detail {
     }
 
     inline auto io_uring_reactor::async_fd_pread(int fd,
-                                          void *buf,
-                                          std::size_t n,
-                                          off_t offs)
-    -> task<expected<ssize_t, std::error_code>>
+                                                 void *buf,
+                                                 std::size_t n,
+                                                 off_t offs) noexcept
+        -> task<expected<ssize_t, std::error_code>>
     {
         io_uring_sqe sqe{};
         io_uring_prep_read(&sqe, fd, buf, n, offs);
         co_return co_await co_sqe_wait(this, &sqe);
     }
 
-    inline auto
-    io_uring_reactor::async_fd_write(int fd, void const *buf, std::size_t n)
-    -> task<expected<ssize_t, std::error_code>>
+    inline auto io_uring_reactor::async_fd_write(int fd,
+                                                 void const *buf,
+                                                 std::size_t n) noexcept
+        -> task<expected<ssize_t, std::error_code>>
     {
         io_uring_sqe sqe{};
         io_uring_prep_write(&sqe, fd, buf, n, -1);
@@ -332,10 +372,10 @@ namespace sk::posix::detail {
     }
 
     inline auto io_uring_reactor::async_fd_pwrite(int fd,
-                                           void const *buf,
-                                           std::size_t n,
-                                           off_t offs)
-    -> task<expected<ssize_t, std::error_code>>
+                                                  void const *buf,
+                                                  std::size_t n,
+                                                  off_t offs) noexcept
+        -> task<expected<ssize_t, std::error_code>>
     {
         io_uring_sqe sqe{};
         io_uring_prep_write(&sqe, fd, buf, n, offs);

@@ -53,14 +53,14 @@ namespace sk::posix::detail {
         unique_fd _fd;
 
         // address_family is only used on Win32
-        explicit streamsocketserver(unique_fd &&, int /*address_family*/);
+        explicit streamsocketserver(unique_fd &&, int /*address_family*/) noexcept;
         streamsocketserver(streamsocketserver &&) noexcept = default;
         auto operator=(streamsocketserver &&) noexcept
             -> streamsocketserver & = default;
         ~streamsocketserver();
 
         [[nodiscard]] static auto
-        _listen(int af, sockaddr const *addr, socklen_t)
+        _listen(int af, sockaddr const *addr, socklen_t) noexcept
             -> expected<server_type, std::error_code>;
 
     public:
@@ -70,17 +70,17 @@ namespace sk::posix::detail {
         auto operator=(streamsocketserver const &)
             -> streamsocketserver & = delete;
 
-        [[nodiscard]] auto is_open() const -> bool;
+        [[nodiscard]] auto is_open() const noexcept -> bool;
 
-        [[nodiscard]] auto async_accept()
+        [[nodiscard]] auto async_accept() noexcept
             -> task<expected<channel_type, std::error_code>>;
 
-        [[nodiscard]] auto accept() -> expected<channel_type, std::error_code>;
+        [[nodiscard]] auto accept() noexcept -> expected<channel_type, std::error_code>;
 
         [[nodiscard]] auto async_close()
             -> task<expected<void, std::error_code>>;
 
-        [[nodiscard]] auto close() -> expected<void, std::error_code>;
+        [[nodiscard]] auto close() noexcept -> expected<void, std::error_code>;
     };
 
     /*************************************************************************
@@ -92,7 +92,7 @@ namespace sk::posix::detail {
               int type,
               int protocol>
     streamsocketserver<server_type, channel_type, type, protocol>::
-        streamsocketserver(unique_fd &&sock, int /*address_family*/)
+        streamsocketserver(unique_fd &&sock, int /*address_family*/) noexcept
         : _fd(std::move(sock))
     {
     }
@@ -108,8 +108,10 @@ namespace sk::posix::detail {
     streamsocketserver<server_type, channel_type, type, protocol>::
         ~streamsocketserver()
     {
-        if (_fd)
-            reactor_handle::get_global_reactor().deassociate_fd(_fd.value());
+        if (_fd) {
+            auto reactor = get_weak_reactor_handle();
+            reactor->deassociate_fd(_fd.value());
+        }
     }
 
     /*************************************************************************
@@ -122,7 +124,7 @@ namespace sk::posix::detail {
               int protocol>
     auto
     streamsocketserver<server_type, channel_type, type, protocol>::is_open()
-        const -> bool
+        const noexcept -> bool
     {
         return _fd;
     }
@@ -136,7 +138,7 @@ namespace sk::posix::detail {
               int type,
               int protocol>
     auto streamsocketserver<server_type, channel_type, type, protocol>::_listen(
-        int af, sockaddr const *addr, socklen_t addrlen)
+        int af, sockaddr const *addr, socklen_t addrlen) noexcept
         -> expected<server_type, std::error_code>
     {
         int listener = ::socket(af, type, protocol);
@@ -169,7 +171,10 @@ namespace sk::posix::detail {
         if (ret == -1)
             return make_unexpected(sk::posix::get_errno());
 
-        reactor_handle::get_global_reactor().associate_fd(listener);
+        auto reactor = get_weak_reactor_handle();
+        auto aret = reactor->associate_fd(listener);
+        if (!aret)
+            return make_unexpected(aret.error());
 
         return server_type{std::move(listener_), af};
     }
@@ -181,7 +186,7 @@ namespace sk::posix::detail {
               seqchannel channel_type,
               int type,
               int protocol>
-    auto streamsocketserver<server_type, channel_type, type, protocol>::close()
+    auto streamsocketserver<server_type, channel_type, type, protocol>::close() noexcept
         -> expected<void, std::error_code>
     {
         if (!is_open())
@@ -220,7 +225,7 @@ namespace sk::posix::detail {
               int type,
               int protocol>
     auto streamsocketserver<server_type, channel_type, type, protocol>::
-        async_accept() -> task<expected<channel_type, std::error_code>>
+        async_accept() noexcept -> task<expected<channel_type, std::error_code>>
     {
         auto client =
             co_await sk::posix::async_fd_accept(*_fd, nullptr, nullptr);
@@ -229,7 +234,11 @@ namespace sk::posix::detail {
 
         unique_fd client_(*client);
 
-        reactor_handle::get_global_reactor().associate_fd(*client);
+        auto reactor = get_weak_reactor_handle();
+        auto aret = reactor->associate_fd(*client);
+        if (!aret)
+            co_return make_unexpected(aret.error());
+
         co_return channel_type{std::move(client_)};
     }
 
@@ -240,7 +249,7 @@ namespace sk::posix::detail {
               seqchannel channel_type,
               int type,
               int protocol>
-    auto streamsocketserver<server_type, channel_type, type, protocol>::accept()
+    auto streamsocketserver<server_type, channel_type, type, protocol>::accept() noexcept
         -> expected<channel_type, std::error_code>
     {
         auto client = ::accept(*_fd, nullptr, nullptr);
@@ -249,7 +258,11 @@ namespace sk::posix::detail {
 
         unique_fd client_(client);
 
-        reactor_handle::get_global_reactor().associate_fd(client);
+        auto reactor = get_weak_reactor_handle();
+        auto aret = reactor->associate_fd(client);
+        if (!aret)
+            return make_unexpected(aret.error());
+
         return channel_type{std::move(client_)};
     }
 

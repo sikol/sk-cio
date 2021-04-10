@@ -137,8 +137,6 @@ task<void> tcp_handle_client(net::tcpchannel client)
             co_return;
         }
     }
-
-    fmt::print(stderr, "handle_client() : return\n");
 }
 
 task<void> tcp_server_task(net::tcpserverchannel &chnl)
@@ -177,7 +175,8 @@ TEST_CASE("tcpchannel stress test")
     auto server = net::tcpserverchannel::listen(*ep);
     REQUIRE(server);
 
-    auto *xer = reactor_handle::get_global_reactor().get_system_executor();
+    auto reactor = get_weak_reactor_handle();
+    auto *xer = reactor->get_system_executor();
     wait(co_detach(tcp_server_task(*server), xer));
 
     std::vector<std::promise<int>> promises(nthreads);

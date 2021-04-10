@@ -69,6 +69,9 @@ namespace sk {
         // Winsock: could not obtain the AcceptEx() function.
         winsock_no_acceptex = 8,
 #endif
+
+        // The channel could not be associated with the reactor.
+        reactor_associate_failed = 9,
     };
 
     namespace detail {
@@ -107,6 +110,9 @@ namespace sk {
                 case error::winsock_no_acceptex:
                     return "Winsock implementation missing AcceptEx";
 #endif
+
+                case error::reactor_associate_failed:
+                    return "failed to associate the channel with the reactor";
 
                 default:
                     return "unknown error";

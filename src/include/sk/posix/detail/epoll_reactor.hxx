@@ -34,17 +34,17 @@
 #include <sys/socket.h>
 #include <fcntl.h>
 
+#include <cassert>
 #include <cstring>
 #include <iostream>
 #include <system_error>
 #include <thread>
-#include <cassert>
 
 #include <sk/async_invoke.hxx>
+#include <sk/executor.hxx>
 #include <sk/expected.hxx>
 #include <sk/posix/error.hxx>
 #include <sk/posix/fd.hxx>
-#include <sk/executor.hxx>
 
 namespace sk::posix::detail {
 
@@ -74,7 +74,7 @@ namespace sk::posix::detail {
 
     struct epoll_reactor final {
 
-        explicit epoll_reactor();
+        explicit epoll_reactor() noexcept;
         ~epoll_reactor() = default;
 
         // Not copyable.
@@ -88,18 +88,21 @@ namespace sk::posix::detail {
         unique_fd epoll_fd;
 
         // Associate a new fd with our epoll.
-        auto associate_fd(int) -> void;
-        auto deassociate_fd(int) -> void;
+        [[nodiscard]] auto associate_fd(int) noexcept
+            -> expected<void, std::error_code>;
+        auto deassociate_fd(int) noexcept -> void;
 
         // Register interest in an fd
-        auto register_read_interest(int fd, epoll_coro_state *state) -> void;
-        auto register_write_interest(int fd, epoll_coro_state *state) -> void;
+        auto register_read_interest(int fd, epoll_coro_state *state) noexcept
+            -> void;
+        auto register_write_interest(int fd, epoll_coro_state *state) noexcept
+            -> void;
 
         // Start this reactor.
-        auto start() -> void;
+        [[nodiscard]] auto start() noexcept -> expected<void, std::error_code>;
 
         // Stop this reactor.
-        auto stop() -> void;
+        auto stop() noexcept -> void;
 
         // POSIX async API
         [[nodiscard]] auto
@@ -142,25 +145,14 @@ namespace sk::posix::detail {
         std::mutex _state_mtx;
         std::vector<std::unique_ptr<fd_state>> _state;
 
-        void epoll_thread_fn();
+        void epoll_thread_fn() noexcept;
         std::thread _epoll_thread;
         std::array<int, 2> _shutdown_pipe;
     };
 
-    inline epoll_reactor::epoll_reactor()
-    {
-        ::pipe(_shutdown_pipe.data());
+    inline epoll_reactor::epoll_reactor() noexcept {}
 
-        auto epoll_fd_ = ::epoll_create(64);
-        epoll_fd.assign(epoll_fd_);
-
-        epoll_event shutdown_ev{};
-        shutdown_ev.data.fd = _shutdown_pipe[0];
-        shutdown_ev.events = EPOLLET | EPOLLONESHOT | EPOLLIN;
-        ::epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, _shutdown_pipe[0], &shutdown_ev);
-    }
-
-    inline auto epoll_reactor::epoll_thread_fn() -> void
+    inline auto epoll_reactor::epoll_thread_fn() noexcept -> void
     {
         auto ep = *epoll_fd;
 
@@ -205,52 +197,90 @@ namespace sk::posix::detail {
         }
     }
 
-    inline auto epoll_reactor::start() -> void
+    inline auto epoll_reactor::start() noexcept
+        -> expected<void, std::error_code>
     {
-        _epoll_thread = std::thread(&epoll_reactor::epoll_thread_fn, this);
+        if (::pipe(_shutdown_pipe.data()) == -1)
+            return make_unexpected(get_errno());
+
+        auto epoll_fd_ = ::epoll_create(64);
+        if (epoll_fd_ == -1)
+            return make_unexpected(get_errno());
+
+        epoll_event shutdown_ev{};
+        shutdown_ev.data.fd = _shutdown_pipe[0];
+        shutdown_ev.events = EPOLLET | EPOLLONESHOT | EPOLLIN;
+        if (::epoll_ctl(
+                epoll_fd_, EPOLL_CTL_ADD, _shutdown_pipe[0], &shutdown_ev) ==
+            -1)
+            return make_unexpected(get_errno());
+
+        epoll_fd.assign(epoll_fd_);
+
+        try {
+            _epoll_thread = std::thread(&epoll_reactor::epoll_thread_fn, this);
+        } catch (std::system_error const &e) {
+            std::ignore = epoll_fd.close();
+            return make_unexpected(e.code());
+        }
+
+        return {};
     }
 
-    inline auto epoll_reactor::stop() -> void
+    inline auto epoll_reactor::stop() noexcept -> void
     {
         ::write(_shutdown_pipe[1], "", 1);
-        epoll_fd.close();
-        _epoll_thread.join();
+
+        if (epoll_fd)
+            epoll_fd.close();
+
+        if (_epoll_thread.joinable())
+            _epoll_thread.join();
     }
 
-    inline auto epoll_reactor::associate_fd(int fd) -> void
+    inline auto epoll_reactor::associate_fd(int fd) noexcept
+        -> expected<void, std::error_code>
     {
         std::lock_guard lock(_state_mtx);
 
         sk::detail::check(fd >= 0, "attempt to associate a negative fd");
 
-        if (_state.size() < static_cast<std::size_t>(fd + 1))
-            _state.resize(fd + 1);
+        try {
+            if (_state.size() < static_cast<std::size_t>(fd + 1))
+                _state.resize(fd + 1);
 
-        if (!_state[fd])
-            _state[fd] = std::make_unique<fd_state>(fd);
+            if (!_state[fd])
+                _state[fd] = std::make_unique<fd_state>(fd);
+        } catch (std::bad_alloc const &) {
+            return make_unexpected(
+                make_error_code(std::errc::not_enough_memory));
+        }
 
         int flags = fcntl(fd, F_GETFL, 0);
         fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 
         _state[fd]->event.events = EPOLLET | EPOLLONESHOT;
         int r = epoll_ctl(*epoll_fd, EPOLL_CTL_ADD, fd, &_state[fd]->event);
-        assert(r == 0);
+        if (r == -1)
+            return make_unexpected(get_errno());
+
+        return {};
     }
 
-    inline auto epoll_reactor::deassociate_fd(int fd) -> void
+    inline auto epoll_reactor::deassociate_fd(int fd) noexcept -> void
     {
         std::lock_guard lock(_state_mtx);
 
         sk::detail::check(fd >= 0, "attempt to deassociate a negative fd");
 
         int r = epoll_ctl(*epoll_fd, EPOLL_CTL_DEL, fd, nullptr);
-        assert(r == 0);
+        sk::detail::check(
+            r == 0, "epoll_reactor::deassociate_fd: EPOLL_CTL_DEL failed");
         _state[fd].reset();
     }
 
-    inline auto epoll_reactor::register_read_interest(int fd,
-                                                      epoll_coro_state *cstate)
-        -> void
+    inline auto epoll_reactor::register_read_interest(
+        int fd, epoll_coro_state *cstate) noexcept -> void
     {
         std::lock_guard lock(_state_mtx);
 
@@ -265,12 +295,13 @@ namespace sk::posix::detail {
         state->read_waiter = cstate;
         state->event.events |= EPOLLIN;
         int r = epoll_ctl(*epoll_fd, EPOLL_CTL_MOD, fd, &state->event);
-        assert(r == 0);
+        sk::detail::check(
+            r == 0,
+            "epoll_reactor::register_read_interest: EPOLL_CTL_MOD failed");
     }
 
-    inline auto epoll_reactor::register_write_interest(int fd,
-                                                       epoll_coro_state *cstate)
-        -> void
+    inline auto epoll_reactor::register_write_interest(
+        int fd, epoll_coro_state *cstate) noexcept -> void
     {
         std::lock_guard lock(_state_mtx);
 
@@ -286,7 +317,9 @@ namespace sk::posix::detail {
         state->write_waiter = cstate;
         state->event.events |= EPOLLIN;
         int r = epoll_ctl(*epoll_fd, EPOLL_CTL_MOD, fd, &state->event);
-        assert(r == 0);
+        sk::detail::check(
+            r == 0,
+            "epoll_reactor::register_write_interest: EPOLL_CTL_MOD failed");
     }
 
     /*************************************************************************
@@ -314,7 +347,7 @@ namespace sk::posix::detail {
             return false;
         }
 
-        template<typename P>
+        template <typename P>
         auto await_suspend(coroutine_handle<P> coro_handle_) -> bool
         {
             std::lock_guard lock(cstate.mutex);
@@ -345,7 +378,7 @@ namespace sk::posix::detail {
             return false;
         }
 
-        template<typename P>
+        template <typename P>
         auto await_suspend(coroutine_handle<P> coro_handle_) -> bool
         {
             std::lock_guard lock(cstate.mutex);

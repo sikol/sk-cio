@@ -29,12 +29,22 @@
 #ifndef SK_CHECK_HXX
 #define SK_CHECK_HXX
 
+#include <iostream>
+
+namespace sk::detail {
+
+    inline auto unexpected(char const *what) noexcept -> void {
+        std::cerr << "sk-cio: fatal internal error: " << what << std::endl;
+        std::abort();
+    }
+
+}
+
 /*************************************************************************
  * SK_CHECK: conditional assert for debug builds.
  */
 
 #ifndef NDEBUG
-#    include <iostream>
 
 namespace sk::detail {
     inline constexpr void check(bool cond, char const *msg) noexcept
@@ -51,7 +61,7 @@ namespace sk::detail {
 
 namespace sk::detail {
 
-    inline constexpr void check(bool, char const *) noexcept {}
+    inline consteval void check(bool, char const *) noexcept {}
 
 } // namespace sk::detail
 

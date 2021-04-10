@@ -53,7 +53,8 @@ namespace sk::win32::detail {
     protected:
         streamsocketserver(unique_socket &&, int address_family);
         streamsocketserver(streamsocketserver &&) noexcept = default;
-        streamsocketserver &operator=(streamsocketserver &&) noexcept = default;
+        auto operator=(streamsocketserver &&) noexcept
+            -> streamsocketserver & = default;
         ~streamsocketserver() = default;
 
         [[nodiscard]] static auto
@@ -65,7 +66,8 @@ namespace sk::win32::detail {
         using native_handle_type = unique_socket;
 
         streamsocketserver(streamsocketserver const &) = delete;
-        streamsocketserver &operator=(streamsocketserver const &) = delete;
+        auto operator=(streamsocketserver const &)
+            -> streamsocketserver & = delete;
 
         [[nodiscard]] auto is_open() const -> bool;
 
@@ -156,8 +158,11 @@ namespace sk::win32::detail {
         if (ret)
             return make_unexpected(win32::get_last_winsock_error());
 
-        reactor_handle::get_global_reactor().associate_handle(
-            reinterpret_cast<HANDLE>(listener));
+        auto reactor = get_weak_reactor_handle();
+        auto aret = reactor->associate_handle(handle_cast<HANDLE>(listener));
+
+        if (!aret)
+            return make_unexpected(aret.error());
 
         return server_type{std::move(listener_), af};
     }
@@ -211,7 +216,7 @@ namespace sk::win32::detail {
     auto streamsocketserver<server_type, channel_type, type, protocol>::
         async_accept() -> task<expected<channel_type, std::error_code>>
     {
-        SOCKET client_socket;
+        auto client_socket = INVALID_SOCKET;
         client_socket = ::socket(_address_family, type, protocol);
 
         if (client_socket == INVALID_SOCKET)
@@ -220,11 +225,11 @@ namespace sk::win32::detail {
         unique_socket client_socket_(client_socket);
 
         // This has to be provided even though we don't use it.
-        char junk[(16 + sizeof(sockaddr_storage)) * 2];
+        std::array<char, (16 + sizeof(sockaddr_storage)) * 2> junk{};
 
         auto ret = co_await win32::AsyncAcceptEx(_native_handle.native_socket(),
                                                  client_socket,
-                                                 junk,
+                                                 junk.data(),
                                                  0,
                                                  sizeof(sockaddr_storage) + 16,
                                                  sizeof(sockaddr_storage) + 16,
@@ -233,9 +238,50 @@ namespace sk::win32::detail {
         if (!ret)
             co_return make_unexpected(ret.error());
 
-        reactor_handle::get_global_reactor().associate_handle(
-            reinterpret_cast<HANDLE>(client_socket));
+        auto reactor = get_weak_reactor_handle();
+        auto aret =
+            reactor->associate_handle(handle_cast<HANDLE>(client_socket));
+
+        if (!aret)
+            co_return make_unexpected(aret.error());
+
         co_return channel_type{std::move(client_socket_)};
+    }
+
+    /*************************************************************************
+     * streamsocketserver::async_accept()
+     */
+    template <typename server_type,
+              seqchannel channel_type,
+              int type,
+              int protocol>
+    auto streamsocketserver<server_type, channel_type, type, protocol>::accept()
+        -> expected<channel_type, std::error_code>
+    {
+        auto client_socket = INVALID_SOCKET;
+        client_socket = ::socket(_address_family, type, protocol);
+
+        if (client_socket == INVALID_SOCKET)
+            return make_unexpected(win32::get_last_winsock_error());
+
+        unique_socket client_socket_(client_socket);
+
+        // This has to be provided even though we don't use it.
+        std::array<char, (16 + sizeof(sockaddr_storage)) * 2> junk{};
+
+        auto ret = ::accept(_native_handle.native_socket(), nullptr, 0);
+
+        if (ret == INVALID_SOCKET)
+            return make_unexpected(get_last_winsock_error());
+
+        auto reactor = get_weak_reactor_handle();
+        auto aret =
+            reactor->associate_handle(handle_cast<HANDLE>(client_socket));
+
+        if (!aret)
+            return make_unexpected(aret.error());
+
+        return channel_type{std::move(client_socket_)};
     }
 
 } // namespace sk::win32::detail

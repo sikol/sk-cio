@@ -56,8 +56,9 @@ namespace sk::win32::detail {
 
         filechannel_base(filechannel_base const &) = delete;
         filechannel_base(filechannel_base &&) noexcept = default;
-        filechannel_base &operator=(filechannel_base const &) = delete;
-        filechannel_base &operator=(filechannel_base &&) noexcept = default;
+        auto operator=(filechannel_base const &) -> filechannel_base & = delete;
+        auto operator=(filechannel_base &&) noexcept
+            -> filechannel_base & = default;
 
         /*
          * Test if this channel has been opened.
@@ -199,7 +200,7 @@ namespace sk::win32::detail {
                 flags, dwDesiredAccess, dwCreationDisposition, dwShareMode))
             co_return make_unexpected(sk::error::filechannel_invalid_flags);
 
-        std::wstring wpath(path.native());
+        auto const &wpath(path.native());
 
         auto handle = co_await win32::AsyncCreateFileW(wpath.c_str(),
                                                        dwDesiredAccess,
@@ -208,13 +209,13 @@ namespace sk::win32::detail {
                                                        dwCreationDisposition,
                                                        FILE_ATTRIBUTE_NORMAL |
                                                            FILE_FLAG_OVERLAPPED,
-                                                       NULL);
+                                                       nullptr);
 
         if (!handle)
             co_return make_unexpected(
                 win32::win32_to_generic_error(handle.error()));
 
-        _native_handle.assign(*handle);
+        _native_handle = unique_handle(*handle);
         co_return {};
     }
 
@@ -239,7 +240,7 @@ namespace sk::win32::detail {
                 flags, dwDesiredAccess, dwCreationDisposition, dwShareMode))
             return make_unexpected(sk::error::filechannel_invalid_flags);
 
-        std::wstring wpath(path.native());
+        auto const &wpath(path.native());
 
         auto handle =
             ::CreateFileW(wpath.c_str(),
@@ -251,15 +252,19 @@ namespace sk::win32::detail {
                           nullptr);
 
         // Return error if any.
-        if (handle == INVALID_HANDLE_VALUE)
+        if (handle == SK_INVALID_HANDLE_VALUE)
             return make_unexpected(
                 win32::win32_to_generic_error(win32::get_last_error()));
 
         // Because we didn't use AsyncCreateFileW(), we have to manually
         // associate the handle with the completion port.
-        reactor_handle::get_global_reactor().associate_handle(handle);
+        auto reactor = get_weak_reactor_handle();
+        auto aret = reactor->associate_handle(handle);
 
-        _native_handle.assign(handle);
+        if (!aret)
+            return make_unexpected(aret.error());
+
+        _native_handle = unique_handle(handle);
         return {};
     }
 
@@ -285,9 +290,9 @@ namespace sk::win32::detail {
         if (!is_open())
             return make_unexpected(sk::error::channel_not_open);
 
-        auto err = _native_handle.close();
-        if (err)
-            return make_unexpected(err);
+        auto ret = _native_handle.close();
+        if (!ret)
+            return make_unexpected(ret.error());
         return {};
     }
 
@@ -299,11 +304,11 @@ namespace sk::win32::detail {
         -> task<expected<void, std::error_code>> {
         // clang-format on
 
-        auto err =
+        auto ret =
             co_await async_invoke([&] { return _native_handle.close(); });
 
-        if (err)
-            co_return make_unexpected(err);
+        if (!ret)
+            co_return make_unexpected(ret.error());
 
         co_return {};
     }

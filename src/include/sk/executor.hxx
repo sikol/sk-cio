@@ -110,7 +110,6 @@ namespace sk {
 
     inline auto mt_executor::stop() -> void
     {
-        std::cerr << "mt_executor stop\n";
         std::unique_lock<std::mutex> lock(_mtx);
         _stop = true;
         _cv.notify_all();

@@ -29,13 +29,21 @@
 #ifndef SK_CO_MAIN_HXX_INCLUDED
 #define SK_CO_MAIN_HXX_INCLUDED
 
-#include <sk/task.hxx>
 #include <sk/reactor.hxx>
+#include <sk/task.hxx>
 
 auto co_main(int argc, char **argv) -> sk::task<int>;
 
-auto main(int argc, char **argv) -> int {
-    sk::reactor_handle reactor;
+auto main(int argc, char **argv) -> int
+{
+    auto reactor = sk::get_shared_reactor_handle();
+    if (!reactor) {
+        fmt::print(stderr,
+                   "failed to create reactor: {}\n",
+                   reactor.error().message());
+        return 1;
+    }
+
     return wait(co_main(argc, argv));
 }
 

@@ -176,8 +176,11 @@ namespace sk::win32::detail {
                    sizeof(zero_address)) != 0)
             co_return make_unexpected(win32::get_last_winsock_error());
 
-        reactor_handle::get_global_reactor().associate_handle(
-            reinterpret_cast<HANDLE>(sock));
+        auto reactor = get_weak_reactor_handle();
+        auto aret = reactor->associate_handle(handle_cast<HANDLE>(sock));
+
+        if (!aret)
+            co_return make_unexpected(aret.error());
 
         auto ret = co_await win32::AsyncConnectEx(
             sock, addr, addrlen, nullptr, 0, nullptr);
@@ -218,8 +221,11 @@ namespace sk::win32::detail {
                    sizeof(zero_address)) != 0)
             return make_unexpected(win32::get_last_winsock_error());
 
-        reactor_handle::get_global_reactor().associate_handle(
-            reinterpret_cast<HANDLE>(sock));
+        auto reactor = get_weak_reactor_handle();
+        auto aret = reactor->associate_handle(handle_cast<HANDLE>(sock));
+
+        if (!aret)
+            return make_unexpected(aret.error());
 
         auto ret = ::WSAConnect(
             sock, addr, addrlen, nullptr, nullptr, nullptr, nullptr);

@@ -69,44 +69,44 @@ namespace sk::posix::detail {
         auto operator=(linux_reactor const &) -> linux_reactor & = delete;
 
         // Associate a new fd with our epoll.
-        auto associate_fd(int) -> void;
+        [[nodiscard]] auto associate_fd(int) -> expected<void, std::error_code>;
         auto deassociate_fd(int) -> void;
 
         // Start this reactor.
-        auto start() -> void;
+        [[nodiscard]] auto start() -> expected<void, std::error_code>;
 
         // Stop this reactor.
         auto stop() -> void;
 
         auto get_system_executor() -> mt_executor *;
 
-        auto async_fd_open(char const *path, int flags, int mode = 0777)
+        auto async_fd_open(char const *path, int flags, int mode = 0777) noexcept
             -> task<expected<int, std::error_code>>;
 
-        auto async_fd_close(int fd) -> task<expected<int, std::error_code>>;
+        auto async_fd_close(int fd) noexcept -> task<expected<int, std::error_code>>;
 
-        auto async_fd_recv(int fd, void *buf, std::size_t n, int flags)
+        auto async_fd_recv(int fd, void *buf, std::size_t n, int flags) noexcept
             -> task<expected<ssize_t, std::error_code>>;
 
-        auto async_fd_read(int fd, void *buf, std::size_t n)
+        auto async_fd_read(int fd, void *buf, std::size_t n) noexcept
             -> task<expected<ssize_t, std::error_code>>;
 
-        auto async_fd_pread(int fd, void *buf, std::size_t n, off_t offs)
+        auto async_fd_pread(int fd, void *buf, std::size_t n, off_t offs) noexcept
             -> task<expected<ssize_t, std::error_code>>;
 
-        auto async_fd_send(int fd, void const *buf, std::size_t n, int flags)
+        auto async_fd_send(int fd, void const *buf, std::size_t n, int flags) noexcept
             -> task<expected<ssize_t, std::error_code>>;
 
-        auto async_fd_write(int fd, void const *buf, std::size_t n)
+        auto async_fd_write(int fd, void const *buf, std::size_t n) noexcept
             -> task<expected<ssize_t, std::error_code>>;
 
-        auto async_fd_pwrite(int fd, void const *buf, std::size_t n, off_t offs)
+        auto async_fd_pwrite(int fd, void const *buf, std::size_t n, off_t offs) noexcept
             -> task<expected<ssize_t, std::error_code>>;
 
-        auto async_fd_connect(int, sockaddr const *, socklen_t)
+        auto async_fd_connect(int, sockaddr const *, socklen_t) noexcept
             -> task<expected<void, std::error_code>>;
 
-        auto async_fd_accept(int, sockaddr *addr, socklen_t *)
+        auto async_fd_accept(int, sockaddr *addr, socklen_t *) noexcept
             -> task<expected<int, std::error_code>>;
 
     private:
@@ -118,12 +118,6 @@ namespace sk::posix::detail {
 
     inline linux_reactor::linux_reactor()
     {
-        _epoll = std::make_unique<epoll_reactor>();
-
-#ifdef SK_CIO_HAVE_IO_URING
-        _uring = io_uring_reactor::make();
-#endif
-        get_system_executor()->start_threads();
     }
 
     inline auto linux_reactor::get_system_executor() -> mt_executor *
@@ -132,9 +126,9 @@ namespace sk::posix::detail {
         return &xer;
     }
 
-    inline auto linux_reactor::associate_fd(int fd) -> void
+    inline auto linux_reactor::associate_fd(int fd) -> expected<void, std::error_code>
     {
-        _epoll->associate_fd(fd);
+        return _epoll->associate_fd(fd);
     }
 
     inline auto linux_reactor::deassociate_fd(int fd) -> void
@@ -142,13 +136,37 @@ namespace sk::posix::detail {
         _epoll->deassociate_fd(fd);
     }
 
-    inline auto linux_reactor::start() -> void
+    inline auto linux_reactor::start() -> expected<void, std::error_code>
     {
-        _epoll->start();
+        _epoll = std::make_unique<epoll_reactor>();
+
 #ifdef SK_CIO_HAVE_IO_URING
-        if (_uring)
-            _uring->start();
+        // An error returned means something went wrong trying to create the
+        // uring reactor, e.g. out of memory.  A successful return of nullptr
+        // means uring isn't supported on this system.
+        auto ur = io_uring_reactor::make();
+        if (!ur)
+            return make_unexpected(ur.error());
+
+        if (*ur != nullptr)
+            _uring = std::move(*ur);
 #endif
+
+        get_system_executor()->start_threads();
+
+        auto ret = _epoll->start();
+        if (!ret)
+            return make_unexpected(ret.error());
+
+#ifdef SK_CIO_HAVE_IO_URING
+        if (_uring) {
+            ret = _uring->start();
+            if (!ret)
+                return make_unexpected(ret.error());
+        }
+#endif
+
+        return {};
     }
 
     inline auto linux_reactor::stop() -> void
@@ -165,7 +183,7 @@ namespace sk::posix::detail {
      */
 
     inline auto
-    linux_reactor::async_fd_open(const char *path, int flags, int mode)
+    linux_reactor::async_fd_open(const char *path, int flags, int mode) noexcept
         -> task<expected<int, std::error_code>>
     {
 #ifdef SK_CIO_HAVE_IO_URING
@@ -175,7 +193,7 @@ namespace sk::posix::detail {
         return _epoll->async_fd_open(path, flags, mode);
     }
 
-    inline auto linux_reactor::async_fd_close(int fd)
+    inline auto linux_reactor::async_fd_close(int fd) noexcept
         -> task<expected<int, std::error_code>>
     {
 #ifdef SK_CIO_HAVE_IO_URING
@@ -185,7 +203,7 @@ namespace sk::posix::detail {
         return _epoll->async_fd_close(fd);
     }
 
-    inline auto linux_reactor::async_fd_read(int fd, void *buf, std::size_t n)
+    inline auto linux_reactor::async_fd_read(int fd, void *buf, std::size_t n) noexcept
         -> task<expected<ssize_t, std::error_code>>
     {
 #ifdef SK_CIO_HAVE_IO_URING
@@ -196,7 +214,7 @@ namespace sk::posix::detail {
     }
 
     inline auto
-    linux_reactor::async_fd_pread(int fd, void *buf, std::size_t n, off_t offs)
+    linux_reactor::async_fd_pread(int fd, void *buf, std::size_t n, off_t offs) noexcept
         -> task<expected<ssize_t, std::error_code>>
     {
 #ifdef SK_CIO_HAVE_IO_URING
@@ -207,7 +225,7 @@ namespace sk::posix::detail {
     }
 
     inline auto
-    linux_reactor::async_fd_write(int fd, const void *buf, std::size_t n)
+    linux_reactor::async_fd_write(int fd, const void *buf, std::size_t n) noexcept
         -> task<expected<ssize_t, std::error_code>>
     {
 #ifdef SK_CIO_HAVE_IO_URING
@@ -220,7 +238,7 @@ namespace sk::posix::detail {
     inline auto linux_reactor::async_fd_pwrite(int fd,
                                                const void *buf,
                                                std::size_t n,
-                                               off_t offs)
+                                               off_t offs) noexcept
         -> task<expected<ssize_t, std::error_code>>
     {
 #ifdef SK_CIO_HAVE_IO_URING
@@ -235,7 +253,7 @@ namespace sk::posix::detail {
      */
 
     inline auto
-    linux_reactor::async_fd_recv(int fd, void *buf, std::size_t n, int flags)
+    linux_reactor::async_fd_recv(int fd, void *buf, std::size_t n, int flags) noexcept
         -> task<expected<ssize_t, std::error_code>>
     {
         return _epoll->async_fd_recv(fd, buf, n, flags);
@@ -244,7 +262,7 @@ namespace sk::posix::detail {
     inline auto linux_reactor::async_fd_send(int fd,
                                              const void *buf,
                                              std::size_t n,
-                                             int flags)
+                                             int flags) noexcept
         -> task<expected<ssize_t, std::error_code>>
     {
         return _epoll->async_fd_send(fd, buf, n, flags);
@@ -252,14 +270,14 @@ namespace sk::posix::detail {
 
     inline auto linux_reactor::async_fd_connect(int fd,
                                                 const sockaddr *addr,
-                                                socklen_t addrlen)
+                                                socklen_t addrlen) noexcept
         -> task<expected<void, std::error_code>>
     {
         return _epoll->async_fd_connect(fd, addr, addrlen);
     }
 
     inline auto
-    linux_reactor::async_fd_accept(int fd, sockaddr *addr, socklen_t *addrlen)
+    linux_reactor::async_fd_accept(int fd, sockaddr *addr, socklen_t *addrlen) noexcept
         -> task<expected<int, std::error_code>>
     {
         return _epoll->async_fd_accept(fd, addr, addrlen);

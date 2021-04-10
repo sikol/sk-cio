@@ -28,11 +28,19 @@
 
 #define CATCH_CONFIG_RUNNER
 #include <catch.hpp>
+#include <fmt/core.h>
 
 #include <sk/reactor.hxx>
 
-int main(int argc, char **argv) {
-    sk::reactor_handle reactor;
+int main(int argc, char **argv)
+{
+    auto reactor = sk::get_shared_reactor_handle();
+    if (!reactor) {
+        fmt::print(stderr,
+                   "failed to create reactor: {}\n",
+                   reactor.error().message());
+        return 1;
+    }
 
     int result = Catch::Session().run(argc, argv);
 

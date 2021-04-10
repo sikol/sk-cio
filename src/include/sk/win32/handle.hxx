@@ -46,86 +46,111 @@ namespace sk::win32 {
      * copyable, but it can be moved.
      */
 
+    // NOLINTNEXTLINE
+#define SK_INVALID_HANDLE_VALUE                                                \
+    (reinterpret_cast<void *>(static_cast<uintptr_t>(-1)))
+    // Would be nicer to do it like this, but casts to void* cannot be
+    // constexpr.
+    // static constexpr HANDLE invalid_handle_value = std::bit_cast<void
+    // *>(static_cast<uintptr_t>(-1));
+
     struct unique_handle {
         // Create an empty unique_handle.
         unique_handle() noexcept
-            : _is_valid(false), _native_handle(INVALID_HANDLE_VALUE)
+            : _is_valid(false), _native_handle(SK_INVALID_HANDLE_VALUE)
         {
+            sk::detail::check(_is_valid || _native_handle == SK_INVALID_HANDLE_VALUE,
+                              "unique_handle: bad state");
         }
 
         // Create a unique_handle from a native handle.
         explicit unique_handle(HANDLE handle_value_) noexcept
             : _is_valid(true), _native_handle(handle_value_)
         {
+            sk::detail::check(handle_value_ != nullptr &&
+                                  handle_value_ != SK_INVALID_HANDLE_VALUE,
+                              "unique_handle: creating invalid handle");
+
+            sk::detail::check(_is_valid || _native_handle == SK_INVALID_HANDLE_VALUE,
+                              "unique_handle: bad state");
         }
 
         // Move construction.
         unique_handle(unique_handle &&other) noexcept
-            : _is_valid(true), _native_handle(other._native_handle)
+            : _is_valid(std::exchange(other._is_valid, false)),
+              _native_handle(
+                  std::exchange(other._native_handle, SK_INVALID_HANDLE_VALUE))
         {
-
-            other._is_valid = false;
+            sk::detail::check(_is_valid || _native_handle == SK_INVALID_HANDLE_VALUE,
+                              "unique_handle: bad state");
         }
 
-        // Move assignment.
         auto operator=(unique_handle &&other) noexcept -> unique_handle &
         {
-            if (this == &other)
-                return *this;
+            sk::detail::check(_is_valid || _native_handle == SK_INVALID_HANDLE_VALUE,
+                              "unique_handle: bad state");
+            if (this != &other) {
+                _is_valid = std::exchange(other._is_valid, false);
+                _native_handle = std::exchange(other._native_handle,
+                                               SK_INVALID_HANDLE_VALUE);
+            }
 
-            close();
-
-            _native_handle = other._native_handle;
-            other._is_valid = false;
             return *this;
         }
 
         // Destructor.
-        ~unique_handle() noexcept
+        ~unique_handle()
         {
-            close();
+            sk::detail::check(_is_valid || _native_handle == SK_INVALID_HANDLE_VALUE,
+                              "unique_handle: bad state");
+            // XXX - should decide what to do here if the close fails.
+            // Destructing an open socket is a bad idea and should probably
+            // abort, but we would like to be exception-safe if possible.
+            if (_is_valid)
+                std::ignore = close();
         }
 
         // Not copyable.
         unique_handle(unique_handle const &) = delete;
         auto operator=(unique_handle const &) -> unique_handle & = delete;
 
-        // Assign a new value to this handle.
-        auto assign(HANDLE native_handle) noexcept -> void
-        {
-            close();
-            _native_handle = native_handle;
-            _is_valid = true;
-        }
-
         // Close the handle.
-        auto close() noexcept -> std::error_code
+        [[nodiscard]] auto close() noexcept -> expected<void, std::error_code>
         {
+            sk::detail::check(_is_valid || _native_handle == SK_INVALID_HANDLE_VALUE,
+                              "unique_handle: bad state");
             if (!_is_valid)
-                return win32::error::success;
+                return {};
 
             _is_valid = false;
-            if (::CloseHandle(_native_handle) == TRUE)
-                return win32::error::success;
-            return win32::get_last_error();
+            if (::CloseHandle(_native_handle) == TRUE) {
+                _native_handle = SK_INVALID_HANDLE_VALUE;
+                return {};
+            }
+
+            return make_unexpected(win32::get_last_error());
         }
 
         // Test if we have a valid handle.
-        operator bool() const noexcept
+        [[nodiscard]] operator bool() const noexcept
         {
+            sk::detail::check(_is_valid || _native_handle == SK_INVALID_HANDLE_VALUE,
+                              "unique_handle: bad state");
             return _is_valid;
         }
 
         // Return the Win32 handle.
-        auto native_handle() -> HANDLE
+        [[nodiscard]] auto native_handle() -> HANDLE
         {
+            sk::detail::check(_is_valid || _native_handle == SK_INVALID_HANDLE_VALUE,
+                              "unique_handle: bad state");
             sk::detail::check(_is_valid, "attempt to access invalid handle");
             return _native_handle;
         }
 
     private:
-        bool _is_valid;
-        HANDLE _native_handle;
+        bool _is_valid = false;
+        HANDLE _native_handle = SK_INVALID_HANDLE_VALUE;
     };
 
     /*************************************************************************
@@ -147,36 +172,29 @@ namespace sk::win32 {
         {
         }
 
-        auto operator=(unique_socket &&other) noexcept -> unique_socket &
-        {
-            if (this == &other)
-                return *this;
-
-            close();
-
-            _native_socket =
-                std::exchange(other._native_socket, INVALID_SOCKET);
-            return *this;
-        }
-
         ~unique_socket() noexcept
         {
-            close();
+            // XXX - should decide what to do here if the close fails.
+            // Destructing an open socket is a bad idea and should probably
+            // abort, but we would like to be exception-safe if possible.
+            std::ignore = close();
         }
 
         // Not copyable.
         unique_socket(unique_socket const &) = delete;
         auto operator=(unique_socket const &) -> unique_socket & = delete;
 
-        // Assign a new value to this socket.
-        auto assign(SOCKET native_socket) noexcept -> void
+        auto operator=(unique_socket &&other) noexcept -> unique_socket &
         {
-            close();
-            _native_socket = native_socket;
+            if (this != &other)
+                _native_socket =
+                    std::exchange(other._native_socket, INVALID_SOCKET);
+
+            return *this;
         }
 
         // Close the handle.
-        auto close() noexcept -> std::error_code
+        [[nodiscard]] auto close() noexcept -> std::error_code
         {
             if (!*this)
                 return win32::error::success;
@@ -190,13 +208,13 @@ namespace sk::win32 {
         }
 
         // Test if we have a valid socket.
-        operator bool() const noexcept
+        [[nodiscard]] operator bool() const noexcept
         {
             return _native_socket != INVALID_SOCKET;
         }
 
         // Return the socket.
-        auto native_socket() -> SOCKET
+        [[nodiscard]] auto native_socket() const -> SOCKET
         {
             sk::detail::check(*this, "attempt to access invalid socket");
             return _native_socket;
@@ -205,6 +223,23 @@ namespace sk::win32 {
     private:
         SOCKET _native_socket;
     };
+
+    template <typename To, typename From>
+    inline auto handle_cast(From from) -> To = delete;
+
+    template <>
+    inline auto handle_cast<HANDLE>(SOCKET from) -> HANDLE
+    {
+        return reinterpret_cast<HANDLE>(
+            from); // NOLINT(performance-no-int-to-ptr)
+    }
+
+    template <>
+    inline auto handle_cast<SOCKET>(HANDLE from) -> SOCKET
+    {
+        return reinterpret_cast<SOCKET>(
+            from); // NOLINT(performance-no-int-to-ptr)
+    }
 
 } // namespace sk::win32
 

@@ -3,170 +3,98 @@ name: CMake
 on: [ push ]
 
 env:
-  BUILD_TYPE: Release
   VCVARS_PATH: "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvars64.bat"
 
 jobs:
-  x64_windows_msvc:
-    runs-on: windows-latest
+  build_test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    env:
+      BUILD_TYPE: ${{ matrix.BUILD_TYPE }}
+      CC: ${{ matrix.CC }}
+      CXX: ${{ matrix.CXX }}
+      CXXFLAGS: ${{ matrix.CXXFLAGS }}
+      CMAKE_FLAGS: ${{ matrix.ENABLE_TIDY }}
+
+    strategy:
+      matrix:
+        include:
+          - name: x64-linux-gcc-epoll-release
+            os: ubuntu-latest
+            BUILD_TYPE: Release
+            CC: gcc-10
+            CXX: g++-10
+            CXXFLAGS: "-O2 -DNDEBUG -fcoroutines -W -Wall -Wextra -Werror"
+            CMAKE_FLAGS: >
+              -DSK_CIO_DISABLE_IO_URING=ON
+
+          - name: x64-linux-clang-epoll-release
+            os: ubuntu-latest
+            BUILD_TYPE: Release
+            CC: clang-11
+            CXX: clang++-11
+            CXXFLAGS: "-O2 -DNDEBUG -fcoroutines-ts -W -Wall -Wextra -Werror"
+            CMAKE_FLAGS: >
+              -DSK_CIO_DISABLE_IO_URING=ON
+
+          - name: x64-windows-msvc-release
+            os: windows-latest
+            BUILD_TYPE: Release
+            CC: cl
+            CXX: cl
+            CXXFLAGS: "/O2 /MD /RTC1 /EHsc /W4 /WX"
+
+          - name: x64-windows-clang-release
+            os: windows-latest
+            BUILD_TYPE: Release
+            CC: clang-cl
+            CXX: clang-cl
+            CXXFLAGS: "-m64 /O2 /MD /RTC1 /EHsc /W4 /WX"
 
     steps:
       - uses: actions/checkout@v2
         with:
           submodules: recursive
-
-      - name: Cache vcpkg
-        id: cache-vcpkg
-        uses: actions/cache@v2
-        with:
-          path: ~/AppData/Local/vcpkg
-          key: x64-windows-msvc-vcpkg
 
       - name: Create Build Environment
         run: cmake -E make_directory ${{github.workspace}}/build
 
-      - name: Configure CMake
+      - name: Configure CMake (Windows)
         shell: cmd
         working-directory: ${{github.workspace}}/build
         run: |
           call "%VCVARS_PATH%"
-          cmake -G Ninja                         ^
-              -DCMAKE_BUILD_TYPE=%BUILD_TYPE%    ^
+          cmake -G Ninja                            ^
+              -DCMAKE_BUILD_TYPE=%BUILD_TYPE%       ^
               ..
+        if: ${{ matrix.os == 'windows-latest' }}
 
-      - name: Build
-        working-directory: ${{github.workspace}}/build
-        shell: cmd
-        run: |
-          call "%VCVARS_PATH%"
-          cmake --build .
-
-      - name: Test
-        working-directory: ${{github.workspace}}/build
-        shell: cmd
-        run: ctest -V
-
-  x64_windows_clang:
-    runs-on: windows-latest
-
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          submodules: recursive
-
-      - name: Cache vcpkg
-        id: cache-vcpkg
-        uses: actions/cache@v2
-        with:
-          path: ~/AppData/Local/vcpkg
-          key: x64-windows-msvc-vcpkg
-
-      - name: Create Build Environment
-        run: cmake -E make_directory ${{github.workspace}}/build
-
-      - name: Configure CMake
+      - name: Configure CMake (Unix)
         shell: cmd
         working-directory: ${{github.workspace}}/build
         run: |
-          call "%VCVARS_PATH%"
-          cmake -G Ninja                        ^
-              -DCMAKE_BUILD_TYPE=%BUILD_TYPE%   ^
-              -DCMAKE_C_COMPILER=clang-cl       ^
-              -DCMAKE_CXX_COMPILER=clang-cl     ^
+          cmake                                 \
+              -DCMAKE_BUILD_TYPE=$BUILD_TYPE    \
               ..
+        if: ${{ matrix.os != 'windows-latest' }}
 
-      - name: Build
+      - name: Build (Windows)
         working-directory: ${{github.workspace}}/build
         shell: cmd
         run: |
           call "%VCVARS_PATH%"
           cmake --build .
+        if: ${{ matrix.os == 'windows-latest' }}
+
+      - name: Build (Unix)
+        working-directory: ${{github.workspace}}/build
+        shell: cmd
+        run: |
+          call "%VCVARS_PATH%"
+          cmake --build .
+        if: ${{ matrix.os != 'windows-latest' }}
 
       - name: Test
         working-directory: ${{github.workspace}}/build
         shell: cmd
-        run: ctest -V
-
-  x64_linux_epoll_gcc:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          submodules: recursive
-
-      - name: Cache vcpkg
-        id: cache-vcpkg
-        uses: actions/cache@v2
-        with:
-          path: ~/.cache/vcpkg
-          key: x64-linux-gcc-vcpkg
-
-      - name: Create build environment
-        run: cmake -E make_directory ${{github.workspace}}/build
-
-      - name: Configure CMake
-        shell: sh
-        working-directory: ${{github.workspace}}/build
-        run: |
-          cmake                                                               \
-              -DCMAKE_C_COMPILER=gcc-10                                       \
-              -DCMAKE_C_FLAGS="-m64 -g3 -O2"                                  \
-              -DCMAKE_CXX_COMPILER=g++-10                                     \
-              -DCMAKE_CXX_FLAGS="-m64 -g3 -O2 -std=c++20 -fcoroutines"        \
-              -DCMAKE_BUILD_TYPE=$BUILD_TYPE                                  \
-              -DSK_CIO_DISABLE_IO_URING=ON                                    \
-              ..
-
-      - name: Build
-        working-directory: ${{github.workspace}}/build
-        shell: sh
-        run: |
-          cmake --build .
-
-      - name: Test
-        working-directory: ${{github.workspace}}/build
-        shell: sh
-        run: ctest -V
-
-  x64_linux_epoll_clang:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          submodules: recursive
-
-      - name: Cache vcpkg
-        id: cache-vcpkg
-        uses: actions/cache@v2
-        with:
-          path: ~/.cache/vcpkg
-          key: x64-linux-gcc-vcpkg
-
-      - name: Create build environment
-        run: cmake -E make_directory ${{github.workspace}}/build
-
-      - name: Configure CMake
-        shell: sh
-        working-directory: ${{github.workspace}}/build
-        run: |
-          cmake                                                               \
-              -DCMAKE_C_COMPILER=clang-11                                     \
-              -DCMAKE_C_FLAGS="-m64 -O2 -g3"                                  \
-              -DCMAKE_CXX_COMPILER=clang++-11                                 \
-              -DCMAKE_CXX_FLAGS="-m64 -O2 -g3 -std=c++20 -fcoroutines-ts"     \
-              -DCMAKE_BUILD_TYPE=$BUILD_TYPE                                  \
-              -DSK_CIO_DISABLE_IO_URING=ON                                    \
-              ..
-
-      - name: Build
-        working-directory: ${{github.workspace}}/build
-        shell: sh
-        run: |
-          cmake --build .
-
-      - name: Test
-        working-directory: ${{github.workspace}}/build
-        shell: sh
         run: ctest -V

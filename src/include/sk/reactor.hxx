@@ -59,45 +59,153 @@ namespace sk {
 
 namespace sk {
 
-    struct reactor_handle {
-        reactor_handle();
-        ~reactor_handle();
+    namespace detail {
 
-        reactor_handle(reactor_handle const &) = delete;
-        reactor_handle(reactor_handle &&) = delete;
-        auto operator=(reactor_handle const &) -> reactor_handle & = delete;
-        auto operator=(reactor_handle &&) -> reactor_handle & = delete;
+        inline auto get_global_reactor() noexcept -> system_reactor_type &
+        {
+            static system_reactor_type global_reactor;
+            return global_reactor;
+        }
 
-        // Fetch the global reactor handle.
-        static auto get_global_reactor() -> system_reactor_type &;
+        inline std::atomic<int> reactor_refs = 0;
+        inline std::mutex reactor_mutex;
 
-    private:
-        inline static int _refs;
-        inline static std::mutex _mutex;
+    } // namespace detail
+
+    class shared_reactor_handle {
+        bool _valid = false;
+
+        friend auto get_shared_reactor_handle() noexcept
+            -> expected<shared_reactor_handle, std::error_code>;
+
+    public:
+        shared_reactor_handle() noexcept = default;
+        ~shared_reactor_handle();
+
+        shared_reactor_handle(shared_reactor_handle const &) = delete;
+        shared_reactor_handle(shared_reactor_handle &&) noexcept;
+        auto operator=(shared_reactor_handle const &)
+            -> shared_reactor_handle & = delete;
+        auto operator=(shared_reactor_handle &&)
+            -> shared_reactor_handle & = delete;
+
+        auto operator*() noexcept -> system_reactor_type &;
+        auto operator->() noexcept -> system_reactor_type *;
     };
 
-    inline reactor_handle::reactor_handle()
+    // Get a handle to the global reactor, starting it if required.
+    inline auto get_shared_reactor_handle() noexcept
+        -> expected<shared_reactor_handle, std::error_code>
     {
-        std::lock_guard<std::mutex> lock(_mutex);
-        if (++_refs > 1)
-            return;
+        std::lock_guard<std::mutex> lock(detail::reactor_mutex);
 
-        get_global_reactor().start();
+        shared_reactor_handle handle;
+
+        if (detail::reactor_refs == 0) {
+            // We are the first handle.
+            auto &global_reactor = detail::get_global_reactor();
+            if (auto ret = global_reactor.start(); !ret)
+                return make_unexpected(ret.error());
+        }
+
+        ++detail::reactor_refs;
+        handle._valid = true;
+        return handle;
     }
 
-    inline reactor_handle::~reactor_handle()
+    inline shared_reactor_handle::shared_reactor_handle(shared_reactor_handle &&other) noexcept
+        : _valid(std::exchange(other._valid, false))
     {
-        std::lock_guard<std::mutex> lock(_mutex);
-        if (--_refs > 0)
-            return;
-
-        get_global_reactor().stop();
     }
 
-    inline auto reactor_handle::get_global_reactor() -> system_reactor_type &
+    inline auto shared_reactor_handle::operator*() noexcept
+        -> system_reactor_type &
     {
-        static system_reactor_type global_reactor;
-        return global_reactor;
+        sk::detail::check(_valid,
+                          "attempt to dereference invalid reactor_handle");
+        return detail::get_global_reactor();
+    }
+
+    inline auto shared_reactor_handle::operator->() noexcept
+        -> system_reactor_type *
+    {
+        sk::detail::check(_valid,
+                          "attempt to dereference invalid reactor_handle");
+        return &detail::get_global_reactor();
+    }
+
+    inline shared_reactor_handle::~shared_reactor_handle()
+    {
+        if (!_valid)
+            return;
+
+        if (--detail::reactor_refs > 0)
+            return;
+
+        detail::get_global_reactor().stop();
+    }
+
+    class weak_reactor_handle {
+        bool _valid = false;
+
+        friend auto get_weak_reactor_handle() noexcept -> weak_reactor_handle;
+
+    public:
+        weak_reactor_handle() noexcept = default;
+        ~weak_reactor_handle();
+
+        weak_reactor_handle(weak_reactor_handle const &) = delete;
+        weak_reactor_handle(weak_reactor_handle &&) noexcept;
+        auto operator=(weak_reactor_handle const &)
+            -> weak_reactor_handle & = delete;
+        auto operator=(weak_reactor_handle &&)
+            -> weak_reactor_handle & = delete;
+
+        auto operator*() noexcept -> system_reactor_type &;
+        auto operator->() noexcept -> system_reactor_type *;
+    };
+
+    // Get a handle to the global reactor, which must already have been started.
+    inline auto get_weak_reactor_handle() noexcept -> weak_reactor_handle
+    {
+        auto refs = ++detail::reactor_refs;
+        sk::detail::check(refs > 1, "get_weak_reactor_handle: no reactor");
+
+        weak_reactor_handle handle;
+        handle._valid = true;
+        return handle;
+    }
+
+    inline weak_reactor_handle::weak_reactor_handle(weak_reactor_handle &&other) noexcept
+        : _valid(std::exchange(other._valid, false))
+    {
+    }
+
+    inline auto weak_reactor_handle::operator*() noexcept
+        -> system_reactor_type &
+    {
+        sk::detail::check(_valid,
+                          "attempt to dereference invalid reactor_handle");
+        return detail::get_global_reactor();
+    }
+
+    inline auto weak_reactor_handle::operator->() noexcept
+        -> system_reactor_type *
+    {
+        sk::detail::check(_valid,
+                          "attempt to dereference invalid reactor_handle");
+        return &detail::get_global_reactor();
+    }
+
+    inline weak_reactor_handle::~weak_reactor_handle()
+    {
+        if (!_valid)
+            return;
+
+        auto r = --detail::reactor_refs;
+        // refs should never be 0 here since there must always be a
+        // shared_reactor_handle holding a ref.
+        sk::detail::check(r > 0, "weak_reactor_handle: lifetime error");
     }
 
 } // namespace sk

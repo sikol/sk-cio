@@ -32,8 +32,10 @@
 #include <tl/expected.hpp>
 
 namespace sk {
+
     using tl::expected;
     using tl::make_unexpected;
+
 } // namespace sk
 
 #endif // SK_EXPECTED_HXX_INCLUDED

@@ -33,11 +33,11 @@
 #include <system_error>
 #include <thread>
 
+#include <sk/executor.hxx>
+#include <sk/task.hxx>
 #include <sk/win32/error.hxx>
 #include <sk/win32/handle.hxx>
 #include <sk/win32/windows.hxx>
-#include <sk/task.hxx>
-#include <sk/executor.hxx>
 
 namespace sk::win32::detail {
 
@@ -53,41 +53,42 @@ namespace sk::win32::detail {
     };
 
     struct iocp_reactor {
-
         iocp_reactor();
 
         // Not copyable.
         iocp_reactor(iocp_reactor const &) = delete;
-        iocp_reactor &operator=(iocp_reactor const &) = delete;
+        auto operator=(iocp_reactor const &) -> iocp_reactor & = delete;
 
         // Movable.
         iocp_reactor(iocp_reactor &&) noexcept = delete;
-        iocp_reactor &operator=(iocp_reactor &&) noexcept = delete;
+        auto operator=(iocp_reactor &&) noexcept -> iocp_reactor & = delete;
 
-        unique_handle completion_port;
+        ~iocp_reactor();
+
+        std::optional<unique_handle> completion_port;
 
         // Associate a new handle with our i/o port.
-        auto associate_handle(HANDLE) -> void;
+        [[nodiscard]] auto associate_handle(HANDLE) noexcept
+            -> expected<void, std::error_code>;
 
         // Start this reactor.
-        auto start() -> void;
+        [[nodiscard]] auto start() noexcept -> expected<void, std::error_code>;
 
         // Stop this reactor.
-        auto stop() -> void;
+        auto stop() noexcept -> void;
 
-        auto get_system_executor() -> mt_executor *;
+        [[nodiscard]] auto get_system_executor() noexcept -> mt_executor *;
 
     private:
-        void completion_thread_fn(void);
+        void completion_thread_fn();
         std::jthread completion_thread;
     };
 
-    inline iocp_reactor::iocp_reactor()
+    inline iocp_reactor::iocp_reactor() {}
+
+    inline iocp_reactor::~iocp_reactor()
     {
-        auto hdl =
-            ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0);
-        completion_port.assign(hdl);
-        get_system_executor()->start_threads();
+        stop();
     }
 
     inline auto iocp_reactor::get_system_executor() -> mt_executor *
@@ -98,7 +99,10 @@ namespace sk::win32::detail {
 
     inline auto iocp_reactor::completion_thread_fn() -> void
     {
-        auto port_handle = completion_port.native_handle();
+        sk::detail::check(completion_port.has_value(),
+                          "iocp_reactor: running but not started?");
+
+        auto port_handle = completion_port->native_handle();
 
         for (;;) {
             DWORD bytes_transferred;
@@ -138,24 +142,59 @@ namespace sk::win32::detail {
         }
     }
 
-    inline auto iocp_reactor::start() -> void
+    inline auto iocp_reactor::start() -> expected<void, std::error_code>
     {
-        WSADATA wsadata;
-        ::WSAStartup(MAKEWORD(2, 2), &wsadata);
+        sk::detail::check(!completion_port.has_value(),
+                          "iocp_reactor::start: already started");
 
-        completion_thread =
-            std::jthread(&iocp_reactor::completion_thread_fn, this);
+        auto hdl =
+            ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0);
+        if (hdl == nullptr)
+            return make_unexpected(get_last_error());
+
+        completion_port.emplace(hdl);
+
+        get_system_executor()->start_threads();
+
+        WSADATA wsadata;
+        if (auto err = ::WSAStartup(MAKEWORD(2, 2), &wsadata); err != 0)
+            return make_unexpected(make_win32_error(err));
+
+        try {
+            completion_thread =
+                std::jthread(&iocp_reactor::completion_thread_fn, this);
+        } catch (std::system_error const &e) {
+            return make_unexpected(e.code());
+        }
+
+        return {};
     }
 
     inline auto iocp_reactor::stop() -> void
     {
-        completion_port.close();
-        completion_thread.join();
+        if (completion_port) {
+            if (auto ret = completion_port->close(); !ret) {
+                sk::detail::unexpected(ret.error().message().c_str());
+            }
+        }
+
+        if (completion_thread.joinable())
+            completion_thread.join();
     }
 
-    inline auto iocp_reactor::associate_handle(HANDLE h) -> void
+    inline auto iocp_reactor::associate_handle(HANDLE h)
+        -> expected<void, std::error_code>
     {
-        ::CreateIoCompletionPort(h, completion_port.native_handle(), 0, 0);
+        sk::detail::check(completion_port.has_value(),
+                          "iocp_reactor::associate_handle: no port");
+
+        auto ret =
+            ::CreateIoCompletionPort(h, completion_port->native_handle(), 0, 0);
+
+        if (ret == nullptr)
+            return make_unexpected(get_last_error());
+
+        return {};
     }
 
 }; // namespace sk::win32::detail

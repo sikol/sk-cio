@@ -107,8 +107,10 @@ namespace sk::posix::detail {
     template<int type, int protocol>
     streamsocket<type, protocol>::~streamsocket()
     {
-        if (_fd)
-            reactor_handle::get_global_reactor().deassociate_fd(_fd.value());
+        if (_fd) {
+            auto reactor = get_weak_reactor_handle();
+            reactor->deassociate_fd(_fd.value());
+        }
     }
 
     /*************************************************************************
@@ -175,7 +177,11 @@ namespace sk::posix::detail {
         if (!ret)
             co_return make_unexpected(ret.error());
 
-        reactor_handle::get_global_reactor().associate_fd(sock);
+        auto reactor = get_weak_reactor_handle();
+        auto aret = reactor->associate_fd(sock);
+        if (!aret)
+            co_return make_unexpected(aret.error());
+
         _fd = std::move(sock_);
         co_return {};
     }

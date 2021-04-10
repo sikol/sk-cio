@@ -167,7 +167,7 @@ TEST_CASE("unixchannel stress test")
     auto ep = sk::net::make_unix_endpoint(unix_listen_address);
     if (!ep) {
         fmt::print(stderr,
-                   "{}:{}: {}\n",
+                   "{}: {}\n",
                    unix_listen_address.generic_string(),
                    ep.error().message());
         return;
@@ -183,7 +183,8 @@ TEST_CASE("unixchannel stress test")
         REQUIRE(server);
     }
 
-    auto *xer = reactor_handle::get_global_reactor().get_system_executor();
+    auto reactor = get_weak_reactor_handle();
+    auto *xer = reactor->get_system_executor();
     wait(co_detach(unix_server_task(*server), xer));
 
     std::this_thread::sleep_for(1s);

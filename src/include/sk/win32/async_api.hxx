@@ -127,6 +127,8 @@ namespace sk::win32 {
                                  HANDLE hTemplateFile)
         -> task<expected<HANDLE, std::error_code>>
     {
+        auto reactor = get_weak_reactor_handle();
+
         // There's no overlapped CreateFile, so use a thread.
         co_return co_await async_invoke(
             [&]() -> expected<HANDLE, std::error_code> {
@@ -138,12 +140,17 @@ namespace sk::win32 {
                                             dwFlagsAndAttributes,
                                             hTemplateFile);
 
-                if (handle != INVALID_HANDLE_VALUE) {
-                    reactor_handle::get_global_reactor().associate_handle(
-                        handle);
-                    return handle;
-                } else
+                if (handle == SK_INVALID_HANDLE_VALUE)
                     return make_unexpected(win32::get_last_error());
+
+                if (auto ret = reactor->associate_handle(handle); !ret) {
+                    if (::CloseHandle(handle) == FALSE)
+                        sk::detail::unexpected("AsyncCreateFileW: failed to close handle");
+
+                    return make_unexpected(sk::error::reactor_associate_failed);
+                }
+
+                return handle;
             });
     }
 
@@ -159,6 +166,8 @@ namespace sk::win32 {
                                  HANDLE hTemplateFile)
         -> task<expected<HANDLE, std::error_code>>
     {
+        auto reactor = get_weak_reactor_handle();
+
         // There's no overlapped CreateFile, so use a thread.
         co_return co_await async_invoke(
             [&]() -> expected<HANDLE, std::error_code> {
@@ -170,12 +179,17 @@ namespace sk::win32 {
                                             dwFlagsAndAttributes,
                                             hTemplateFile);
 
-                if (handle != INVALID_HANDLE_VALUE) {
-                    reactor_handle::get_global_reactor().associate_handle(
-                        handle);
-                    return handle;
-                } else
-                    return make_unexpected(win32::get_last_error());
+              if (handle == SK_INVALID_HANDLE_VALUE)
+                  return make_unexpected(win32::get_last_error());
+
+              if (auto ret = reactor->associate_handle(handle); !ret) {
+                  if (::CloseHandle(handle) == FALSE)
+                      sk::detail::unexpected("AsyncCreateFileA: failed to close handle");
+
+                  return make_unexpected(sk::error::reactor_associate_failed);
+              }
+
+              return handle;
             });
     }
 
