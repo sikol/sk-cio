@@ -14,7 +14,7 @@ jobs:
       CC: ${{ matrix.CC }}
       CXX: ${{ matrix.CXX }}
       CXXFLAGS: ${{ matrix.CXXFLAGS }}
-      CMAKE_FLAGS: ${{ matrix.ENABLE_TIDY }}
+      CMAKE_FLAGS: ${{ matrix.CMAKE_FLAGS }}
 
     strategy:
       matrix:
