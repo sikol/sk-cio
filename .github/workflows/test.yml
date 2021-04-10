@@ -13,7 +13,7 @@ jobs:
       BUILD_TYPE: ${{ matrix.BUILD_TYPE }}
       CC: ${{ matrix.CC }}
       CXX: ${{ matrix.CXX }}
-      CXXFLAGS: ${{ matrix.CXXFLAGS }}
+      CMAKE_CXXFLAGS: ${{ matrix.CMAKE_CXXFLAGS }}
       CMAKE_FLAGS: ${{ matrix.CMAKE_FLAGS }}
 
     strategy:
