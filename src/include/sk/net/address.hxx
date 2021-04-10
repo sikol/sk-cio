@@ -39,13 +39,13 @@
 #include <variant>
 
 #include <sk/async_invoke.hxx>
+#include <sk/check.hxx>
 #include <sk/detail/platform.hxx>
 #include <sk/detail/safeint.hxx>
 #include <sk/expected.hxx>
 #include <sk/overload.hxx>
 #include <sk/patricia.hxx>
 #include <sk/task.hxx>
-#include <sk/check.hxx>
 
 #if defined(SK_CIO_PLATFORM_WINDOWS)
 #    include <sk/win32/windows.hxx>
@@ -129,7 +129,7 @@ namespace sk::net {
             for (unsigned i = 0; i < 4; ++i) {
                 p = std::to_chars(p.ptr, &ret[sizeof(ret) - 1], bytes[i]);
 
-                sk::detail::check(p.ec == std::errc(), "to_chars failure");
+                SK_CHECK(p.ec == std::errc(), "to_chars failure");
 
                 if (i != 3)
                     *p.ptr++ = '.';
@@ -187,7 +187,8 @@ namespace sk::net {
         {
             char buf[INET6_ADDRSTRLEN];
             auto ret = inet_ntop(AF_INET6, &addr.bytes[0], buf, sizeof(buf));
-            sk::detail::check(ret != nullptr, "inet_ntop failure");
+            SK_CHECK(ret != nullptr, "inet_ntop failure");
+            std::ignore = ret;
 
             return std::string(buf);
         }
@@ -195,7 +196,7 @@ namespace sk::net {
         static auto from_string(std::string const &s)
             -> expected<address_type, std::error_code>
         {
-            address_type addr;
+            address_type addr{};
 
             auto ret = inet_pton(AF_INET6, s.c_str(), &addr.bytes[0]);
 

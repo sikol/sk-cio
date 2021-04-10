@@ -35,7 +35,8 @@
 #include <sk/cio.hxx>
 #include <sk/co_main.hxx>
 
-auto handle_client(sk::net::tcpchannel client) -> sk::task<void> {
+auto handle_client(sk::net::tcpchannel client) -> sk::task<void>
+{
     for (;;) {
         sk::fixed_buffer<std::byte, 1024> buf;
 
@@ -62,7 +63,8 @@ auto handle_client(sk::net::tcpchannel client) -> sk::task<void> {
     fmt::print(stderr, "handle_client() : return\n");
 }
 
-auto co_main(int argc, char **argv) -> sk::task<int> {
+auto co_main(int argc, char **argv) -> sk::task<int>
+{
     using namespace std::chrono_literals;
 
     if (argc != 3) {
@@ -70,10 +72,11 @@ auto co_main(int argc, char **argv) -> sk::task<int> {
         co_return 1;
     }
 
-    auto ep = sk::net::make_tcp_endpoint(argv[1], std::atoi(argv[2]));
+    auto ep = sk::net::make_tcp_endpoint(
+        argv[1], static_cast<std::uint16_t>(std::atoi(argv[2])));
     if (!ep) {
-        fmt::print(stderr, "{}:{}: {}\n", argv[1], argv[2],
-                   ep.error().message());
+        fmt::print(
+            stderr, "{}:{}: {}\n", argv[1], argv[2], ep.error().message());
         co_return 1;
     }
 
@@ -82,8 +85,8 @@ auto co_main(int argc, char **argv) -> sk::task<int> {
     for (;;) {
         auto client = co_await server->async_accept();
         if (!client) {
-            fmt::print(stderr, "async_accept(): {}\n",
-                       client.error().message());
+            fmt::print(
+                stderr, "async_accept(): {}\n", client.error().message());
             co_return 1;
         }
 

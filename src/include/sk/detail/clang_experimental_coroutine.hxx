@@ -107,9 +107,9 @@ namespace std::experimental { // NOLINT
 
         void resume()
         {
-            sk::detail::check(__is_suspended(),
+            SK_CHECK(__is_suspended(),
                      "resume() can only be called on suspended coroutines");
-            sk::detail::check(
+            SK_CHECK(
                 !done(),
                 "resume() has undefined behavior when the coroutine is done");
             __builtin_coro_resume(__handle_);
@@ -117,14 +117,14 @@ namespace std::experimental { // NOLINT
 
         void destroy()
         {
-            sk::detail::check(__is_suspended(),
+            SK_CHECK(__is_suspended(),
                      "destroy() can only be called on suspended coroutines");
             __builtin_coro_destroy(__handle_);
         }
 
         [[nodiscard]] auto done() const -> bool
         {
-            sk::detail::check(__is_suspended(),
+            SK_CHECK(__is_suspended(),
                      "done() can only be called on suspended coroutines");
             return __builtin_coro_done(__handle_);
         }

@@ -143,7 +143,7 @@ namespace sk::posix::detail {
         {
             coro_handle = coro_handle_;
             task_executor = coro_handle_.promise().task_executor;
-            sk::detail::check(task_executor != nullptr,
+            SK_CHECK(task_executor != nullptr,
                               "suspending a task with no executor");
 
             std::lock_guard lock(mutex);
@@ -257,7 +257,8 @@ namespace sk::posix::detail {
             // Process any pending CQEs.
 
             auto r = io_uring_wait_cqe(&ring, &cqe);
-            assert(r == 0);
+            SK_CHECK(r == 0, "io_uring_wait_cqe failed");
+            std::ignore = r;
 
             do {
                 // user_data == null means a shutdown request.

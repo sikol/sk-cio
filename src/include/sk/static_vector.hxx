@@ -65,7 +65,7 @@ namespace sk {
         public:
             static_vector_storage(std::initializer_list<T> items)
             {
-                sk::detail::check(items.size() <= max_size,
+                SK_CHECK(items.size() <= max_size,
                                   "static_range: too many items");
 
                 for (auto &&item : items)
@@ -156,7 +156,7 @@ namespace sk {
             static_vector_storage(std::initializer_list<T> items)
                 : _size(items.size())
             {
-                sk::detail::check(items.size() <= max_size,
+                SK_CHECK(items.size() <= max_size,
                                   "static_range: too many items");
 
                 std::copy(items.begin(), items.end(), _data); // NOLINT
@@ -293,7 +293,7 @@ namespace sk {
 
         auto push_back(T const &o) -> void
         {
-            sk::detail::check(size() < capacity(), "static_range: no capacity");
+            SK_CHECK(size() < capacity(), "static_range: no capacity");
 
             new (&this->_data[this->_size]) T(o); // NOLINT
             ++this->_size;
@@ -301,7 +301,7 @@ namespace sk {
 
         auto push_back(T &&o) -> void
         {
-            sk::detail::check(size() < capacity(), "static_range: no capacity");
+            SK_CHECK(size() < capacity(), "static_range: no capacity");
 
             new (&this->_data[this->_size]) T(std::move(o)); // NOLINT
             ++this->_size;
@@ -310,7 +310,7 @@ namespace sk {
         template <typename... Args>
         auto emplace_back(Args &&...args)
         {
-            sk::detail::check(size() < capacity(), "static_range: no capacity");
+            SK_CHECK(size() < capacity(), "static_range: no capacity");
 
             new (&this->_data[this->_size])     // NOLINT
                 T(std::forward<Args>(args)...); // NOLINT

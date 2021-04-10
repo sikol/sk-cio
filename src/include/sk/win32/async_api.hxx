@@ -77,8 +77,8 @@ namespace sk::win32 {
             std::lock_guard lock(overlapped->mutex);
             overlapped->coro_handle = coro_handle_;
 
-            sk::detail::check(coro_handle_.promise().task_executor != nullptr,
-                              "co_overlapped_awaiter: no executor");
+            SK_CHECK(coro_handle_.promise().task_executor != nullptr,
+                     "co_overlapped_awaiter: no executor");
 
             overlapped->executor = coro_handle_.promise().task_executor;
 
@@ -145,7 +145,8 @@ namespace sk::win32 {
 
                 if (auto ret = reactor->associate_handle(handle); !ret) {
                     if (::CloseHandle(handle) == FALSE)
-                        sk::detail::unexpected("AsyncCreateFileW: failed to close handle");
+                        sk::detail::unexpected(
+                            "AsyncCreateFileW: failed to close handle");
 
                     return make_unexpected(sk::error::reactor_associate_failed);
                 }
@@ -179,17 +180,18 @@ namespace sk::win32 {
                                             dwFlagsAndAttributes,
                                             hTemplateFile);
 
-              if (handle == SK_INVALID_HANDLE_VALUE)
-                  return make_unexpected(win32::get_last_error());
+                if (handle == SK_INVALID_HANDLE_VALUE)
+                    return make_unexpected(win32::get_last_error());
 
-              if (auto ret = reactor->associate_handle(handle); !ret) {
-                  if (::CloseHandle(handle) == FALSE)
-                      sk::detail::unexpected("AsyncCreateFileA: failed to close handle");
+                if (auto ret = reactor->associate_handle(handle); !ret) {
+                    if (::CloseHandle(handle) == FALSE)
+                        sk::detail::unexpected(
+                            "AsyncCreateFileA: failed to close handle");
 
-                  return make_unexpected(sk::error::reactor_associate_failed);
-              }
+                    return make_unexpected(sk::error::reactor_associate_failed);
+                }
 
-              return handle;
+                return handle;
             });
     }
 

@@ -119,7 +119,7 @@ namespace sk::posix {
         // NOLINTNEXTLINE(readability-make-member-function-const)
         [[nodiscard]] auto value() const -> int
         {
-            detail::check(_fd != invalid_fd,
+            SK_CHECK(_fd != invalid_fd,
                           "attempt to access invalid handle");
             return _fd;
         }

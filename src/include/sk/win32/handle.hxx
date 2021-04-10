@@ -59,20 +59,20 @@ namespace sk::win32 {
         unique_handle() noexcept
             : _is_valid(false), _native_handle(SK_INVALID_HANDLE_VALUE)
         {
-            sk::detail::check(_is_valid || _native_handle == SK_INVALID_HANDLE_VALUE,
-                              "unique_handle: bad state");
+            SK_CHECK(_is_valid || _native_handle == SK_INVALID_HANDLE_VALUE,
+                     "unique_handle: bad state");
         }
 
         // Create a unique_handle from a native handle.
         explicit unique_handle(HANDLE handle_value_) noexcept
             : _is_valid(true), _native_handle(handle_value_)
         {
-            sk::detail::check(handle_value_ != nullptr &&
-                                  handle_value_ != SK_INVALID_HANDLE_VALUE,
-                              "unique_handle: creating invalid handle");
+            SK_CHECK(handle_value_ != nullptr &&
+                         handle_value_ != SK_INVALID_HANDLE_VALUE,
+                     "unique_handle: creating invalid handle");
 
-            sk::detail::check(_is_valid || _native_handle == SK_INVALID_HANDLE_VALUE,
-                              "unique_handle: bad state");
+            SK_CHECK(_is_valid || _native_handle == SK_INVALID_HANDLE_VALUE,
+                     "unique_handle: bad state");
         }
 
         // Move construction.
@@ -81,14 +81,14 @@ namespace sk::win32 {
               _native_handle(
                   std::exchange(other._native_handle, SK_INVALID_HANDLE_VALUE))
         {
-            sk::detail::check(_is_valid || _native_handle == SK_INVALID_HANDLE_VALUE,
-                              "unique_handle: bad state");
+            SK_CHECK(_is_valid || _native_handle == SK_INVALID_HANDLE_VALUE,
+                     "unique_handle: bad state");
         }
 
         auto operator=(unique_handle &&other) noexcept -> unique_handle &
         {
-            sk::detail::check(_is_valid || _native_handle == SK_INVALID_HANDLE_VALUE,
-                              "unique_handle: bad state");
+            SK_CHECK(_is_valid || _native_handle == SK_INVALID_HANDLE_VALUE,
+                     "unique_handle: bad state");
             if (this != &other) {
                 _is_valid = std::exchange(other._is_valid, false);
                 _native_handle = std::exchange(other._native_handle,
@@ -101,8 +101,8 @@ namespace sk::win32 {
         // Destructor.
         ~unique_handle()
         {
-            sk::detail::check(_is_valid || _native_handle == SK_INVALID_HANDLE_VALUE,
-                              "unique_handle: bad state");
+            SK_CHECK(_is_valid || _native_handle == SK_INVALID_HANDLE_VALUE,
+                     "unique_handle: bad state");
             // XXX - should decide what to do here if the close fails.
             // Destructing an open socket is a bad idea and should probably
             // abort, but we would like to be exception-safe if possible.
@@ -117,8 +117,8 @@ namespace sk::win32 {
         // Close the handle.
         [[nodiscard]] auto close() noexcept -> expected<void, std::error_code>
         {
-            sk::detail::check(_is_valid || _native_handle == SK_INVALID_HANDLE_VALUE,
-                              "unique_handle: bad state");
+            SK_CHECK(_is_valid || _native_handle == SK_INVALID_HANDLE_VALUE,
+                     "unique_handle: bad state");
             if (!_is_valid)
                 return {};
 
@@ -134,17 +134,17 @@ namespace sk::win32 {
         // Test if we have a valid handle.
         [[nodiscard]] operator bool() const noexcept
         {
-            sk::detail::check(_is_valid || _native_handle == SK_INVALID_HANDLE_VALUE,
-                              "unique_handle: bad state");
+            SK_CHECK(_is_valid || _native_handle == SK_INVALID_HANDLE_VALUE,
+                     "unique_handle: bad state");
             return _is_valid;
         }
 
         // Return the Win32 handle.
         [[nodiscard]] auto native_handle() -> HANDLE
         {
-            sk::detail::check(_is_valid || _native_handle == SK_INVALID_HANDLE_VALUE,
-                              "unique_handle: bad state");
-            sk::detail::check(_is_valid, "attempt to access invalid handle");
+            SK_CHECK(_is_valid || _native_handle == SK_INVALID_HANDLE_VALUE,
+                     "unique_handle: bad state");
+            SK_CHECK(_is_valid, "attempt to access invalid handle");
             return _native_handle;
         }
 
@@ -216,7 +216,7 @@ namespace sk::win32 {
         // Return the socket.
         [[nodiscard]] auto native_socket() const -> SOCKET
         {
-            sk::detail::check(*this, "attempt to access invalid socket");
+            SK_CHECK(*this, "attempt to access invalid socket");
             return _native_socket;
         }
 

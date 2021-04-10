@@ -33,12 +33,13 @@
 
 namespace sk::detail {
 
-    inline auto unexpected(char const *what) noexcept -> void {
+    inline auto unexpected(char const *what) noexcept -> void
+    {
         std::cerr << "sk-cio: fatal internal error: " << what << std::endl;
         std::abort();
     }
 
-}
+} // namespace sk::detail
 
 /*************************************************************************
  * SK_CHECK: conditional assert for debug builds.
@@ -46,24 +47,17 @@ namespace sk::detail {
 
 #ifndef NDEBUG
 
-namespace sk::detail {
-    inline constexpr void check(bool cond, char const *msg) noexcept
-    {
-        if (!cond) {
-            std::cerr << msg;
-            std::abort();
-        }
-    }
-
-} // namespace sk::detail
+#    define SK_CHECK(cond, msg)                                                \
+        do {                                                                   \
+            if (!(cond)) {                                                     \
+                std::cerr << "sk-cio invariant failure: " << (msg) << '\n';    \
+                std::abort();                                                  \
+            }                                                                  \
+        } while (0)
 
 #else
 
-namespace sk::detail {
-
-    inline consteval void check(bool, char const *) noexcept {}
-
-} // namespace sk::detail
+#    define SK_CHECK(cond, msg) ((void)0);
 
 #endif
 

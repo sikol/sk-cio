@@ -91,8 +91,8 @@ namespace sk {
     template <typename Char>
     constexpr auto extent_size_from_bytes(int nbytes)
     {
-        return ((nbytes - (sizeof(char *) * 3))/ sizeof(Char))
-            + sizeof(char *) * 3;
+        return ((nbytes - (sizeof(char *) * 3)) / sizeof(Char)) +
+               sizeof(char *) * 3;
     }
 
     // Return the correct extent_bytes to create a dynamic_buffer with an
@@ -177,7 +177,7 @@ namespace sk {
             }
         };
 
-        //static_assert(sizeof(extent_type) <= extent_bytes);
+        // static_assert(sizeof(extent_type) <= extent_bytes);
 
         // Head and tail of the extent list.  The tail is not the actual tail
         // of the list, but rather the extent we're currently writing to.
@@ -254,13 +254,13 @@ namespace sk {
     auto dynamic_buffer<Char, extent_size, max_ranges>::_kill_head() noexcept
         -> void
     {
-        sk::detail::check(_head->dead(),
-                          "INTERNAL ERROR: dynamic_buffer::_kill_head() trying "
-                          "to remove active head");
+        SK_CHECK(_head->dead(),
+                 "INTERNAL ERROR: dynamic_buffer::_kill_head() trying "
+                 "to remove active head");
 
-        sk::detail::check(_head != _tail,
-                          "INTERNAL ERROR: dynamic_buffer::_kill_head() trying "
-                          "to remove our only head");
+        SK_CHECK(_head != _tail,
+                 "INTERNAL ERROR: dynamic_buffer::_kill_head() trying "
+                 "to remove our only head");
 
         auto old_head = std::exchange(_head, _head->next);
         old_head->next = std::exchange(_tail->next, old_head);
@@ -272,9 +272,9 @@ namespace sk {
     auto dynamic_buffer<Char, extent_size, max_ranges>::_make_tail() -> void
     {
         if (_tail->next) {
-            sk::detail::check(_tail->next->empty(),
-                              "INTERNAL ERROR: dynamic_buffer::_make_tail: "
-                              "next tail not empty");
+            SK_CHECK(_tail->next->empty(),
+                     "INTERNAL ERROR: dynamic_buffer::_make_tail: "
+                     "next tail not empty");
             _tail = _tail->next;
             return;
         }
@@ -306,7 +306,7 @@ namespace sk {
             return;
 
         if (_tail->next) {
-            sk::detail::check(
+            SK_CHECK(
                 _tail->next->empty(),
                 "INTERNAL ERROR: dynamic_buffer::_ensure_minfree: next tail "
                 "not empty");
@@ -323,8 +323,7 @@ namespace sk {
         auto *cptr = dptr;
         auto *cend = cptr + dsize;
 
-        sk::detail::check(cptr <= cend,
-                          "dynamic_buffer::write: dsize overflow");
+        SK_CHECK(cptr <= cend, "dynamic_buffer::write: dsize overflow");
 
         while (cptr < cend) {
             // Is the tail full?
@@ -335,18 +334,17 @@ namespace sk {
             auto wr = std::min(static_cast<size_type>(cend - cptr),
                                _tail->writable());
 
-            sk::detail::check(
-                (_tail->write_pointer + wr) <= _tail->end() &&
-                    (cptr + wr) <= cend,
-                "INTERNAL ERROR: dynamic_buffer: write: overflow");
+            SK_CHECK((_tail->write_pointer + wr) <= _tail->end() &&
+                         (cptr + wr) <= cend,
+                     "INTERNAL ERROR: dynamic_buffer: write: overflow");
 
             _tail->write_pointer =
                 std::copy(cptr, cptr + wr, _tail->write_pointer);
             cptr += wr;
         }
 
-        sk::detail::check(static_cast<std::size_t>(cptr - dptr) == dsize,
-                          "dynamic_buffer::write(): short write");
+        SK_CHECK(static_cast<std::size_t>(cptr - dptr) == dsize,
+                 "dynamic_buffer::write(): short write");
         return dsize;
     }
 
@@ -358,10 +356,10 @@ namespace sk {
         auto *cptr = dptr;
         auto *cend = cptr + dsize;
 
-        sk::detail::check(cptr <= cend, "dynamic_buffer::read: dsize overflow");
+        SK_CHECK(cptr <= cend, "dynamic_buffer::read: dsize overflow");
 
         while (cptr < cend) {
-            sk::detail::check(
+            SK_CHECK(
                 !_head->dead(),
                 "INTERNAL ERROR: dynamic_buffer::read: unexpected dead head");
 
@@ -372,10 +370,9 @@ namespace sk {
             auto rd = std::min(static_cast<size_type>(cend - cptr),
                                _head->readable());
 
-            sk::detail::check((_head->read_pointer + rd) <=
-                                      _head->write_pointer &&
-                                  (cptr + rd) <= cend,
-                              "INTERNAL ERROR: dynamic_buffer: read: overflow");
+            SK_CHECK((_head->read_pointer + rd) <= _head->write_pointer &&
+                         (cptr + rd) <= cend,
+                     "INTERNAL ERROR: dynamic_buffer: read: overflow");
 
             std::copy(_head->read_pointer, _head->read_pointer + rd, cptr);
             cptr += rd;
@@ -403,9 +400,8 @@ namespace sk {
 
         auto *tptr = _tail;
 
-        sk::detail::check(
-            _tail != nullptr,
-            "INTERNAL ERROR: dynamic_buffer::writable_ranges: no tail?");
+        SK_CHECK(_tail != nullptr,
+                 "INTERNAL ERROR: dynamic_buffer::writable_ranges: no tail?");
 
         for (;;) {
             if (ret.size() == ret.capacity())
@@ -414,7 +410,7 @@ namespace sk {
             if (!tptr)
                 break;
 
-            sk::detail::check(
+            SK_CHECK(
                 tptr->writable() > 0,
                 "INTERNAL ERROR: dynamic_buffer::writable_ranges: unexpected "
                 "full tail");
@@ -435,8 +431,8 @@ namespace sk {
 
         while (cn > 0) {
             if (_tail->writable() == 0) {
-                sk::detail::check(_tail->next != nullptr,
-                                  "dynamic_buffer::commit(): no tail");
+                SK_CHECK(_tail->next != nullptr,
+                         "dynamic_buffer::commit(): no tail");
                 _tail = _tail->next;
             }
 
@@ -445,7 +441,7 @@ namespace sk {
             cn -= cancommit;
         }
 
-        sk::detail::check(cn == 0, "dynamic_buffer::commit(): short commit");
+        SK_CHECK(cn == 0, "dynamic_buffer::commit(): short commit");
         return n - cn;
     }
 
@@ -457,7 +453,7 @@ namespace sk {
 
         auto *hptr = _head;
         while (ret.size() < ret.capacity()) {
-            sk::detail::check(
+            SK_CHECK(
                 _head->readable() > 0,
                 "INTERNAL ERROR: dynamic_buffer::readable_ranges: unreadable "
                 "head");
@@ -478,7 +474,7 @@ namespace sk {
         auto left = n;
 
         while (left) {
-            sk::detail::check(
+            SK_CHECK(
                 _head->readable() > 0,
                 "INTERNAL ERROR: dynamic_buffer::discard: unreadable head");
 

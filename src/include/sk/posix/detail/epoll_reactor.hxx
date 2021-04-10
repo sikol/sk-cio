@@ -243,7 +243,7 @@ namespace sk::posix::detail {
     {
         std::lock_guard lock(_state_mtx);
 
-        sk::detail::check(fd >= 0, "attempt to associate a negative fd");
+        SK_CHECK(fd >= 0, "attempt to associate a negative fd");
 
         try {
             if (_state.size() < static_cast<std::size_t>(fd + 1))
@@ -271,11 +271,11 @@ namespace sk::posix::detail {
     {
         std::lock_guard lock(_state_mtx);
 
-        sk::detail::check(fd >= 0, "attempt to deassociate a negative fd");
+        SK_CHECK(fd >= 0, "attempt to deassociate a negative fd");
 
         int r = epoll_ctl(*epoll_fd, EPOLL_CTL_DEL, fd, nullptr);
-        sk::detail::check(
-            r == 0, "epoll_reactor::deassociate_fd: EPOLL_CTL_DEL failed");
+        SK_CHECK(r == 0, "epoll_reactor::deassociate_fd: EPOLL_CTL_DEL failed");
+        std::ignore = r; // might want to abort() here instead
         _state[fd].reset();
     }
 
@@ -284,7 +284,7 @@ namespace sk::posix::detail {
     {
         std::lock_guard lock(_state_mtx);
 
-        sk::detail::check(fd >= 0, "attempt to register a negative fd");
+        SK_CHECK(fd >= 0, "attempt to register a negative fd");
         assert(_state.size() > static_cast<std::size_t>(fd));
 
         auto &state = _state[fd];
@@ -295,9 +295,9 @@ namespace sk::posix::detail {
         state->read_waiter = cstate;
         state->event.events |= EPOLLIN;
         int r = epoll_ctl(*epoll_fd, EPOLL_CTL_MOD, fd, &state->event);
-        sk::detail::check(
-            r == 0,
-            "epoll_reactor::register_read_interest: EPOLL_CTL_MOD failed");
+        SK_CHECK(r == 0,
+                 "epoll_reactor::register_read_interest: EPOLL_CTL_MOD failed");
+        std::ignore = r;
     }
 
     inline auto epoll_reactor::register_write_interest(
@@ -305,7 +305,7 @@ namespace sk::posix::detail {
     {
         std::lock_guard lock(_state_mtx);
 
-        sk::detail::check(fd >= 0, "attempt to register a negative fd");
+        SK_CHECK(fd >= 0, "attempt to register a negative fd");
 
         assert(_state.size() > static_cast<std::size_t>(fd));
 
@@ -317,9 +317,10 @@ namespace sk::posix::detail {
         state->write_waiter = cstate;
         state->event.events |= EPOLLIN;
         int r = epoll_ctl(*epoll_fd, EPOLL_CTL_MOD, fd, &state->event);
-        sk::detail::check(
+        SK_CHECK(
             r == 0,
             "epoll_reactor::register_write_interest: EPOLL_CTL_MOD failed");
+        std::ignore = r;
     }
 
     /*************************************************************************
@@ -342,6 +343,7 @@ namespace sk::posix::detail {
         {
         }
 
+        // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
         auto await_ready() -> bool
         {
             return false;
@@ -352,8 +354,8 @@ namespace sk::posix::detail {
         {
             std::lock_guard lock(cstate.mutex);
             cstate.task_executor = coro_handle_.promise().task_executor;
-            sk::detail::check(cstate.task_executor != nullptr,
-                              "attempt to suspend with no executor");
+            SK_CHECK(cstate.task_executor != nullptr,
+                     "attempt to suspend with no executor");
 
             cstate.coro_handle = coro_handle_;
             reactor.register_read_interest(fd, &cstate);
@@ -383,8 +385,8 @@ namespace sk::posix::detail {
         {
             std::lock_guard lock(cstate.mutex);
             cstate.task_executor = coro_handle_.promise().task_executor;
-            sk::detail::check(cstate.task_executor != nullptr,
-                              "attempt to suspend with no executor");
+            SK_CHECK(cstate.task_executor != nullptr,
+                     "attempt to suspend with no executor");
 
             cstate.coro_handle = coro_handle_;
             reactor.register_write_interest(fd, &cstate);

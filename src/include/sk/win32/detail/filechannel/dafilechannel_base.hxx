@@ -90,7 +90,7 @@ namespace sk::win32::detail {
                                                         io_size_t nobjs)
         -> task<expected<io_size_t, std::error_code>>
     {
-        sk::detail::check(is_open(), "attempt to read on a closed channel");
+        SK_CHECK(is_open(), "attempt to read on a closed channel");
 
         auto dwbytes = sk::detail::int_cast<DWORD>(nobjs);
 
@@ -114,7 +114,7 @@ namespace sk::win32::detail {
                                                   io_size_t nobjs)
         -> expected<io_size_t, std::error_code>
     {
-        sk::detail::check(is_open(), "attempt to read on a closed channel");
+        SK_CHECK(is_open(), "attempt to read on a closed channel");
 
         auto dwbytes = sk::detail::int_cast<DWORD>(nobjs);
 
@@ -165,7 +165,7 @@ namespace sk::win32::detail {
         -> task<expected<io_size_t, std::error_code>>
     {
 
-        sk::detail::check(is_open(), "attempt to write on a closed channel");
+        SK_CHECK(is_open(), "attempt to write on a closed channel");
 
         auto dwbytes = sk::detail::int_cast<DWORD>(nobjs);
         DWORD bytes_written = 0;
@@ -194,7 +194,7 @@ namespace sk::win32::detail {
         -> expected<io_size_t, std::error_code>
     {
 
-        sk::detail::check(is_open(), "attempt to write on a closed channel");
+        SK_CHECK(is_open(), "attempt to write on a closed channel");
 
         auto dwbytes = sk::detail::int_cast<DWORD>(nobjs);
 

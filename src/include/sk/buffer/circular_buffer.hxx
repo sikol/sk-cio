@@ -304,9 +304,9 @@ namespace sk {
             bytes_written += can_write;
             write_pointer +=
                 static_cast<typename array_type::difference_type>(can_write);
-            sk::detail::check(write_pointer < read_pointer,
-                              "INTERNAL ERROR: sk::circular_buffer::commit() "
-                              "pointer confusion");
+            SK_CHECK(write_pointer < read_pointer,
+                     "INTERNAL ERROR: sk::circular_buffer::commit() "
+                     "pointer confusion");
         }
 
         return bytes_written;
@@ -339,10 +339,9 @@ namespace sk {
             read_pointer += rd;
         }
 
-        sk::detail::check(
-            read_pointer < data.end(),
-            "INTERNAL ERROR: sk::circular_buffer::read() "
-            "pointer confusion");
+        SK_CHECK(read_pointer < data.end(),
+                 "INTERNAL ERROR: sk::circular_buffer::read() "
+                 "pointer confusion");
 
         return (cptr - dptr);
     }
@@ -402,10 +401,9 @@ namespace sk {
             theoretical_read_pointer += static_cast<ptrdiff_t>(can_read);
         }
 
-        sk::detail::check(
-            theoretical_read_pointer < data.end(),
-            "INTERNAL ERROR: sk::circular_buffer::readable_ranges() "
-            "pointer confusion");
+        SK_CHECK(theoretical_read_pointer < data.end(),
+                 "INTERNAL ERROR: sk::circular_buffer::readable_ranges() "
+                 "pointer confusion");
 
         return ret;
     }
@@ -456,10 +454,9 @@ namespace sk {
             bytes_read += can_read;
         }
 
-        sk::detail::check(
-            read_pointer < data.end(),
-            "INTERNAL ERROR: sk::circular_buffer::readable_ranges() "
-            "pointer confusion");
+        SK_CHECK(read_pointer < data.end(),
+                 "INTERNAL ERROR: sk::circular_buffer::readable_ranges() "
+                 "pointer confusion");
         return bytes_read;
     }
 

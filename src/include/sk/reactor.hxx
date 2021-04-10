@@ -113,7 +113,8 @@ namespace sk {
         return handle;
     }
 
-    inline shared_reactor_handle::shared_reactor_handle(shared_reactor_handle &&other) noexcept
+    inline shared_reactor_handle::shared_reactor_handle(
+        shared_reactor_handle &&other) noexcept
         : _valid(std::exchange(other._valid, false))
     {
     }
@@ -121,16 +122,14 @@ namespace sk {
     inline auto shared_reactor_handle::operator*() noexcept
         -> system_reactor_type &
     {
-        sk::detail::check(_valid,
-                          "attempt to dereference invalid reactor_handle");
+        SK_CHECK(_valid, "attempt to dereference invalid reactor_handle");
         return detail::get_global_reactor();
     }
 
     inline auto shared_reactor_handle::operator->() noexcept
         -> system_reactor_type *
     {
-        sk::detail::check(_valid,
-                          "attempt to dereference invalid reactor_handle");
+        SK_CHECK(_valid, "attempt to dereference invalid reactor_handle");
         return &detail::get_global_reactor();
     }
 
@@ -169,14 +168,16 @@ namespace sk {
     inline auto get_weak_reactor_handle() noexcept -> weak_reactor_handle
     {
         auto refs = ++detail::reactor_refs;
-        sk::detail::check(refs > 1, "get_weak_reactor_handle: no reactor");
+        SK_CHECK(refs > 1, "get_weak_reactor_handle: no reactor");
+        std::ignore = refs;
 
         weak_reactor_handle handle;
         handle._valid = true;
         return handle;
     }
 
-    inline weak_reactor_handle::weak_reactor_handle(weak_reactor_handle &&other) noexcept
+    inline weak_reactor_handle::weak_reactor_handle(
+        weak_reactor_handle &&other) noexcept
         : _valid(std::exchange(other._valid, false))
     {
     }
@@ -184,16 +185,14 @@ namespace sk {
     inline auto weak_reactor_handle::operator*() noexcept
         -> system_reactor_type &
     {
-        sk::detail::check(_valid,
-                          "attempt to dereference invalid reactor_handle");
+        SK_CHECK(_valid, "attempt to dereference invalid reactor_handle");
         return detail::get_global_reactor();
     }
 
     inline auto weak_reactor_handle::operator->() noexcept
         -> system_reactor_type *
     {
-        sk::detail::check(_valid,
-                          "attempt to dereference invalid reactor_handle");
+        SK_CHECK(_valid, "attempt to dereference invalid reactor_handle");
         return &detail::get_global_reactor();
     }
 
@@ -205,7 +204,8 @@ namespace sk {
         auto r = --detail::reactor_refs;
         // refs should never be 0 here since there must always be a
         // shared_reactor_handle holding a ref.
-        sk::detail::check(r > 0, "weak_reactor_handle: lifetime error");
+        SK_CHECK(r > 0, "weak_reactor_handle: lifetime error");
+        std::ignore = r;
     }
 
 } // namespace sk

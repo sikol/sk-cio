@@ -904,11 +904,6 @@ namespace sk {
 
         remove_node(it.get_node());
         return 1;
-
-#ifdef SK_PATRICIA_TRACE
-        check(root);
-#endif
-        return true;
     }
 
     /*************************************************************************

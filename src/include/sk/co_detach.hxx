@@ -107,7 +107,8 @@ namespace sk {
     }
 
     template <typename T>
-    [[nodiscard]] auto co_detach(task<T> &&task_, executor *xer = nullptr) -> task<void>
+    [[nodiscard]] auto co_detach(task<T> &&task_, executor *xer = nullptr)
+        -> task<void>
     {
         auto &promise = task_.coro_handle.promise();
         if (xer)
@@ -115,8 +116,8 @@ namespace sk {
         else
             promise.task_executor = co_await co_get_executor();
 
-        sk::detail::check(promise.task_executor != nullptr,
-                          "_internal_detach: no executor?");
+        SK_CHECK(promise.task_executor != nullptr,
+                 "_internal_detach: no executor?");
 
         auto detach_task = _internal_detach(std::move(task_));
         detach_task.start();

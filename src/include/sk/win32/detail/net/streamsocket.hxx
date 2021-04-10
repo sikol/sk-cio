@@ -155,8 +155,7 @@ namespace sk::win32::detail {
                                                       socklen_t addrlen)
         -> task<expected<void, std::error_code>>
     {
-
-        sk::detail::check(!is_open(), "attempt to re-connect an open channel");
+        SK_CHECK(!is_open(), "attempt to re-connect an open channel");
 
         auto sock = ::WSASocketW(
             af, SOCK_STREAM, protocol, nullptr, 0, WSA_FLAG_OVERLAPPED);
@@ -201,7 +200,7 @@ namespace sk::win32::detail {
                                                 socklen_t addrlen)
         -> expected<void, std::error_code>
     {
-        sk::detail::check(is_open(), "attempt to connect on a closed channel");
+        SK_CHECK(is_open(), "attempt to connect on a closed channel");
 
         auto sock = ::WSASocketW(
             af, SOCK_STREAM, protocol, nullptr, 0, WSA_FLAG_OVERLAPPED);
@@ -246,7 +245,7 @@ namespace sk::win32::detail {
                                                        io_size_t nobjs)
         -> task<expected<io_size_t, std::error_code>>
     {
-        sk::detail::check(is_open(), "attempt to read on a closed channel");
+        SK_CHECK(is_open(), "attempt to read on a closed channel");
 
         auto dwbytes = sk::detail::int_cast<DWORD>(nobjs);
 
@@ -278,7 +277,7 @@ namespace sk::win32::detail {
                                                  io_size_t nobjs)
         -> expected<io_size_t, std::error_code>
     {
-        sk::detail::check(is_open(), "attempt to read on a closed channel");
+        SK_CHECK(is_open(), "attempt to read on a closed channel");
 
         DWORD bytes_read = 0;
         auto dwbytes = sk::detail::int_cast<DWORD>(nobjs);
@@ -335,7 +334,7 @@ namespace sk::win32::detail {
                                                         io_size_t nobjs)
         -> task<expected<io_size_t, std::error_code>>
     {
-        sk::detail::check(is_open(), "attempt to write on a closed channel");
+        SK_CHECK(is_open(), "attempt to write on a closed channel");
 
         DWORD bytes_written = 0;
         auto dwbytes = sk::detail::int_cast<DWORD>(nobjs);
@@ -363,7 +362,7 @@ namespace sk::win32::detail {
                                                   io_size_t nobjs)
         -> expected<io_size_t, std::error_code>
     {
-        sk::detail::check(is_open(), "attempt to write on a closed channel");
+        SK_CHECK(is_open(), "attempt to write on a closed channel");
 
         auto dwbytes = sk::detail::int_cast<DWORD>(nobjs);
 

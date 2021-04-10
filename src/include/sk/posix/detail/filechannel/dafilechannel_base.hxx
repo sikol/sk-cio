@@ -62,8 +62,10 @@ namespace sk::posix::detail {
 
         dafilechannel_base(dafilechannel_base const &) = delete;
         dafilechannel_base(dafilechannel_base &&) noexcept = default;
-        auto operator=(dafilechannel_base const &) -> dafilechannel_base & = delete;
-        auto operator=(dafilechannel_base &&) noexcept -> dafilechannel_base & = default;
+        auto operator=(dafilechannel_base const &)
+            -> dafilechannel_base & = delete;
+        auto operator=(dafilechannel_base &&) noexcept
+            -> dafilechannel_base & = default;
 
     protected:
         /*
@@ -101,7 +103,7 @@ namespace sk::posix::detail {
                                                         io_size_t nobjs)
         -> task<expected<io_size_t, std::error_code>>
     {
-        sk::detail::check(is_open(), "attempt to read on a closed channel");
+        SK_CHECK(is_open(), "attempt to read on a closed channel");
 
         auto ret = co_await async_fd_pread(*_fd, buffer, nobjs, loc);
 
@@ -123,7 +125,7 @@ namespace sk::posix::detail {
                                                   io_size_t nobjs)
         -> expected<io_size_t, std::error_code>
     {
-        sk::detail::check(is_open(), "attempt to read on a closed channel");
+        SK_CHECK(is_open(), "attempt to read on a closed channel");
 
         auto ret = ::pread(*_fd, buffer, nobjs, loc);
 
@@ -144,7 +146,7 @@ namespace sk::posix::detail {
         io_offset_t loc, std::byte const *buffer, io_size_t nobjs)
         -> task<expected<io_size_t, std::error_code>>
     {
-        sk::detail::check(is_open(), "attempt to read on a closed channel");
+        SK_CHECK(is_open(), "attempt to read on a closed channel");
 
         auto ret = co_await async_fd_pwrite(*_fd, buffer, nobjs, loc);
 
@@ -163,7 +165,7 @@ namespace sk::posix::detail {
                                                    io_size_t nobjs)
         -> expected<io_size_t, std::error_code>
     {
-        sk::detail::check(is_open(), "attempt to read on a closed channel");
+        SK_CHECK(is_open(), "attempt to read on a closed channel");
 
         auto ret = ::pwrite(*_fd, buffer, nobjs, loc);
 
