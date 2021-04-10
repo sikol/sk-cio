@@ -413,8 +413,8 @@ TEST_CASE("scheme-only uri", "[uri]")
 
 auto make_uri_copy() -> sk::net::uri {
     auto uri = parse_uri("http://localhost/some/path");
-    auto uri2(uri);
-    return *uri2;
+    sk::net::uri uri2(*uri);
+    return uri2;
 }
 
 TEST_CASE("uri is copyable", "[uri]") {
