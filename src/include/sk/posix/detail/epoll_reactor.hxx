@@ -229,10 +229,13 @@ namespace sk::posix::detail {
 
     inline auto epoll_reactor::stop() noexcept -> void
     {
-        ::write(_shutdown_pipe[1], "", 1);
+        if (epoll_fd) {
+            auto ret = ::write(_shutdown_pipe[1], "", 1);
+            SK_CHECK(ret == 1, "epoll_reactor::stop: shutdown write failed");
+            std::ignore = ret;
 
-        if (epoll_fd)
             epoll_fd.close();
+        }
 
         if (_epoll_thread.joinable())
             _epoll_thread.join();
@@ -375,6 +378,7 @@ namespace sk::posix::detail {
         {
         }
 
+        // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
         bool await_ready()
         {
             return false;
