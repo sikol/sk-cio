@@ -42,14 +42,14 @@ jobs:
             BUILD_TYPE: Release
             CC: cl
             CXX: cl
-            CXXFLAGS: "/O2 /MD /RTC1 /EHsc /W4 /WX"
+            CXXFLAGS: "/O2 /MD /EHsc /W4 /WX"
 
           - name: x64-windows-clang-release
             os: windows-latest
             BUILD_TYPE: Release
             CC: clang-cl
             CXX: clang-cl
-            CXXFLAGS: "-m64 /O2 /MD /RTC1 /EHsc /W4 /WX"
+            CXXFLAGS: "-m64 /O2 /MD /EHsc /W4 /WX"
 
     steps:
       - uses: actions/checkout@v2
