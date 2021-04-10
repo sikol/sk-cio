@@ -66,6 +66,7 @@ jobs:
           call "%VCVARS_PATH%"
           cmake -G Ninja                            ^
               -DCMAKE_BUILD_TYPE=%BUILD_TYPE%       ^
+              %CMAKE_FLAGS                          ^
               ..
         if: ${{ matrix.os == 'windows-latest' }}
 
@@ -74,6 +75,7 @@ jobs:
         run: |
           cmake                                 \
               -DCMAKE_BUILD_TYPE=$BUILD_TYPE    \
+              $CMAKE_FLAGS                      \
               ..
         if: ${{ matrix.os != 'windows-latest' }}
 
