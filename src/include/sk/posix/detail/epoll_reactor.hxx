@@ -106,39 +106,39 @@ namespace sk::posix::detail {
 
         // POSIX async API
         [[nodiscard]] auto
-        async_fd_open(char const *path, int flags, int mode = 0777)
+        async_fd_open(char const *path, int flags, int mode = 0777) noexcept
             -> task<expected<int, std::error_code>>;
 
-        [[nodiscard]] auto async_fd_close(int fd)
+        [[nodiscard]] auto async_fd_close(int fd) noexcept
             -> task<expected<int, std::error_code>>;
 
-        [[nodiscard]] auto async_fd_read(int fd, void *buf, std::size_t n)
+        [[nodiscard]] auto async_fd_read(int fd, void *buf, std::size_t n) noexcept
             -> task<expected<ssize_t, std::error_code>>;
 
         [[nodiscard]] auto
-        async_fd_pread(int fd, void *buf, std::size_t n, off_t offs)
+        async_fd_pread(int fd, void *buf, std::size_t n, off_t offs) noexcept
             -> task<expected<ssize_t, std::error_code>>;
 
         [[nodiscard]] auto
-        async_fd_recv(int fd, void *buf, std::size_t n, int flags)
+        async_fd_recv(int fd, void *buf, std::size_t n, int flags) noexcept
             -> task<expected<ssize_t, std::error_code>>;
 
         [[nodiscard]] auto
-        async_fd_send(int fd, void const *buf, std::size_t n, int flags)
+        async_fd_send(int fd, void const *buf, std::size_t n, int flags) noexcept
             -> task<expected<ssize_t, std::error_code>>;
 
         [[nodiscard]] auto
-        async_fd_write(int fd, void const *buf, std::size_t n)
+        async_fd_write(int fd, void const *buf, std::size_t n) noexcept
             -> task<expected<ssize_t, std::error_code>>;
 
         [[nodiscard]] auto
-        async_fd_pwrite(int fd, void const *buf, std::size_t n, off_t offs)
+        async_fd_pwrite(int fd, void const *buf, std::size_t n, off_t offs) noexcept
             -> task<expected<ssize_t, std::error_code>>;
 
-        [[nodiscard]] auto async_fd_connect(int, sockaddr const *, socklen_t)
+        [[nodiscard]] auto async_fd_connect(int, sockaddr const *, socklen_t) noexcept
             -> task<expected<void, std::error_code>>;
 
-        [[nodiscard]] auto async_fd_accept(int, sockaddr *addr, socklen_t *)
+        [[nodiscard]] auto async_fd_accept(int, sockaddr *addr, socklen_t *) noexcept
             -> task<expected<int, std::error_code>>;
 
     private:
@@ -401,7 +401,7 @@ namespace sk::posix::detail {
     };
 
     inline auto
-    epoll_reactor::async_fd_recv(int fd, void *buf, std::size_t n, int flags)
+    epoll_reactor::async_fd_recv(int fd, void *buf, std::size_t n, int flags) noexcept
         -> task<expected<ssize_t, std::error_code>>
     {
         do {
@@ -419,7 +419,7 @@ namespace sk::posix::detail {
     inline auto epoll_reactor::async_fd_send(int fd,
                                              void const *buf,
                                              std::size_t n,
-                                             int flags)
+                                             int flags) noexcept
         -> task<expected<ssize_t, std::error_code>>
     {
         do {
@@ -436,7 +436,7 @@ namespace sk::posix::detail {
 
     inline auto epoll_reactor::async_fd_connect(int fd,
                                                 sockaddr const *addr,
-                                                socklen_t addrlen)
+                                                socklen_t addrlen) noexcept
         -> task<expected<void, std::error_code>>
     {
         auto ret = ::connect(fd, addr, addrlen);
@@ -452,7 +452,7 @@ namespace sk::posix::detail {
     }
 
     inline auto
-    epoll_reactor::async_fd_accept(int fd, sockaddr *addr, socklen_t *addrlen)
+    epoll_reactor::async_fd_accept(int fd, sockaddr *addr, socklen_t *addrlen) noexcept
         -> task<expected<int, std::error_code>>
     {
         do {
@@ -473,7 +473,7 @@ namespace sk::posix::detail {
      * better file I/O mechanism (e.g, io_uring) is available.
      */
     inline auto
-    epoll_reactor::async_fd_open(char const *path, int flags, int mode)
+    epoll_reactor::async_fd_open(char const *path, int flags, int mode) noexcept
         -> task<expected<int, std::error_code>>
     {
         int fd = co_await async_invoke([&]() -> int {
@@ -488,7 +488,7 @@ namespace sk::posix::detail {
             co_return fd;
     }
 
-    inline auto epoll_reactor::async_fd_close(int fd)
+    inline auto epoll_reactor::async_fd_close(int fd) noexcept
         -> task<expected<int, std::error_code>>
     {
         auto ret = co_await async_invoke([&]() -> int {
@@ -503,7 +503,7 @@ namespace sk::posix::detail {
             co_return fd;
     }
 
-    inline auto epoll_reactor::async_fd_read(int fd, void *buf, std::size_t n)
+    inline auto epoll_reactor::async_fd_read(int fd, void *buf, std::size_t n) noexcept
         -> task<expected<ssize_t, std::error_code>>
     {
         ssize_t ret = co_await async_invoke([&]() -> ssize_t {
@@ -519,7 +519,7 @@ namespace sk::posix::detail {
     }
 
     inline auto
-    epoll_reactor::async_fd_pread(int fd, void *buf, std::size_t n, off_t offs)
+    epoll_reactor::async_fd_pread(int fd, void *buf, std::size_t n, off_t offs) noexcept
         -> task<expected<ssize_t, std::error_code>>
     {
         ssize_t ret = co_await async_invoke([&]() -> ssize_t {
@@ -535,7 +535,7 @@ namespace sk::posix::detail {
     }
 
     inline auto
-    epoll_reactor::async_fd_write(int fd, void const *buf, std::size_t n)
+    epoll_reactor::async_fd_write(int fd, void const *buf, std::size_t n) noexcept
         -> task<expected<ssize_t, std::error_code>>
     {
         ssize_t ret = co_await async_invoke([&]() -> ssize_t {
@@ -553,7 +553,7 @@ namespace sk::posix::detail {
     inline auto epoll_reactor::async_fd_pwrite(int fd,
                                                void const *buf,
                                                std::size_t n,
-                                               off_t offs)
+                                               off_t offs) noexcept
         -> task<expected<ssize_t, std::error_code>>
     {
         ssize_t ret = co_await async_invoke([&]() -> ssize_t {

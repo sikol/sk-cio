@@ -14,6 +14,7 @@ jobs:
       CC: ${{ matrix.CC }}
       CXX: ${{ matrix.CXX }}
       CMAKE_CXXFLAGS: ${{ matrix.CMAKE_CXXFLAGS }}
+      CMAKE_CXXFLAGS_RELEASE: ${{ matrix.CMAKE_CXXFLAGS_RELEASE }}
       CMAKE_FLAGS: ${{ matrix.CMAKE_FLAGS }}
 
     strategy:
@@ -24,7 +25,12 @@ jobs:
             BUILD_TYPE: Release
             CC: gcc-10
             CXX: g++-10
-            CMAKE_CXXFLAGS: "-O2 -DNDEBUG -fcoroutines -W -Wall -Wextra -Werror"
+            # -Wno-unused-value is here because GCC 10.2 generates these warnings
+            # at the end of some coroutines for code that seems to be correct.
+            # It may be indicating an actual problem but since it doesn't show the
+            # correct source location, it's hard to do anything about it.
+            CMAKE_CXXFLAGS: "-fcoroutines -W -Wall -Wextra -Werror -Wno-unused-value"
+            CMAKE_CXXFLAGS_RELEASE: "-O2 -DNDEBUG"
             CMAKE_FLAGS: >
               -DSK_CIO_DISABLE_IO_URING=ON
 
@@ -33,7 +39,8 @@ jobs:
             BUILD_TYPE: Release
             CC: clang-11
             CXX: clang++-11
-            CMAKE_CXXFLAGS: "-O2 -DNDEBUG -fcoroutines-ts -W -Wall -Wextra -Werror"
+            CMAKE_CXXFLAGS: "-fcoroutines-ts -W -Wall -Wextra -Werror"
+            CMAKE_CXXFLAGS_RELEASE: "-O2 -DNDEBUG"
             CMAKE_FLAGS: >
               -DSK_CIO_DISABLE_IO_URING=ON
 
@@ -42,14 +49,16 @@ jobs:
             BUILD_TYPE: Release
             CC: cl
             CXX: cl
-            CMAKE_CXXFLAGS: "/O2 /Ob2 /MD /GR /EHsc /W4 /WX /DNDEBUG"
+            CMAKE_CXXFLAGS: "/MD /GR /EHsc /W4 /WX /DNDEBUG"
+            CMAKE_CXXFLAGS_RELEASE: "/O2 /Ob2 /DNDEBUG"
 
           - name: x64-windows-clang-release
             os: windows-latest
             BUILD_TYPE: Release
             CC: clang-cl
             CXX: clang-cl
-            CMAKE_CXXFLAGS: "-m64 /O2 /Ob2 /MD /GR /EHsc /W4 /WX /DNDEBUG"
+            CMAKE_CXXFLAGS: "-m64 /MD /GR /EHsc /W4 /WX"
+            CMAKE_CXXFLAGS_RELEASE: "/O2 /Ob2 /DNDEBUG"
 
     steps:
       - uses: actions/checkout@v2
@@ -64,20 +73,22 @@ jobs:
         working-directory: ${{github.workspace}}/build
         run: |
           call "%VCVARS_PATH%"
-          cmake -G Ninja                            ^
-              -DCMAKE_BUILD_TYPE=%BUILD_TYPE%       ^
-              -DCMAKE_CXX_FLAGS="%CMAKE_CXXFLAGS%"  ^
-              %CMAKE_FLAGS                          ^
+          cmake -G Ninja                                            ^
+              -DCMAKE_BUILD_TYPE=%BUILD_TYPE%                       ^
+              -DCMAKE_CXX_FLAGS="%CMAKE_CXXFLAGS%"                  ^
+              -DCMAKE_CXX_FLAGS_RELEASE="%CMAKE_CXXFLAGS_RELEASE%"  ^
+              %CMAKE_FLAGS                                          ^
               ..
         if: ${{ matrix.os == 'windows-latest' }}
 
       - name: Configure CMake (Unix)
         working-directory: ${{github.workspace}}/build
         run: |
-          cmake                                   \
-              -DCMAKE_BUILD_TYPE=$BUILD_TYPE      \
-              -DCMAKE_CXX_FLAGS="$CMAKE_CXXFLAGS" \
-              $CMAKE_FLAGS                        \
+          cmake                                                   \
+              -DCMAKE_BUILD_TYPE=$BUILD_TYPE                      \
+              -DCMAKE_CXX_FLAGS="$CMAKE_CXXFLAGS"                 \
+              -DCMAKE_CXX_FLAGS_RELEASE="$CMAKE_CXXFLAGS_RELEASE" \
+              $CMAKE_FLAGS                                        \
               ..
         if: ${{ matrix.os != 'windows-latest' }}
 
