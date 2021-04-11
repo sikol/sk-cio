@@ -31,7 +31,7 @@
 #include <fstream>
 #include <string>
 
-#include <sk/channel/filechannel/iseqfilechannel.hxx>
+#include <sk/channel/filechannel.hxx>
 #include <sk/channel/read.hxx>
 #include <sk/wait.hxx>
 

@@ -179,6 +179,52 @@ namespace sk::net {
 
     static_assert(seqchannel<unixchannel>);
 
+    class unixserverchannel
+        : public detail::streamsocketserver<unixserverchannel,
+            unixchannel,
+            SOCK_STREAM,
+            0> {
+        using socket_type = detail::
+        streamsocketserver<unixserverchannel, unixchannel, SOCK_STREAM, 0>;
+
+    public:
+        using value_type = std::byte;
+
+        explicit unixserverchannel(sk::net::detail::native_socket_type &&fd,
+                                   int af = AF_UNIX)
+            : socket_type(std::move(fd), af)
+        {
+        }
+
+        unixserverchannel(unixserverchannel &&other) noexcept
+            : socket_type(std::move(other))
+        {
+        }
+
+        unixserverchannel(unixserverchannel const &) = delete;
+
+        auto operator=(unixserverchannel const &)
+        -> unixserverchannel & = delete;
+
+        auto operator=(unixserverchannel &&other) noexcept
+        -> unixserverchannel &
+        {
+            if (&other != this)
+                socket_type::operator=(std::move(other));
+            return *this;
+        }
+
+        ~unixserverchannel() = default;
+
+        static auto listen(unix_endpoint const &addr)
+        -> expected<unixserverchannel, std::error_code>
+        {
+            auto sun = addr.as_sockaddr_un();
+            return _listen(
+                AF_UNIX, reinterpret_cast<sockaddr *>(&sun), sizeof(sun));
+        }
+    };
+
 } // namespace sk::net
 
 #endif // SK_NET_DETAIL_SOCKETS_UNIXCHANNEL_HXX_INCLUDED

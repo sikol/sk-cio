@@ -34,7 +34,7 @@ enable_testing()
 
 find_package(Threads REQUIRED)
 
-add_library(sk-cio INTERFACE)
+add_library(sk-cio INTERFACE include/sk/win32/detail/filechannel_base.hxx include/sk/posix/detail/filechannel_base.hxx)
 
 target_link_libraries(sk-cio INTERFACE Threads::Threads)
 

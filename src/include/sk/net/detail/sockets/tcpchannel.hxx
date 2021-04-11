@@ -347,6 +347,62 @@ namespace sk::net {
 
     static_assert(seqchannel<tcpchannel>);
 
+    class tcpserverchannel : public detail::streamsocketserver<tcpserverchannel,
+        tcpchannel,
+        SOCK_STREAM,
+        IPPROTO_TCP> {
+        using socket_type = detail::streamsocketserver<tcpserverchannel,
+            tcpchannel,
+            SOCK_STREAM,
+            IPPROTO_TCP>;
+
+    public:
+        using value_type = std::byte;
+
+        explicit tcpserverchannel(sk::net::detail::native_socket_type &&fd,
+                                  int af)
+            : socket_type(std::move(fd), af)
+        {
+        }
+
+        tcpserverchannel(tcpserverchannel &&other) noexcept
+            : socket_type(std::move(other))
+        {
+        }
+
+        tcpserverchannel(tcpserverchannel const &) = delete;
+
+        auto operator=(tcpserverchannel const &) -> tcpserverchannel & = delete;
+
+        auto operator=(tcpserverchannel &&other) noexcept -> tcpserverchannel &
+        {
+            if (&other != this)
+                socket_type::operator=(std::move(other));
+            return *this;
+        }
+
+        ~tcpserverchannel() = default;
+
+        static auto listen(tcp_endpoint const &addr) -> expected<tcpserverchannel, std::error_code> {
+            auto ss = addr.as_sockaddr_storage();
+            socklen_t len = 0;
+            switch (ss.ss_family) {
+            case AF_INET:
+                len = sizeof(sockaddr_in);
+                break;
+            case AF_INET6:
+                len = sizeof(sockaddr_in6);
+                break;
+            default:
+                return make_unexpected(std::make_error_code(std::errc::address_family_not_supported));
+            }
+
+            return _listen(socket_address_family(addr.address()),
+                           reinterpret_cast<sockaddr *>(&ss),
+                           len);
+        }
+    };
+
 } // namespace sk::net
 
 #endif // SK_NET_DETAIL_SOCKETS_TCPCHANNEL_HXX_INCLUDED

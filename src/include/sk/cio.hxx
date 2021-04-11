@@ -44,11 +44,10 @@
 #include <sk/channel/write.hxx>
 
 #include <sk/net/address.hxx>
+#include <sk/net/uri.hxx>
 #include <sk/net/tcpchannel.hxx>
-#include <sk/net/tcpserverchannel.hxx>
 #ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
 #    include <sk/net/unixchannel.hxx>
-#    include <sk/net/unixserverchannel.hxx>
 #endif
 
 #include <sk/buffer.hxx>

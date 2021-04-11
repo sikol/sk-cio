@@ -143,17 +143,17 @@ namespace sk::net {
         std::shared_ptr<char[]> original_data;
     };
 
-    auto is_absolute(uri const &u) -> bool
+    inline auto is_absolute(uri const &u) -> bool
     {
         return u.scheme.has_value() && u.authority.has_value();
     }
 
-    auto is_relative(uri const &u) -> bool
+    inline auto is_relative(uri const &u) -> bool
     {
         return !u.scheme.has_value() && !u.authority.has_value();
     }
 
-    auto is_protocol_relative(uri const &u)
+    inline auto is_protocol_relative(uri const &u)
     {
         return u.authority.has_value() && !u.scheme.has_value();
     }

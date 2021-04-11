@@ -33,8 +33,7 @@
 
 #if defined(SK_CIO_PLATFORM_WINDOWS)
 #    include <sk/win32/handle.hxx>
-#    include <sk/win32/detail/net/streamsocket.hxx>
-#    include <sk/win32/detail/net/streamsocketserver.hxx>
+#    include <sk/win32/detail/streamsocket.hxx>
 
 namespace sk::net::detail {
 
@@ -47,8 +46,7 @@ namespace sk::net::detail {
 #elif defined(SK_CIO_PLATFORM_POSIX)
 
 #    include <sk/posix/fd.hxx>
-#    include <sk/posix/detail/net/streamsocket.hxx>
-#    include <sk/posix/detail/net/streamsocketserver.hxx>
+#    include <sk/posix/detail/streamsocket.hxx>
 
 namespace sk::net::detail {
 

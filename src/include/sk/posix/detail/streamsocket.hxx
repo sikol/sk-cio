@@ -26,23 +26,256 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CIO_POSIX_NET_STREAMSOCKETSERVER_HXX_INCLUDED
-#define SK_CIO_POSIX_NET_STREAMSOCKETSERVER_HXX_INCLUDED
+#ifndef SK_NET_DETAIL_POSIX_STREAMSOCKET_HXX_INCLUDED
+#define SK_NET_DETAIL_POSIX_STREAMSOCKET_HXX_INCLUDED
 
 #include <sys/types.h>
 #include <sys/socket.h>
 
 #include <cstddef>
-#include <system_error>
 
+#include <sk/async_invoke.hxx>
 #include <sk/channel/concepts.hxx>
+#include <sk/channel/error.hxx>
+#include <sk/detail/safeint.hxx>
 #include <sk/expected.hxx>
 #include <sk/net/address.hxx>
+#include <sk/posix/async_api.hxx>
 #include <sk/posix/error.hxx>
 #include <sk/posix/fd.hxx>
 #include <sk/task.hxx>
 
 namespace sk::posix::detail {
+
+    template <int type, int protocol>
+    class streamsocket {
+    protected:
+        streamsocket() = default;
+        explicit streamsocket(sk::posix::unique_fd &&);
+        streamsocket(streamsocket &&) noexcept = default;
+        auto operator=(streamsocket &&) noexcept -> streamsocket & = default;
+        ~streamsocket();
+
+        sk::posix::unique_fd _fd;
+
+        [[nodiscard]] auto _async_connect(int af, sockaddr const *, socklen_t)
+            -> task<expected<void, std::error_code>>;
+
+        [[nodiscard]] auto _connect(int af, sockaddr const *, socklen_t)
+            -> expected<void, std::error_code>;
+
+    public:
+        using value_type = std::byte;
+
+        streamsocket(streamsocket const &) = delete;
+        auto operator=(streamsocket const &) -> streamsocket & = delete;
+
+        [[nodiscard]] auto is_open() const -> bool;
+
+        [[nodiscard]] auto async_read_some(value_type *buffer, io_size_t n)
+            -> task<expected<io_size_t, std::error_code>>;
+
+        [[nodiscard]] auto read_some(value_type *buffer, io_size_t n)
+            -> expected<io_size_t, std::error_code>;
+
+        [[nodiscard]] auto async_write_some(value_type const *buffer, io_size_t)
+            -> task<expected<io_size_t, std::error_code>>;
+
+        [[nodiscard]] auto write_some(value_type const *buffer, io_size_t)
+            -> expected<io_size_t, std::error_code>;
+
+        [[nodiscard]] auto async_close()
+            -> task<expected<void, std::error_code>>;
+
+        [[nodiscard]] auto close() -> expected<void, std::error_code>;
+    };
+
+    /*************************************************************************
+     * streamsocket::streamsocket()
+     */
+
+    template <int type, int protocol>
+    streamsocket<type, protocol>::streamsocket(sk::posix::unique_fd &&sock)
+        : _fd(std::move(sock))
+    {
+    }
+
+    /*************************************************************************
+     * streamsocket::~streamsocket()
+     */
+
+    template <int type, int protocol>
+    streamsocket<type, protocol>::~streamsocket()
+    {
+        if (_fd) {
+            auto reactor = get_weak_reactor_handle();
+            reactor->deassociate_fd(_fd.value());
+        }
+    }
+
+    /*************************************************************************
+     * streamsocket::is_open()
+     */
+
+    template <int type, int protocol>
+    auto streamsocket<type, protocol>::is_open() const -> bool
+    {
+        return _fd;
+    }
+
+    /*************************************************************************
+     * tcpchannel::close()
+     */
+    template <int type, int protocol>
+    auto streamsocket<type, protocol>::close()
+        -> expected<void, std::error_code>
+    {
+        SK_CHECK(is_open(), "attempt to close a channel that isn't open");
+
+        if (!is_open())
+            return make_unexpected(error::channel_not_open);
+
+        auto err = _fd.close();
+        if (err)
+            return make_unexpected(err);
+        return {};
+    }
+
+    /*************************************************************************
+     * streamsocket::async_close()
+     */
+    template <int type, int protocol>
+    auto streamsocket<type, protocol>::async_close()
+        -> task<expected<void, std::error_code>>
+    {
+        SK_CHECK(is_open(), "attempt to close a channel that isn't open");
+
+        int fd = _fd.release();
+        auto err = co_await sk::posix::async_fd_close(fd);
+
+        if (!err)
+            co_return make_unexpected(err.error());
+
+        co_return {};
+    }
+
+    /*************************************************************************
+     * streamsocket::async_connect()
+     */
+    template <int type, int protocol>
+    auto streamsocket<type, protocol>::_async_connect(int af,
+                                                      sockaddr const *addr,
+                                                      socklen_t addrlen)
+        -> task<expected<void, std::error_code>>
+    {
+        SK_CHECK(!is_open(), "attempt to re-connect an open channel");
+
+        auto sock = ::socket(af, type, protocol);
+
+        if (sock == -1)
+            co_return make_unexpected(sk::posix::get_errno());
+
+        sk::posix::unique_fd sock_(sock);
+
+        auto ret = co_await sk::posix::async_fd_connect(sock, addr, addrlen);
+
+        if (!ret)
+            co_return make_unexpected(ret.error());
+
+        auto reactor = get_weak_reactor_handle();
+        auto aret = reactor->associate_fd(sock);
+        if (!aret)
+            co_return make_unexpected(aret.error());
+
+        _fd = std::move(sock_);
+        co_return {};
+    }
+
+    /*************************************************************************
+     * streamsocket::connect()
+     */
+    template <int type, int protocol>
+    auto streamsocket<type, protocol>::_connect(int af,
+                                                sockaddr const *addr,
+                                                socklen_t addrlen)
+        -> expected<void, std::error_code>
+    {
+        return wait(_async_connect(af, addr, addrlen));
+    }
+
+    /*************************************************************************
+     * streamsocket::async_read_some()
+     */
+
+    template <int type, int protocol>
+    auto streamsocket<type, protocol>::async_read_some(value_type *buffer,
+                                                       io_size_t nobjs)
+        -> task<expected<io_size_t, std::error_code>>
+    {
+        SK_CHECK(is_open(), "attempt to read on a closed channel");
+
+        auto bytes_read =
+            co_await sk::posix::async_fd_recv(*_fd, buffer, nobjs, 0);
+
+        if (!bytes_read)
+            co_return make_unexpected(bytes_read.error());
+
+        // 0 bytes = client went away
+        if (*bytes_read == 0)
+            co_return make_unexpected(error::end_of_file);
+
+        co_return *bytes_read;
+    }
+
+    /*************************************************************************
+     * streamsocket::read_some()
+     */
+
+    template <int type, int protocol>
+    auto streamsocket<type, protocol>::read_some(value_type *buffer,
+                                                 io_size_t nobjs)
+        -> expected<io_size_t, std::error_code>
+    {
+        SK_CHECK(is_open(), "attempt to read on a closed channel");
+        return wait(async_read_some(buffer, nobjs));
+    }
+
+    /*************************************************************************
+     * streamsocket::async_write_some()
+     */
+
+    template <int type, int protocol>
+    auto
+    streamsocket<type, protocol>::async_write_some(value_type const *buffer,
+                                                   io_size_t nobjs)
+        -> task<expected<io_size_t, std::error_code>>
+    {
+        SK_CHECK(is_open(), "attempt to write on a closed channel");
+
+        auto bytes_read =
+            co_await sk::posix::async_fd_send(*_fd, buffer, nobjs, 0);
+
+        if (!bytes_read)
+            co_return make_unexpected(bytes_read.error());
+
+        // 0 bytes = client went away
+        if (*bytes_read == 0)
+            co_return make_unexpected(sk::error::end_of_file);
+
+        co_return *bytes_read;
+    }
+
+    /*************************************************************************
+     * streamsocket::write_some()
+     */
+
+    template <int type, int protocol>
+    auto streamsocket<type, protocol>::write_some(value_type const *buffer,
+                                                  io_size_t nobjs)
+        -> expected<io_size_t, std::error_code>
+    {
+        return wait(async_write_some(buffer, nobjs));
+    }
 
     template <typename server_type,
               seqchannel channel_type,
@@ -53,7 +286,8 @@ namespace sk::posix::detail {
         unique_fd _fd;
 
         // address_family is only used on Win32
-        explicit streamsocketserver(unique_fd &&, int /*address_family*/) noexcept;
+        explicit streamsocketserver(unique_fd &&,
+                                    int /*address_family*/) noexcept;
         streamsocketserver(streamsocketserver &&) noexcept = default;
         auto operator=(streamsocketserver &&) noexcept
             -> streamsocketserver & = default;
@@ -75,7 +309,8 @@ namespace sk::posix::detail {
         [[nodiscard]] auto async_accept() noexcept
             -> task<expected<channel_type, std::error_code>>;
 
-        [[nodiscard]] auto accept() noexcept -> expected<channel_type, std::error_code>;
+        [[nodiscard]] auto accept() noexcept
+            -> expected<channel_type, std::error_code>;
 
         [[nodiscard]] auto async_close()
             -> task<expected<void, std::error_code>>;
@@ -186,8 +421,8 @@ namespace sk::posix::detail {
               seqchannel channel_type,
               int type,
               int protocol>
-    auto streamsocketserver<server_type, channel_type, type, protocol>::close() noexcept
-        -> expected<void, std::error_code>
+    auto streamsocketserver<server_type, channel_type, type, protocol>::
+        close() noexcept -> expected<void, std::error_code>
     {
         if (!is_open())
             return make_unexpected(error::channel_not_open);
@@ -249,8 +484,8 @@ namespace sk::posix::detail {
               seqchannel channel_type,
               int type,
               int protocol>
-    auto streamsocketserver<server_type, channel_type, type, protocol>::accept() noexcept
-        -> expected<channel_type, std::error_code>
+    auto streamsocketserver<server_type, channel_type, type, protocol>::
+        accept() noexcept -> expected<channel_type, std::error_code>
     {
         auto client = ::accept(*_fd, nullptr, nullptr);
         if (client < 0)
@@ -268,4 +503,4 @@ namespace sk::posix::detail {
 
 } // namespace sk::posix::detail
 
-#endif // SK_CIO_POSIX_NET_STREAMSOCKETSERVER_HXX_INCLUDED
+#endif // SK_NET_DETAIL_POSIX_STREAMSOCKET_HXX_INCLUDED

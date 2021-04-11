@@ -34,7 +34,7 @@
 #include <stdexcept>
 #include <string>
 
-#include <sk/channel/filechannel/odafilechannel.hxx>
+#include <sk/channel/filechannel.hxx>
 #include <sk/channel/write.hxx>
 #include <sk/task.hxx>
 
