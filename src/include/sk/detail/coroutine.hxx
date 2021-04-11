@@ -33,8 +33,12 @@
 #    include <version>
 #endif
 
+// !defined(__clang__) shouldn't really be here, but without it clang-tidy
+// takes the wrong branch and tries to use C++20 coroutines, which Clang
+// doesn't support.
+
 #if defined(__cpp_impl_coroutine) && defined(__cpp_lib_coroutine) &&           \
-    __has_include(<coroutine>)
+    __has_include(<coroutine>) && !defined(__clang__)
 #    if __cpp_impl_coroutine >= 201902L && __cpp_lib_coroutine >= 201902L
 #        include <coroutine>
 #        define SK_HAS_STD_COROUTINES

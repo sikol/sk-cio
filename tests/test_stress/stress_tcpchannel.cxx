@@ -44,7 +44,7 @@ constexpr int nthreads = 30;
 constexpr int nops = 500;
 constexpr auto run_for = 20s;
 
-std::string const tcp_listen_address = "127.0.0.1";
+std::string_view const tcp_listen_address = "127.0.0.1";
 std::uint16_t const tcp_listen_port = 5357;
 std::optional<net::tcp_endpoint> tcp_listen_addr;
 
@@ -91,7 +91,7 @@ task<int> tcp_stress_task()
                 co_return 1;
             }
 
-            if (std::memcmp(outbuf, inbuf, buflen)) {
+            if (std::memcmp(outbuf, inbuf, buflen) != 0) {
                 fmt::print(stderr, "failed compare\n");
                 std::ostringstream strm;
 

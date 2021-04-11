@@ -185,7 +185,7 @@ namespace sk::net {
                                  port);
     }
 
-    inline auto make_tcp_endpoint(std::string const &str,
+    inline auto make_tcp_endpoint(std::string_view str,
                                   tcp_endpoint::port_type port) noexcept
         -> expected<tcp_endpoint, std::error_code>
     {

@@ -276,6 +276,10 @@ namespace sk {
             return base_type::_size;
         }
 
+        [[nodiscard]] auto empty() const noexcept -> bool {
+            return size() == 0;
+        }
+
         [[nodiscard]] auto capacity() const noexcept -> size_type
         {
             return max_size;

@@ -57,7 +57,7 @@ namespace sk::net {
         address_type _address;
 
     public:
-        unix_endpoint(address_type const &addr) : _address(addr) {}
+        explicit unix_endpoint(address_type const &addr) : _address(addr) {}
 
         [[nodiscard]] auto address() const noexcept -> const_address_type &
         {
@@ -69,7 +69,7 @@ namespace sk::net {
             return _address;
         }
 
-        auto as_sockaddr_un() const noexcept -> sockaddr_un
+        [[nodiscard]] auto as_sockaddr_un() const noexcept -> sockaddr_un
         {
             sockaddr_un sun{};
 
@@ -82,7 +82,7 @@ namespace sk::net {
             return sun;
         }
 
-        auto as_sockaddr_storage() const noexcept -> sockaddr_storage
+        [[nodiscard]] auto as_sockaddr_storage() const noexcept -> sockaddr_storage
         {
             sockaddr_storage ret{};
             auto sun = as_sockaddr_un();
@@ -122,7 +122,7 @@ namespace sk::net {
         return make_unix_endpoint(*addr);
     }
 
-    inline auto make_unix_endpoint(std::string const &str) noexcept
+    inline auto make_unix_endpoint(std::string_view str) noexcept
         -> expected<unix_endpoint, std::error_code>
     {
         auto addr = make_unix_address(str);

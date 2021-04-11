@@ -34,7 +34,8 @@
 using namespace sk::net;
 using sk::expected;
 
-TEST_CASE("inet6_address: make_inet6_address") {
+TEST_CASE("inet6_address: make_inet6_address", "[inet6_address][address]")
+{
     auto addr = make_address<inet6_family>("::1");
     REQUIRE(addr);
     REQUIRE(tag(*addr) == inet6_family::tag);
@@ -53,9 +54,60 @@ TEST_CASE("inet6_address: make_inet6_address") {
     REQUIRE(!addr);
     addr = make_address<inet6_family>("127.0.0.1");
     REQUIRE(!addr);
+
+    addr = make_address<inet6_family>("1::");
+    REQUIRE(addr);
+    REQUIRE(*str(*addr) == "1::");
+
+    addr = make_address<inet6_family>("2000::1");
+    REQUIRE(addr);
+    REQUIRE(*str(*addr) == "2000::1");
+
+    addr = make_address<inet6_family>("2001:db0:ffff::3:4");
+    REQUIRE(addr);
+    REQUIRE(*str(*addr) == "2001:db0:ffff::3:4");
+
+    addr = make_address<inet6_family>("2001:db0:ffff::");
+    REQUIRE(addr);
+    REQUIRE(*str(*addr) == "2001:db0:ffff::");
+
+    addr = make_address<inet6_family>("::fffe:1:2");
+    REQUIRE(addr);
+    REQUIRE(*str(*addr) == "::fffe:1:2");
+
+    addr = make_address<inet6_family>("::ffff:127.0.0.1");
+    REQUIRE(addr);
+    REQUIRE(*str(*addr) == "::ffff:127.0.0.1");
+
+    addr = make_address<inet6_family>("::ffff:34.89.21.4");
+    REQUIRE(addr);
+    REQUIRE(*str(*addr) == "::ffff:34.89.21.4");
+
+    addr = make_address<inet6_family>("::10.254.67.131");
+    REQUIRE(addr);
+    REQUIRE(*str(*addr) == "::10.254.67.131");
+
+    addr = make_address<inet6_family>("2001:db0::192.168.67.131");
+    REQUIRE(addr);
+    REQUIRE(*str(*addr) == "2001:db0::c0a8:4383");
+
+    addr = make_address<inet6_family>("2001:db0:0:1234:5678:abcd:1f2e:3d4c");
+    REQUIRE(addr);
+    REQUIRE(*str(*addr) == "2001:db0:0:1234:5678:abcd:1f2e:3d4c");
+
+    addr = make_address<inet6_family>("2001:db0:0:1234:5678:abcd:1f2e:3d4c:1");
+    REQUIRE(!addr);
+
+    addr = make_address<inet6_family>("2001:db0:0:1234:5678:abcd:1f2e:3d4c::");
+    REQUIRE(!addr);
+
+    addr = make_address<inet6_family>("::2001:db0:0:1234:5678:abcd:1f2e:3d4c");
+    REQUIRE(!addr);
 }
 
-TEST_CASE("inet6_address: address_cast to unspecified_address") {
+TEST_CASE("inet6_address: address_cast to unspecified_address",
+          "[inet6_address][address]")
+{
     auto inet = make_address<inet6_family>("::1");
     REQUIRE(inet);
 
@@ -78,7 +130,9 @@ TEST_CASE("inet6_address: address_cast to unspecified_address") {
     REQUIRE(*s == "::1");
 }
 
-TEST_CASE("inet6_address: make_unspecified_zero_address") {
+TEST_CASE("inet6_address: make_unspecified_zero_address",
+          "[inet6_address][address]")
+{
     auto unspec_zero = make_unspecified_zero_address(inet6_family::tag);
     REQUIRE(*str(*unspec_zero) == "::");
     REQUIRE(unspec_zero);
@@ -91,7 +145,9 @@ TEST_CASE("inet6_address: make_unspecified_zero_address") {
     REQUIRE(*str(*inet_zero) == "::");
 }
 
-TEST_CASE("inet6_address: make_address without port") {
+TEST_CASE("inet6_address: make_address without port",
+          "[inet6_address][address]")
+{
     auto addr = make_address("::1");
     REQUIRE(addr);
     REQUIRE(*str(*addr) == "::1");
@@ -101,17 +157,17 @@ TEST_CASE("inet6_address: make_address without port") {
     REQUIRE(*str(*iaddr) == "::1");
 }
 
-TEST_CASE("inet6_address: streaming output") {
+TEST_CASE("inet6_address: streaming output", "[inet6_address][address]")
+{
     auto addr = make_address("::1");
     REQUIRE(addr);
 
     std::ostringstream strm;
     strm << *addr;
     REQUIRE(strm.str() == "::1");
-
 }
 
-TEST_CASE("inet6_address: resolve")
+TEST_CASE("inet6_address: resolve", "[inet6_address][address]")
 {
     sk::net::system_resolver<inet6_family> res;
     std::vector<inet6_address> addrs;

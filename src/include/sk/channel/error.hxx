@@ -72,6 +72,9 @@ namespace sk {
 
         // The channel could not be associated with the reactor.
         reactor_associate_failed = 9,
+
+        // The network address format is invalid.
+        invalid_address_format = 10,
     };
 
     namespace detail {
@@ -113,6 +116,9 @@ namespace sk {
 
                 case error::reactor_associate_failed:
                     return "failed to associate the channel with the reactor";
+
+                case error::invalid_address_format:
+                    return "invalid address format";
 
                 default:
                     return "unknown error";

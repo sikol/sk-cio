@@ -34,7 +34,7 @@
 using namespace sk::net;
 using sk::expected;
 
-TEST_CASE("inet_address: make_inet_address")
+TEST_CASE("inet_address: make_inet_address", "[inet_address][address]")
 {
     auto addr = make_address<inet_family>("127.0.0.1");
     REQUIRE(addr);
@@ -50,13 +50,49 @@ TEST_CASE("inet_address: make_inet_address")
     REQUIRE(s);
     REQUIRE(*s == "0.0.0.0");
 
+    addr = make_address<inet_family>("127.000.00.001");
+    REQUIRE(addr);
+    REQUIRE(str(*addr) == "127.0.0.1");
+
     addr = make_address<inet_family>("1.2.3.4.5");
     REQUIRE(!addr);
     addr = make_address<inet_family>("::1");
     REQUIRE(!addr);
+    addr = make_address<inet_family>("1");
+    REQUIRE(!addr);
+    addr = make_address<inet_family>("1.");
+    REQUIRE(!addr);
+    addr = make_address<inet_family>("1.2");
+    REQUIRE(!addr);
+    addr = make_address<inet_family>("1.2.");
+    REQUIRE(!addr);
+    addr = make_address<inet_family>("1.2.3");
+    REQUIRE(!addr);
+    addr = make_address<inet_family>("1.2.3.");
+    REQUIRE(!addr);
+    addr = make_address<inet_family>(".1.2.3.4");
+    REQUIRE(!addr);
+    addr = make_address<inet_family>(".2.3.4");
+    REQUIRE(!addr);
+    addr = make_address<inet_family>("1.256.3.4");
+    REQUIRE(!addr);
+    addr = make_address<inet_family>("1.-2.3.4");
+    REQUIRE(!addr);
+    addr = make_address<inet_family>("1.2.3.4  ");
+    REQUIRE(!addr);
+    addr = make_address<inet_family>("  1.2.3.4");
+    REQUIRE(!addr);
+    addr = make_address<inet_family>("1..2.3.4");
+    REQUIRE(!addr);
+    addr = make_address<inet_family>("1..3.4");
+    REQUIRE(!addr);
+    addr = make_address<inet_family>("1.2. 3.4");
+    REQUIRE(!addr);
+    addr = make_address<inet_family>("1.2 .3.4");
+    REQUIRE(!addr);
 }
 
-TEST_CASE("inet_address: address_cast to unspecified_address")
+TEST_CASE("inet_address: address_cast to unspecified_address", "[inet_address][address]")
 {
     auto inet = make_address<inet_family>("127.0.0.1");
     REQUIRE(inet);
@@ -80,7 +116,7 @@ TEST_CASE("inet_address: address_cast to unspecified_address")
     REQUIRE(*s == "127.0.0.1");
 }
 
-TEST_CASE("inet_address: make_unspecified_zero_address")
+TEST_CASE("inet_address: make_unspecified_zero_address", "[inet_address][address]")
 {
     auto unspec_zero = make_unspecified_zero_address(inet_family::tag);
     REQUIRE(*str(*unspec_zero) == "0.0.0.0");
@@ -94,7 +130,7 @@ TEST_CASE("inet_address: make_unspecified_zero_address")
     REQUIRE(*str(*inet_zero) == "0.0.0.0");
 }
 
-TEST_CASE("inet_address: make_address without port")
+TEST_CASE("inet_address: make_address without port", "[inet_address][address]")
 {
     auto addr = make_address("127.0.0.1");
     REQUIRE(addr);
@@ -105,7 +141,7 @@ TEST_CASE("inet_address: make_address without port")
     REQUIRE(*str(*iaddr) == "127.0.0.1");
 }
 
-TEST_CASE("inet_address: streaming output")
+TEST_CASE("inet_address: streaming output", "[inet_address][address]")
 {
     auto addr = make_address("127.0.0.1");
     REQUIRE(addr);
@@ -115,7 +151,7 @@ TEST_CASE("inet_address: streaming output")
     REQUIRE(strm.str() == "127.0.0.1");
 }
 
-TEST_CASE("inet_address: resolve")
+TEST_CASE("inet_address: resolve", "[inet_address][address]")
 {
     sk::net::system_resolver<inet_family> res;
     std::vector<inet_address> addrs;
@@ -129,7 +165,7 @@ TEST_CASE("inet_address: resolve")
     REQUIRE(*str(first) == "127.0.0.1");
 }
 
-TEST_CASE("inet_address: compare") {
+TEST_CASE("inet_address: compare", "[inet_address][address]") {
     auto addr1 = make_inet_address("127.0.0.1");
     auto addr2 = make_inet_address("127.0.0.1");
     auto addr3 = make_inet_address("127.0.0.2");

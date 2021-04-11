@@ -39,12 +39,15 @@
 #include <variant>
 
 #include <sk/async_invoke.hxx>
+#include <sk/channel/error.hxx>
 #include <sk/check.hxx>
 #include <sk/detail/platform.hxx>
 #include <sk/detail/safeint.hxx>
+#include <sk/detail/strparse.hxx>
 #include <sk/expected.hxx>
 #include <sk/overload.hxx>
 #include <sk/patricia.hxx>
+#include <sk/static_vector.hxx>
 #include <sk/task.hxx>
 
 #if defined(SK_CIO_PLATFORM_WINDOWS)
@@ -93,8 +96,8 @@ namespace sk::net {
             typename T::address_type;
         }
         and std::same_as<std::remove_cvref_t<decltype(T::tag)>, address_family_tag>
-        and requires(T &af, typename T::address_type &addr, std::string const &str) {
-            { af.to_string(addr) } -> std::convertible_to<std::string>;
+        and requires(T &af, typename T::address_type &addr, std::string_view str) {
+            { af.to_string(addr) } -> std::convertible_to<expected<std::string, std::error_code>>;
             { af.from_string(str) } -> std::same_as<expected<typename T::address_type, std::error_code>>;
         };
     // clang-format on
@@ -114,13 +117,14 @@ namespace sk::net {
 
         static constexpr address_type zero_address{{}};
 
-        static auto as_bytes(address_type const &addr) noexcept
+        [[nodiscard]] static auto as_bytes(address_type const &addr) noexcept
             -> std::span<std::byte const, address_size>
         {
             return std::as_bytes(std::span(addr.bytes));
         }
 
-        static auto to_string(address_type const &addr) -> std::string
+        [[nodiscard]] static auto to_string(address_type const &addr) noexcept
+            -> expected<std::string, std::error_code>
         {
             char ret[max_string_length];
             auto bytes = &addr.bytes[0];
@@ -135,24 +139,46 @@ namespace sk::net {
                     *p.ptr++ = '.';
             }
 
-            return std::string(&ret[0], p.ptr);
+            try {
+                return std::string(&ret[0], p.ptr);
+            } catch (std::bad_alloc const &) {
+                return make_unexpected(
+                    std::make_error_code(std::errc::not_enough_memory));
+            }
         }
 
-        static auto from_string(std::string const &s)
+        static auto from_string(std::string_view s) noexcept
             -> expected<address_type, std::error_code>
         {
-            address_type addr;
+            address_type addr{};
 
-            auto ret = inet_pton(AF_INET, s.c_str(), &addr.bytes[0]);
+            // IPv4 address: nnn.nnn.nnn.nnn.  We don't accept "short" forms
+            // like 10.1, or the plain integer format, or hex format.
 
-            if (ret != 1)
-                return make_unexpected(
-                    std::make_error_code(std::errc::invalid_argument));
+            for (std::size_t i = 0; i < 4; ++i) {
+                std::optional<std::uint8_t> num;
+
+                // Expect a number
+                std::tie(num, s) = sk::detail::span_number<std::uint8_t>(s);
+                if (!num)
+                    return make_unexpected(sk::error::invalid_address_format);
+                addr.bytes[i] = static_cast<std::uint8_t>(*num);
+
+                // Expected either end of string or a '.'
+                if (i == 3 && s.empty())
+                    break;
+                if (i < 3 && (!s.empty() && s[0] == '.')) {
+                    s = s.substr(1);
+                    continue;
+                }
+
+                return make_unexpected(sk::error::invalid_address_format);
+            }
 
             return addr;
         }
 
-        static auto from_in_addr_t(std::uint32_t a) -> address_type
+        static auto from_in_addr_t(std::uint32_t a) noexcept -> address_type
         {
             address_type addr{};
             std::memcpy(&addr.bytes[0], &a, sizeof(a));
@@ -183,31 +209,106 @@ namespace sk::net {
             return std::as_bytes(std::span(addr.bytes));
         }
 
-        static auto to_string(address_type const &addr) -> std::string
+        static auto to_string(address_type const &addr) noexcept
+            -> expected<std::string, std::error_code>
         {
             char buf[INET6_ADDRSTRLEN];
             auto ret = inet_ntop(AF_INET6, &addr.bytes[0], buf, sizeof(buf));
             SK_CHECK(ret != nullptr, "inet_ntop failure");
             std::ignore = ret;
 
-            return std::string(buf);
+            try {
+                return std::string(buf);
+            } catch (std::bad_alloc const &) {
+                return make_unexpected(
+                    std::make_error_code(std::errc::not_enough_memory));
+            }
         }
 
-        static auto from_string(std::string const &s)
+        static auto from_string(std::string_view s) noexcept
             -> expected<address_type, std::error_code>
         {
             address_type addr{};
 
-            auto ret = inet_pton(AF_INET6, s.c_str(), &addr.bytes[0]);
+            static_vector<std::uint16_t, 8> start, end, *cur = &start;
 
-            if (ret != 1)
-                return make_unexpected(
-                    std::make_error_code(std::errc::invalid_argument));
+            std::size_t n = 0;
+
+            // Special case: if the string starts with ::, begin writing into
+            // the end.
+            if (s.starts_with("::")) {
+                s = s.substr(2);
+                cur = &end;
+                n = 1;
+            }
+
+            for (; n < 8; ++n) {
+                // An IPv6 address can end with an IPv4 address.
+                if (n >= 1 && n <= 6) {
+                    auto v4 = inet_family::from_string(s);
+                    if (v4) {
+                        cur->push_back(v4->bytes[1] << 8 | v4->bytes[0]);
+                        cur->push_back(v4->bytes[3] << 8 | v4->bytes[2]);
+                        s = s.substr(s.size());
+                        break;
+                    }
+                }
+
+                if (s.empty()) {
+                    if (cur == &start)
+                        // End of string, with fewer than 8 segments and no
+                        // empty segment - invalid address.
+                        return make_unexpected(
+                            sk::error::invalid_address_format);
+
+                    // End of string with an empty segment, is okay.
+                    break;
+                }
+
+                // Check for empty segment
+                if (s[0] == ':') {
+                    if (cur == &end)
+                        // More than one empty segment is not valid.
+                        return make_unexpected(
+                            sk::error::invalid_address_format);
+
+                    cur = &end;
+                    s = s.substr(1);
+                    continue;
+                }
+
+                // Nothing special, should have the next segment.
+                std::optional<std::uint16_t> seg;
+                std::tie(seg, s) =
+                    sk::detail::span_number<std::uint16_t>(s, 16);
+                if (!seg)
+                    return make_unexpected(sk::error::invalid_address_format);
+                cur->push_back((*seg << 8) | (*seg >> 8));
+
+                if (s.empty())
+                    break;
+
+                if (s[0] != ':')
+                    return make_unexpected(sk::error::invalid_address_format);
+                s = s.substr(1);
+            }
+
+            // If we read 8 segments and there's still data left, the address
+            // was invalid.
+            if (!s.empty())
+                return make_unexpected(sk::error::invalid_address_format);
+
+            if (!start.empty())
+                std::memcpy(&addr.bytes[0], &start[0], start.size() * 2);
+            if (!end.empty())
+                std::memcpy(&addr.bytes[16 - (end.size() * 2)],
+                            &end[0],
+                            end.size() * 2);
 
             return addr;
         }
 
-        static auto from_in6_addr(in6_addr a) -> address_type
+        static auto from_in6_addr(in6_addr a) noexcept -> address_type
         {
             address_type addr{};
             std::memcpy(&addr.bytes[0], &a.s6_addr[0], sizeof(a.s6_addr));
@@ -236,13 +337,19 @@ namespace sk::net {
                                            std::ranges::find(addr.path, '\0')));
         }
 
-        static auto to_string(address_type const &addr) -> std::string
+        static auto to_string(address_type const &addr) noexcept
+            -> expected<std::string, std::error_code>
         {
-            return std::string(addr.path.begin(),
-                               std::ranges::find(addr.path, '\0'));
+            try {
+                return std::string(addr.path.begin(),
+                                   std::ranges::find(addr.path, '\0'));
+            } catch (std::bad_alloc const &) {
+                return make_unexpected(
+                    std::make_error_code(std::errc::not_enough_memory));
+            }
         }
 
-        static auto from_string(std::string const &s)
+        static auto from_string(std::string_view s) noexcept
             -> expected<address_type, std::error_code>
         {
             address_type ret{};
@@ -253,22 +360,23 @@ namespace sk::net {
             return ret;
         }
 
-        static auto from_string(std::filesystem::path const &path)
+        static auto from_string(std::filesystem::path const &path) noexcept
             -> expected<address_type, std::error_code>
         {
 #ifdef _WIN32
             auto native = path.u8string();
-            return from_string(std::string(
+            return from_string(std::string_view(
                 reinterpret_cast<char *>(&native[0]),
                 reinterpret_cast<char *>(&native[0]) + native.size()));
 #else
-            return from_string(path.native());
+            return from_string(std::string_view(path.native()));
 #endif
         }
 
-        static auto from_array(char const (&arr)[address_size]) -> address_type
+        static auto from_array(char const (&arr)[address_size]) noexcept
+            -> address_type
         {
-            address_type ret;
+            address_type ret{};
             std::ranges::copy(arr, &ret.path[0]);
             return ret;
         }
@@ -284,7 +392,7 @@ namespace sk::net {
                                           inet6_family::address_type,
                                           unix_family::address_type>;
 
-        static auto as_bytes(address_type const &address)
+        static auto as_bytes(address_type const &address) noexcept
             -> std::span<std::byte const>
         {
             return std::visit(overload{[](inet_family::address_type const &a)
@@ -303,7 +411,8 @@ namespace sk::net {
                               address);
         }
 
-        static auto to_string(address_type const &address) -> std::string
+        static auto to_string(address_type const &address) noexcept
+            -> expected<std::string, std::error_code>
         {
             return std::visit(overload{[](inet_family::address_type const &a) {
                                            return inet_family::to_string(a);
@@ -317,7 +426,7 @@ namespace sk::net {
                               address);
         }
 
-        static auto from_string(std::string const &s)
+        static auto from_string(std::string_view s) noexcept
             -> expected<address_type, std::error_code>
         {
             // unspecified from_string() supports inet and inet6, but not unix,
@@ -335,7 +444,7 @@ namespace sk::net {
                 std::make_error_code(std::errc::invalid_argument));
         }
 
-        static auto contained_tag(address_type const &address)
+        static auto contained_tag(address_type const &address) noexcept
             -> address_family_tag
         {
             return std::visit(
@@ -364,23 +473,25 @@ namespace sk::net {
 
     // Create an address from a string.
     template <address_family family = unspecified_family>
-    [[nodiscard]] auto make_address(std::string const &addr)
+    [[nodiscard]] auto make_address(std::string_view str) noexcept
         -> expected<address<family>, std::error_code> = delete;
 
     template <address_family family = unspecified_family>
-    [[nodiscard]] inline auto make_address(sockaddr const *sa, socklen_t len)
+    [[nodiscard]] inline auto make_address(sockaddr const *sa,
+                                           socklen_t len) noexcept
         -> expected<address<family>, std::error_code> = delete;
 
     // Create a zero address.
     template <address_family family = unspecified_family>
-    [[nodiscard]] auto make_zero_address()
+    [[nodiscard]] auto make_zero_address() noexcept
         -> expected<address<family>, std::error_code>
     {
         return address<family>(family::zero_address);
     }
 
     template <address_family family = unspecified_family>
-    [[nodiscard]] auto socket_address_family(address<family> const &) = delete;
+    [[nodiscard]] auto
+    socket_address_family(address<family> const &) noexcept = delete;
 
     template <address_family af>
     [[nodiscard]] auto tag(address<af> const &) noexcept -> address_family_tag
@@ -389,7 +500,7 @@ namespace sk::net {
     }
 
     template <address_family af>
-    [[nodiscard]] auto str(address<af> const &) = delete;
+    [[nodiscard]] auto str(address<af> const &) noexcept = delete;
 
     template <address_family family>
     inline auto operator<<(std::ostream &strm, address<family> const &addr)
@@ -409,7 +520,7 @@ namespace sk::net {
     struct address_caster;
 
     template <typename To, typename From>
-    auto address_cast(From &&from) -> expected<To, std::error_code>
+    auto address_cast(From &&from) noexcept -> expected<To, std::error_code>
     {
         return address_caster<std::remove_reference_t<To>,
                               std::remove_cvref_t<From>>()
@@ -417,7 +528,7 @@ namespace sk::net {
     }
 
     template <address_family af1, address_family af2>
-    bool operator==(address<af1> const &a, address<af2> const &b)
+    bool operator==(address<af1> const &a, address<af2> const &b) noexcept
     {
         address_family_tag af_a = tag(a);
         address_family_tag af_b = tag(b);
@@ -439,7 +550,7 @@ namespace sk::net {
     }
 
     template <address_family af1, address_family af2>
-    bool operator<(address<af1> const &a, address<af2> const &b)
+    bool operator<(address<af1> const &a, address<af2> const &b) noexcept
     {
         address_family_tag af_a = tag(a);
         address_family_tag af_b = tag(b);
@@ -473,23 +584,23 @@ namespace sk::net {
 
     public:
         address() noexcept = default;
-        address(address_type const &a) : _address(a) {}
+        explicit address(address_type const &a) noexcept : _address(a) {}
         address(address const &other) noexcept = default;
         auto operator=(address const &other) noexcept -> address & = default;
 
         static const address<inet_family> zero_address;
 
-        auto value() noexcept -> address_type &
+        [[nodiscard]] auto value() noexcept -> address_type &
         {
             return _address;
         }
 
-        auto value() const noexcept -> address_type const &
+        [[nodiscard]] auto value() const noexcept -> address_type const &
         {
             return _address;
         }
 
-        auto as_bytes() const noexcept
+        [[nodiscard]] auto as_bytes() const noexcept
             -> std::span<std::byte const, inet_family::address_size>
         {
             return inet_family::as_bytes(_address);
@@ -503,7 +614,7 @@ namespace sk::net {
 
     template <>
     [[nodiscard]] inline auto make_address<inet_family>(sockaddr const *sa,
-                                                        socklen_t len)
+                                                        socklen_t len) noexcept
         -> expected<address<inet_family>, std::error_code>
     {
         SK_CHECK(len > 0, "invalid address len");
@@ -522,7 +633,8 @@ namespace sk::net {
     }
 
     template <>
-    [[nodiscard]] inline auto make_address<inet_family>(std::string const &str)
+    [[nodiscard]] inline auto
+    make_address<inet_family>(std::string_view str) noexcept
         -> expected<inet_address, std::error_code>
     {
         auto a = inet_family::from_string(str);
@@ -531,18 +643,18 @@ namespace sk::net {
         return inet_address(*a);
     }
 
-    [[nodiscard]] inline auto make_inet_address(std::uint32_t addr)
+    [[nodiscard]] inline auto make_inet_address(std::uint32_t addr) noexcept
         -> inet_address
     {
         return inet_address(inet_family::from_in_addr_t(addr));
     }
 
-    [[nodiscard]] inline auto make_inet_address(std::string const &v)
+    [[nodiscard]] inline auto make_inet_address(std::string_view v) noexcept
     {
         return make_address<inet_family>(v);
     }
 
-    [[nodiscard]] inline auto str(inet_address const &addr)
+    [[nodiscard]] inline auto str(inet_address const &addr) noexcept
         -> expected<std::string, std::error_code>
     {
         return inet_family::to_string(addr.value());
@@ -550,7 +662,7 @@ namespace sk::net {
 
     template <>
     [[nodiscard]] inline auto
-    socket_address_family(address<inet_family> const &)
+    socket_address_family(address<inet_family> const &) noexcept
     {
         return AF_INET;
     }
@@ -572,23 +684,23 @@ namespace sk::net {
 
     public:
         address() noexcept = default;
-        address(address_type const &a) : _address(a) {}
+        explicit address(address_type const &a) noexcept : _address(a) {}
         address(address const &other) noexcept = default;
         auto operator=(address const &other) noexcept -> address & = default;
 
         static const address<inet6_family> zero_address;
 
-        auto value() noexcept -> address_type &
+        [[nodiscard]] auto value() noexcept -> address_type &
         {
             return _address;
         }
 
-        auto value() const noexcept -> address_type const &
+        [[nodiscard]] auto value() const noexcept -> address_type const &
         {
             return _address;
         }
 
-        auto as_bytes() const noexcept
+        [[nodiscard]] auto as_bytes() const noexcept
             -> std::span<std::byte const, inet6_family::address_size>
         {
             return inet6_family::as_bytes(_address);
@@ -602,7 +714,7 @@ namespace sk::net {
 
     template <>
     [[nodiscard]] inline auto make_address<inet6_family>(sockaddr const *sa,
-                                                         socklen_t len)
+                                                         socklen_t len) noexcept
         -> expected<address<inet6_family>, std::error_code>
     {
         SK_CHECK(len > 0, "invalid address len");
@@ -621,7 +733,7 @@ namespace sk::net {
     }
 
     template <>
-    inline auto make_address<inet6_family>(std::string const &str)
+    inline auto make_address<inet6_family>(std::string_view str) noexcept
         -> expected<inet6_address, std::error_code>
     {
         auto a = inet6_family::from_string(str);
@@ -630,18 +742,18 @@ namespace sk::net {
         return inet6_address(*a);
     }
 
-    [[nodiscard]] inline auto make_inet6_address(in6_addr const &addr)
+    [[nodiscard]] inline auto make_inet6_address(in6_addr const &addr) noexcept
         -> inet6_address
     {
         return inet6_address(inet6_family::from_in6_addr(addr));
     }
 
-    inline auto make_inet6_address(std::string const &str)
+    inline auto make_inet6_address(std::string_view str) noexcept
     {
         return make_address<inet6_family>(str);
     }
 
-    inline auto str(inet6_address const &addr)
+    inline auto str(inet6_address const &addr) noexcept
         -> expected<std::string, std::error_code>
     {
         return inet6_family::to_string(addr.value());
@@ -649,7 +761,7 @@ namespace sk::net {
 
     template <>
     [[nodiscard]] inline auto
-    socket_address_family(address<inet6_family> const &)
+    socket_address_family(address<inet6_family> const &) noexcept
     {
         return AF_INET6;
     }
@@ -671,21 +783,22 @@ namespace sk::net {
 
     public:
         address() noexcept = default;
-        address(address_type const &a) : _address(a) {}
+        explicit address(address_type const &a) noexcept : _address(a) {}
         address(address const &other) noexcept = default;
         auto operator=(address const &other) noexcept -> address & = default;
 
-        auto value() noexcept -> address_type &
+        [[nodiscard]] auto value() noexcept -> address_type &
         {
             return _address;
         }
 
-        auto value() const noexcept -> address_type const &
+        [[nodiscard]] auto value() const noexcept -> address_type const &
         {
             return _address;
         }
 
-        auto as_bytes() const noexcept -> std::span<std::byte const>
+        [[nodiscard]] auto as_bytes() const noexcept
+            -> std::span<std::byte const>
         {
             return unix_family::as_bytes(_address);
         }
@@ -694,7 +807,7 @@ namespace sk::net {
     using unix_address = address<unix_family>;
 
     template <>
-    inline auto make_address<unix_family>(std::string const &str)
+    inline auto make_address<unix_family>(std::string_view str) noexcept
         -> expected<unix_address, std::error_code>
     {
         auto a = unix_family::from_string(str);
@@ -703,18 +816,18 @@ namespace sk::net {
         return unix_address(*a);
     }
 
-    inline auto str(unix_address const &addr)
+    inline auto str(unix_address const &addr) noexcept
         -> expected<std::string, std::error_code>
     {
         return unix_family::to_string(addr.value());
     }
 
-    inline auto make_unix_address(std::string const &str)
+    inline auto make_unix_address(std::string_view str) noexcept
     {
         return make_address<unix_family>(str);
     }
 
-    inline auto make_unix_address(std::filesystem::path const &path)
+    inline auto make_unix_address(std::filesystem::path const &path) noexcept
         -> expected<unix_address, std::error_code>
     {
         auto a = unix_family::from_string(path);
@@ -725,7 +838,7 @@ namespace sk::net {
 
     template <>
     [[nodiscard]] inline auto
-    socket_address_family(address<unix_family> const &)
+    socket_address_family(address<unix_family> const &) noexcept
     {
         return AF_UNIX;
     }
@@ -747,21 +860,22 @@ namespace sk::net {
 
     public:
         address() noexcept = default;
-        address(address_type const &a) : _address(a) {}
+        explicit address(address_type const &a) noexcept : _address(a) {}
         address(address const &other) noexcept = default;
         auto operator=(address const &other) noexcept -> address & = default;
 
-        auto value() noexcept -> address_type &
+        [[nodiscard]] auto value() noexcept -> address_type &
         {
             return _address;
         }
 
-        auto value() const noexcept -> address_type const &
+        [[nodiscard]] auto value() const noexcept -> address_type const &
         {
             return _address;
         }
 
-        auto as_bytes() const noexcept -> std::span<std::byte const>
+        [[nodiscard]] auto as_bytes() const noexcept
+            -> std::span<std::byte const>
         {
             return unspecified_family::as_bytes(_address);
         }
@@ -770,7 +884,7 @@ namespace sk::net {
     using unspecified_address = address<unspecified_family>;
 
     template <>
-    inline auto make_address<unspecified_family>(std::string const &str)
+    inline auto make_address<unspecified_family>(std::string_view str) noexcept
         -> expected<unspecified_address, std::error_code>
     {
         auto a = unspecified_family::from_string(str);
@@ -781,7 +895,7 @@ namespace sk::net {
 
     template <>
     [[nodiscard]] inline auto
-    make_address<unspecified_family>(sockaddr const *sa, socklen_t len)
+    make_address<unspecified_family>(sockaddr const *sa, socklen_t len) noexcept
         -> expected<address<unspecified_family>, std::error_code>
     {
         SK_CHECK(len > 0, "invalid address len");
@@ -819,7 +933,7 @@ namespace sk::net {
         }
     }
 
-    inline auto str(unspecified_address const &addr)
+    inline auto str(unspecified_address const &addr) noexcept
         -> expected<std::string, std::error_code>
     {
         return unspecified_family::to_string(addr.value());
@@ -834,7 +948,7 @@ namespace sk::net {
 
     template <>
     [[nodiscard]] inline auto
-    socket_address_family(address<unspecified_family> const &addr)
+    socket_address_family(address<unspecified_family> const &addr) noexcept
     {
         switch (tag(addr)) {
         case inet_family::tag:
@@ -851,7 +965,7 @@ namespace sk::net {
     // unspecified_address <- inet_address
     template <>
     struct address_caster<unspecified_address, inet_address> {
-        auto cast(inet_address const &addr)
+        [[nodiscard]] auto cast(inet_address const &addr) noexcept
         {
             return unspecified_address(addr.value());
         }
@@ -860,7 +974,7 @@ namespace sk::net {
     // inet_address <- unspecified_address
     template <>
     struct address_caster<inet_address, unspecified_address> {
-        auto cast(unspecified_address const &addr)
+        [[nodiscard]] auto cast(unspecified_address const &addr) noexcept
             -> expected<inet_address, std::error_code>
         {
             return std::visit(
@@ -880,7 +994,7 @@ namespace sk::net {
     // unspecified_address <- inet6_address
     template <>
     struct address_caster<unspecified_address, inet6_address> {
-        auto cast(inet6_address const &addr)
+        [[nodiscard]] auto cast(inet6_address const &addr) noexcept
         {
             return unspecified_address(addr.value());
         }
@@ -889,7 +1003,7 @@ namespace sk::net {
     // inet6_address <- unspecified_address
     template <>
     struct address_caster<inet6_address, unspecified_address> {
-        auto cast(unspecified_address const &addr)
+        [[nodiscard]] auto cast(unspecified_address const &addr) noexcept
             -> expected<inet6_address, std::error_code>
         {
             return std::visit(
@@ -909,7 +1023,7 @@ namespace sk::net {
     // unspecified_address <- unix_address
     template <>
     struct address_caster<unspecified_address, unix_address> {
-        auto cast(unix_address const &addr)
+        [[nodiscard]] auto cast(unix_address const &addr) noexcept
         {
             return unspecified_address(addr.value());
         }
@@ -918,7 +1032,7 @@ namespace sk::net {
     // unix_address <- unspecified_address
     template <>
     struct address_caster<unix_address, unspecified_address> {
-        auto cast(unspecified_address const &addr)
+        [[nodiscard]] auto cast(unspecified_address const &addr) noexcept
             -> expected<unix_address, std::error_code>
         {
             return std::visit(
@@ -941,7 +1055,7 @@ namespace sk::net {
      */
 
     [[nodiscard]] inline auto
-    make_unspecified_zero_address(address_family_tag af)
+    make_unspecified_zero_address(address_family_tag af) noexcept
         -> expected<unspecified_address, std::error_code>
     {
         switch (af) {
@@ -972,7 +1086,7 @@ namespace sk::net {
      *
      */
     enum struct resolver_error : int {
-        no_error = 0,
+        no_error [[maybe_unused]] = 0,
     };
 
 } // namespace sk::net
@@ -1014,14 +1128,14 @@ namespace sk::net {
 
     } // namespace detail
 
-    [[nodiscard]] inline auto resolver_errc_category()
+    [[nodiscard]] inline auto resolver_errc_category() noexcept
         -> detail::resolver_errc_category const &
     {
         static detail::resolver_errc_category c;
         return c;
     }
 
-    [[nodiscard]] inline auto make_error_code(resolver_error e)
+    [[nodiscard]] inline auto make_error_code(resolver_error e) noexcept
         -> std::error_code
     {
         return {static_cast<int>(e), resolver_errc_category()};
@@ -1036,7 +1150,7 @@ namespace sk::net {
         // uses heap allocation.
 
         struct addrinfo_deleter {
-            auto operator()(addrinfo *ai) const -> void
+            auto operator()(addrinfo *ai) const noexcept -> void
             {
                 ::freeaddrinfo(ai);
             }
@@ -1069,7 +1183,7 @@ namespace sk::net {
             transformer _xfrm;
             typename transformer::result_type _addr;
 
-            auto _next_address() -> void
+            auto _next_address() noexcept -> void
             {
                 auto r = _xfrm(&_ai);
                 if (r)
@@ -1089,7 +1203,7 @@ namespace sk::net {
             using const_reference = const_value_type &;
 
             addrinfo_iterator() noexcept = default;
-            addrinfo_iterator(addrinfo *ai_) noexcept : _ai(ai_)
+            explicit addrinfo_iterator(addrinfo *ai_) noexcept : _ai(ai_)
             {
                 _next_address();
             }
@@ -1115,33 +1229,33 @@ namespace sk::net {
                 return ret;
             }
 
-            auto operator*() const noexcept -> reference
+            [[nodiscard]] auto operator*() const noexcept -> reference
             {
                 return const_cast<addrinfo_iterator *>(this)->_addr;
             }
 
-            auto operator*() noexcept -> reference
+            [[nodiscard]] auto operator*() noexcept -> reference
             {
                 return _addr;
             }
 
-            auto operator->() const noexcept -> pointer
+            [[nodiscard]] auto operator->() const noexcept -> pointer
             {
                 return &const_cast<addrinfo_iterator *>(this)->_addr;
             }
 
-            auto operator->() noexcept -> pointer
+            [[nodiscard]] auto operator->() noexcept -> pointer
             {
                 return &_addr;
             }
 
-            auto operator==(addrinfo_iterator const &other) const noexcept
-                -> bool
+            [[nodiscard]] auto
+            operator==(addrinfo_iterator const &other) const noexcept -> bool
             {
                 return _ai == other._ai;
             }
 
-            auto get_addrinfo() -> addrinfo *
+            [[nodiscard]] auto get_addrinfo() -> addrinfo *
             {
                 return _ai;
             }
@@ -1157,7 +1271,8 @@ namespace sk::net {
             using iterator = addrinfo_iterator<transform>;
 
             addrinfo_container() noexcept = default;
-            addrinfo_container(addrinfo_ptr &&ai) noexcept : _ai(std::move(ai))
+            explicit addrinfo_container(addrinfo_ptr &&ai) noexcept
+                : _ai(std::move(ai))
             {
             }
             addrinfo_container(addrinfo_container const &) noexcept = delete;
@@ -1168,12 +1283,12 @@ namespace sk::net {
                 -> addrinfo_container & = default;
             ~addrinfo_container() = default;
 
-            auto begin() noexcept -> iterator
+            [[nodiscard]] auto begin() noexcept -> iterator
             {
                 return iterator(_ai.get());
             }
 
-            auto end() noexcept -> iterator
+            [[nodiscard]] auto end() noexcept -> iterator
             {
                 return iterator();
             }
@@ -1307,7 +1422,8 @@ namespace sk {
         class prefix;
 
         template <address_family af>
-        auto str(prefix<af> const &) -> std::string = delete;
+        [[nodiscard]] auto str(prefix<af> const &) noexcept
+            -> expected<std::string, std::error_code> = delete;
 
         /*************************************************************************
          * INET prefix
@@ -1322,24 +1438,35 @@ namespace sk {
             unsigned _length;
 
         public:
-            constexpr auto length() const noexcept -> unsigned
+            [[nodiscard]] constexpr auto length() const noexcept -> unsigned
             {
                 return _length;
             }
 
-            auto address() const noexcept -> address_type const &
+            [[nodiscard]] auto address() const noexcept -> address_type const &
             {
                 return _addr;
             }
         };
 
         template <>
-        inline auto str(prefix<inet_family> const &p) -> std::string
+        [[nodiscard]] inline auto str(prefix<inet_family> const &p) noexcept
+            -> expected<std::string, std::error_code>
         {
-            return inet_family::to_string(p.address().value()) + "/" +
-                   std::to_string(p.length());
+            auto s = str(p.address());
+            if (!s)
+                return make_unexpected(s.error());
+
+            try {
+                return *s + "/" + std::to_string(p.length());
+            } catch (std::bad_alloc const &) {
+                return make_unexpected(
+                    std::make_error_code(std::errc::not_enough_memory));
+            }
         }
+
     } // namespace net
+
 } // namespace sk
 
 #endif // SK_CIO_NET_ADDRESS_HXX_INCLUDED
