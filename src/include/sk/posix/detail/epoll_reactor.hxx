@@ -40,8 +40,6 @@
 #include <system_error>
 #include <thread>
 
-#include <gsl/gsl>
-
 #include <sk/async_invoke.hxx>
 #include <sk/detail/safeint.hxx>
 #include <sk/executor.hxx>
@@ -179,7 +177,7 @@ namespace sk::posix::detail {
             std::lock_guard state_lock(_state_mtx);
 
             for (int i = 0; i < nevents; ++i) {
-                auto &event = gsl::at(events, i);
+                auto &event = events[i];
                 auto fd = event.data.fd;
 
                 if (fd == _shutdown_pipe[0])
