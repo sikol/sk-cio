@@ -68,10 +68,10 @@ TEST_CASE("idafilechannel::read()")
         }
 
         REQUIRE(*nbytes == static_cast<sk::io_size_t>(15 - i));
-        auto expected = std::vector<std::byte>(
-            reinterpret_cast<std::byte *>(test_string.data() + i),
-            reinterpret_cast<std::byte *>(test_string.data() +
-                                          test_string.size()));
+        auto expected_bytes =
+            as_bytes(std::span(test_string).subspan(i, test_string.size() - i));
+        std::vector<std::byte> expected(expected_bytes.begin(),
+                                        expected_bytes.end());
         REQUIRE(buf == expected);
     }
 
@@ -112,10 +112,10 @@ TEST_CASE("idafilechannel::async_read()")
         }
 
         REQUIRE(*nbytes == static_cast<sk::io_size_t>(test_buf_size - i));
-        auto expected = std::vector<std::byte>(
-            reinterpret_cast<std::byte *>(test_string.data() + i),
-            reinterpret_cast<std::byte *>(test_string.data() +
-                                          test_string.size()));
+        auto expected_bytes =
+            as_bytes(std::span(test_string).subspan(i, test_string.size() - i));
+        std::vector<std::byte> expected(expected_bytes.begin(),
+                                        expected_bytes.end());
         REQUIRE(buf == expected);
     }
 

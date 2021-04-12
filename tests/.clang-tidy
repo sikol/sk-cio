@@ -1,0 +1,7 @@
+# cppcoreguidelines-avoid-magic-numbers is disabled because this is frequently
+# triggered by tests, and adding //NOLINT everywhere would make the code less
+# readable.
+
+Checks: >
+  -cppcoreguidelines-avoid-magic-numbers
+InheritParentConfig: true

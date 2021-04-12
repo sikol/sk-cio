@@ -34,7 +34,7 @@
 
 auto main(int argc, char **argv) -> int
 {
-    auto reactor = sk::get_shared_reactor_handle();
+    auto reactor = sk::shared_reactor_handle::get();
     if (!reactor) {
         fmt::print(stderr,
                    "failed to create reactor: {}\n",

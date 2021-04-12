@@ -34,12 +34,14 @@
 #include <ranges>
 #include <cctype>
 
+#include <sk/expected.hxx>
+
 namespace sk::detail {
 
     // If `v` begins with an unsigned integer, remove it and return it and the
     // rest of the string.  Otherwise, return nullopt and the original string.
     template<typename T>
-    inline auto span_number(std::string_view v, int base = 10)
+    inline auto span_number(std::string_view v, int base = 10) noexcept
         -> std::pair<std::optional<T>, std::string_view>
     {
         T i;
@@ -49,6 +51,19 @@ namespace sk::detail {
             return {{}, v};
 
         return {i, v.substr(p - v.data())};
+    }
+
+    template<typename T>
+    inline auto strtoi(std::string_view v, int base = 10) noexcept -> expected<T, std::error_code> {
+        T i;
+
+        auto [p, ec] = std::from_chars(v.data(), v.data() + v.size(), i, base);
+        if (ec != std::errc())
+            return make_unexpected(std::make_error_code(ec));
+        if (p != (v.data() + v.size()))
+            return make_unexpected(std::make_error_code(std::errc::invalid_argument));
+
+        return i;
     }
 
 } // namespace sk::detail

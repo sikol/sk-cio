@@ -35,8 +35,7 @@ static_assert(sk::iseqchannel<sk::iseqcharchannel<char, sk::imemchannel>>);
 
 TEST_CASE("oseqcharchannel<char> write_some") {
     std::array<char, 4> outbuf{};
-    auto mchan = sk::make_omemchannel(outbuf);
-    auto cchan = sk::make_oseqcharchannel<char>(mchan);
+    auto cchan = sk::make_oseqcharchannel<char>(sk::make_omemchannel(outbuf));
 
     std::array const inbuf{ 'A', 'B', 'C' };
     auto r = write_some(cchan, inbuf);
@@ -48,8 +47,7 @@ TEST_CASE("oseqcharchannel<char> write_some") {
 
 TEST_CASE("oseqcharchannel<char> async_write_some") {
     std::array<char, 4> outbuf{};
-    auto mchan = sk::make_omemchannel(outbuf);
-    auto cchan = sk::make_oseqcharchannel<char>(mchan);
+    auto cchan = sk::make_oseqcharchannel<char>(sk::make_omemchannel(outbuf));
 
     std::array const inbuf{ 'A', 'B', 'C' };
     auto r = wait(async_write_some(cchan, std::span(inbuf)));

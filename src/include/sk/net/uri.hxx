@@ -32,14 +32,16 @@
 #include <algorithm>
 #include <charconv>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <system_error>
-#include <memory>
+#include <array>
 
 #include <sk/expected.hxx>
+#include <sk/flagset.hxx>
 
 namespace sk::net {
 
@@ -68,12 +70,12 @@ namespace sk::net {
     namespace detail {
 
         struct uri_errc_category : std::error_category {
-            char const *name() const noexcept final
+            [[nodiscard]] auto name() const noexcept -> char const * final
             {
                 return "sk:uri";
             }
 
-            std::string message(int c) const final
+            [[nodiscard]] auto message(int c) const -> std::string final
             {
                 switch (static_cast<uri_errors>(c)) {
                 case uri_errors::no_error:
@@ -140,20 +142,21 @@ namespace sk::net {
         std::optional<uri_authority> authority;
         std::optional<uri_path> path;
 
+        //NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays)
         std::shared_ptr<char[]> original_data;
     };
 
-    inline auto is_absolute(uri const &u) -> bool
+    [[nodiscard]] constexpr auto is_absolute(uri const &u) -> bool
     {
         return u.scheme.has_value() && u.authority.has_value();
     }
 
-    inline auto is_relative(uri const &u) -> bool
+    [[nodiscard]] constexpr auto is_relative(uri const &u) -> bool
     {
         return !u.scheme.has_value() && !u.authority.has_value();
     }
 
-    inline auto is_protocol_relative(uri const &u)
+    [[nodiscard]] constexpr auto is_protocol_relative(uri const &u) -> bool
     {
         return u.authority.has_value() && !u.scheme.has_value();
     }
@@ -174,7 +177,7 @@ namespace sk::net {
         static_assert(std::numeric_limits<unsigned char>::max() == 255);
 
         // clang-format off
-        inline constexpr int chars[256] = {
+        constexpr std::array<int, 256> chars = {
             0, /* 00, NUL */ 0, /* 01, SOH */ 0, /* 02, STX */ 0, /* 03, ETX */
             0, /* 04, EOT */ 0, /* 05, ENQ */ 0, /* 06, ACK */ 0, /* 07, BEL */
             0, /* 08, BS */  0, /* 09, HT */  0, /* 0A, LF */  0, /* 0B, VT */
@@ -310,20 +313,20 @@ namespace sk::net {
         };
         // clang-format on
 
-        inline constexpr auto isc(int what, char c) -> bool
+        [[nodiscard]] inline auto isc(int what, char c) noexcept -> bool
         {
             return (chars[static_cast<unsigned char>(c)] & what) != 0;
         }
 
-        inline auto span(std::string_view s, int what)
+        [[nodiscard]] inline auto span(std::string_view s, int what) noexcept
             -> std::pair<std::string_view, std::string_view>
         {
             auto split = std::ranges::find_if_not(
-                s, std::bind(isc, what, std::placeholders::_1));
+                s, [=](auto c) { return isc(what, c); });
             return {{s.begin(), split}, {split, s.end()}};
         }
 
-        inline auto match_scheme(std::string_view s)
+        [[nodiscard]] inline auto match_scheme(std::string_view s) noexcept
             -> std::pair<std::optional<std::string_view>, std::string_view>
         {
             auto [scheme, rest] = span(s, schemec);
@@ -334,7 +337,8 @@ namespace sk::net {
             return {scheme, rest.substr(1)};
         }
 
-        inline auto match_username_password(std::string_view s)
+        [[nodiscard]] inline auto
+        match_username_password(std::string_view s) noexcept
             -> std::tuple<std::optional<std::string_view>,
                           std::optional<std::string_view>,
                           std::string_view>
@@ -360,7 +364,7 @@ namespace sk::net {
             return {username, password, v.substr(1)};
         }
 
-        inline auto match_number(std::string_view s)
+        [[nodiscard]] inline auto match_number(std::string_view s) noexcept
             -> std::pair<std::optional<unsigned>, std::string_view>
         {
             auto [istr, rest] = span(s, numc);
@@ -369,7 +373,7 @@ namespace sk::net {
                 return {{}, s};
 
             auto is = istr.data(), ilast = istr.data() + istr.size();
-            unsigned i;
+            unsigned i{};
             auto [p, ec] = std::from_chars(is, ilast, i);
             if (ec != std::errc() || p != ilast)
                 return {{}, s};
@@ -377,7 +381,7 @@ namespace sk::net {
             return {i, rest};
         }
 
-        inline auto match_ip6_host(std::string_view s)
+        [[nodiscard]] inline auto match_ip6_host(std::string_view s) noexcept
             -> std::pair<std::string_view, std::string_view>
         {
             if (s.empty() || s[0] != '[')
@@ -390,8 +394,10 @@ namespace sk::net {
             return {host, rest.substr(1)};
         }
 
-        inline auto match_host(std::string_view s) -> std::
-            tuple<std::string_view, std::optional<unsigned>, std::string_view>
+        [[nodiscard]] inline auto match_host(std::string_view s) noexcept
+            -> std::tuple<std::string_view,
+                          std::optional<unsigned>,
+                          std::string_view>
         {
             if (s.empty())
                 return {{}, {}, s};
@@ -411,7 +417,7 @@ namespace sk::net {
             return {host, port, rest_};
         }
 
-        inline auto match_path_only(std::string_view s)
+        [[nodiscard]] inline auto match_path_only(std::string_view s) noexcept
             -> std::pair<std::optional<std::string_view>, std::string_view>
         {
             if (s.empty() || s[0] != '/')
@@ -422,7 +428,7 @@ namespace sk::net {
             return {path, s};
         }
 
-        inline auto match_path_query(std::string_view s)
+        [[nodiscard]] inline auto match_path_query(std::string_view s) noexcept
             -> std::pair<std::optional<std::string_view>, std::string_view>
         {
             if (s.empty() || s[0] != '?')
@@ -433,7 +439,7 @@ namespace sk::net {
             return {query, s};
         }
 
-        inline auto match_path_frag(std::string_view s)
+        [[nodiscard]] inline auto match_path_frag(std::string_view s) noexcept
             -> std::pair<std::optional<std::string_view>, std::string_view>
         {
             if (s.empty() || s[0] != '#')
@@ -444,7 +450,7 @@ namespace sk::net {
             return {frag, s};
         }
 
-        inline auto match_path(std::string_view s)
+        [[nodiscard]] inline auto match_path(std::string_view s) noexcept
             -> std::pair<std::optional<uri_path>, std::string_view>
         {
             std::optional<std::string_view> path_only;
@@ -459,7 +465,7 @@ namespace sk::net {
             return {path, s};
         }
 
-        inline auto match_authority(std::string_view s)
+        [[nodiscard]] inline auto match_authority(std::string_view s) noexcept
             -> std::pair<std::optional<uri_authority>, std::string_view>
         {
             if (s.size() < 2 || s.substr(0, 2) != "//")
@@ -479,7 +485,7 @@ namespace sk::net {
             return {auth, v};
         }
 
-        inline auto dehex(char c) -> int
+        [[nodiscard]] inline auto dehex(char c) noexcept -> int
         {
             if (c >= '0' && c <= '9')
                 return c - '0';
@@ -490,7 +496,7 @@ namespace sk::net {
             return -1;
         }
 
-        inline auto dehex(char const *p) -> int
+        [[nodiscard]] inline auto dehex(char const *p) noexcept -> int
         {
             int a = dehex(*p), b = dehex(*(p + 1));
 
@@ -500,8 +506,9 @@ namespace sk::net {
             return (a << 4) | b;
         }
 
-        inline auto decode_path(char *original_data,
-                                std::string_view *path_view) -> bool
+        [[nodiscard]] inline auto
+        decode_path(char *original_data, std::string_view *path_view) noexcept
+            -> bool
         {
             // URL-decode the path, without causing original_data to reallocate
             // since that will invalidate all the string_views.
@@ -513,7 +520,7 @@ namespace sk::net {
 
             while (p < end) {
                 // URL-encoded URLs should not have high-bit characters.
-                if (static_cast<unsigned char>(static_cast<int>(*p)) & 0x80u)
+                if (*p < 0)
                     return false;
 
                 if (*p != '%') {
@@ -537,63 +544,90 @@ namespace sk::net {
             return true;
         }
 
+        [[nodiscard]] inline auto raw_parse_uri(std::string const &s) noexcept
+            -> expected<uri, std::error_code>
+        {
+            if (s.empty())
+                return make_unexpected(make_uri_error(uri_errors::no_data));
+
+            uri ret;
+            auto len = s.size();
+            ret.original_data =
+                //NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays)
+                std::shared_ptr<char[]>(new (std::nothrow) char[len]);
+            if (!ret.original_data)
+                return make_unexpected(
+                    std::make_error_code(std::errc::not_enough_memory));
+
+            std::ranges::copy(s, ret.original_data.get());
+
+            std::string_view v(ret.original_data.get(), len);
+            std::tie(ret.scheme, v) = detail::match_scheme(v);
+            std::tie(ret.authority, v) = detail::match_authority(v);
+            std::tie(ret.path, v) = detail::match_path(v);
+
+            if (!v.empty())
+                return make_unexpected(
+                    make_uri_error(uri_errors::parse_failed));
+
+            return ret;
+        }
+
     } // namespace detail
 
-    struct uri_options {
-        static constexpr std::uint_fast8_t allow_relative = 1u << 1;
-        static constexpr std::uint_fast8_t allow_protocol_relative = 1u << 2;
-        static constexpr std::uint_fast8_t skip_path_decode = 1u << 3;
+    struct urioptions_tag {
     };
+    using urioption = flag<urioptions_tag, std::uint_fast8_t>;
 
-    inline auto parse_uri(std::string const &s, unsigned options = 0)
+    namespace uri_options {
+        static constexpr urioption none{0u};
+        static constexpr urioption allow_relative = {1u << 0};
+        static constexpr urioption allow_protocol_relative{1u << 1};
+        static constexpr urioption skip_path_decode{1u << 2};
+    } // namespace uri_options
+
+    [[nodiscard]] inline auto
+    parse_uri(std::string const &s,
+              urioption::flagset options = uri_options::none) noexcept
         -> expected<uri, std::error_code>
     {
-        if (s.empty())
-            return make_unexpected(make_uri_error(uri_errors::no_data));
+        auto ret = detail::raw_parse_uri(s);
+        if (!ret)
+            return make_unexpected(ret.error());
 
-        uri ret;
-        auto len = s.size();
-        ret.original_data = std::shared_ptr<char[]>(new char[len]);
-        std::ranges::copy(s, ret.original_data.get());
-
-        std::string_view v(ret.original_data.get(), len);
-        std::tie(ret.scheme, v) = detail::match_scheme(v);
-        std::tie(ret.authority, v) = detail::match_authority(v);
-        std::tie(ret.path, v) = detail::match_path(v);
-
-        if (!v.empty())
-            return make_unexpected(make_uri_error(uri_errors::parse_failed));
-
-        if (ret.authority && ret.authority->port &&
-            *ret.authority->port > 65535u)
+        if (ret->authority && ret->authority->port &&
+            *ret->authority->port > 65535u)
             return make_unexpected(make_uri_error(uri_errors::invalid_port));
 
-        if (is_protocol_relative(ret) && !(options & uri_options::allow_protocol_relative))
+        if (is_protocol_relative(*ret) &&
+            !is_set(options, uri_options::allow_protocol_relative))
             return make_unexpected(
                 make_uri_error(uri_errors::protocol_relative));
 
-        if (!is_absolute(ret) &&
-            !(options & (uri_options::allow_relative | uri_options::allow_protocol_relative)))
+        if (!is_absolute(*ret) &&
+            !any_set(options,
+                     uri_options::allow_relative |
+                         uri_options::allow_protocol_relative))
             return make_unexpected(make_uri_error(uri_errors::relative));
 
         // "authority-relative" URLs (https:/some/path) are not allowed.
-        if (ret.scheme && !ret.authority)
+        if (ret->scheme && !ret->authority)
             return make_unexpected(make_uri_error(uri_errors::parse_failed));
 
-        if (ret.path && !(options & uri_options::skip_path_decode)) {
-            if (!detail::decode_path(ret.original_data.get(), &ret.path->path))
+        if (ret->path && !is_set(options, uri_options::skip_path_decode)) {
+            if (!detail::decode_path(ret->original_data.get(), &ret->path->path))
                 return make_unexpected(
                     make_uri_error(uri_errors::invalid_encoding));
 
-            if (ret.path->query &&
-                !detail::decode_path(ret.original_data.get(),
-                                     std::addressof(*ret.path->query)))
+            if (ret->path->query &&
+                !detail::decode_path(ret->original_data.get(),
+                                     std::addressof(*ret->path->query)))
                 return make_unexpected(
                     make_uri_error(uri_errors::invalid_encoding));
 
-            if (ret.path->fragment &&
-                !detail::decode_path(ret.original_data.get(),
-                                     std::addressof(*ret.path->fragment)))
+            if (ret->path->fragment &&
+                !detail::decode_path(ret->original_data.get(),
+                                     std::addressof(*ret->path->fragment)))
                 return make_unexpected(
                     make_uri_error(uri_errors::invalid_encoding));
         }

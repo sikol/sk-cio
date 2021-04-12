@@ -57,7 +57,10 @@ namespace sk::net {
         address_type _address;
 
     public:
-        explicit unix_endpoint(address_type const &addr) : _address(addr) {}
+        explicit unix_endpoint(address_type const &addr) noexcept
+            : _address(addr)
+        {
+        }
 
         [[nodiscard]] auto address() const noexcept -> const_address_type &
         {
@@ -73,7 +76,7 @@ namespace sk::net {
         {
             sockaddr_un sun{};
 
-            auto &chars = _address.value().path;
+            auto const &chars = _address.value().path;
 
             sun.sun_family = AF_UNIX;
             static_assert(unix_family::address_size <=
@@ -82,7 +85,8 @@ namespace sk::net {
             return sun;
         }
 
-        [[nodiscard]] auto as_sockaddr_storage() const noexcept -> sockaddr_storage
+        [[nodiscard]] auto as_sockaddr_storage() const noexcept
+            -> sockaddr_storage
         {
             sockaddr_storage ret{};
             auto sun = as_sockaddr_un();
@@ -93,18 +97,21 @@ namespace sk::net {
         }
     };
 
-    inline auto str(unix_endpoint const &ep) -> std::string
+    [[nodiscard]] inline auto str(unix_endpoint const &ep) noexcept
+        -> expected<std::string, std::error_code>
     {
-        return *str(ep.address());
+        return str(ep.address());
     }
 
-    inline auto make_unix_endpoint(unix_address const &addr) noexcept
+    [[nodiscard]] inline auto
+    make_unix_endpoint(unix_address const &addr) noexcept
         -> expected<unix_endpoint, std::error_code>
     {
         return unix_endpoint(addr);
     }
 
-    inline auto make_unix_endpoint(unspecified_address const &addr) noexcept
+    [[nodiscard]] inline auto
+    make_unix_endpoint(unspecified_address const &addr) noexcept
         -> expected<unix_endpoint, std::error_code>
     {
         auto ua = address_cast<unix_address>(addr);
@@ -113,7 +120,8 @@ namespace sk::net {
         return unix_endpoint(*ua);
     }
 
-    inline auto make_unix_endpoint(std::filesystem::path const &path) noexcept
+    [[nodiscard]] inline auto
+    make_unix_endpoint(std::filesystem::path const &path) noexcept
         -> expected<unix_endpoint, std::error_code>
     {
         auto addr = make_unix_address(path);
@@ -122,7 +130,7 @@ namespace sk::net {
         return make_unix_endpoint(*addr);
     }
 
-    inline auto make_unix_endpoint(std::string_view str) noexcept
+    [[nodiscard]] inline auto make_unix_endpoint(std::string_view str) noexcept
         -> expected<unix_endpoint, std::error_code>
     {
         auto addr = make_unix_address(str);
@@ -135,9 +143,9 @@ namespace sk::net {
         using socket_type = detail::streamsocket<SOCK_STREAM, 0>;
 
     public:
-        unixchannel() = default;
+        unixchannel() noexcept = default;
 
-        explicit unixchannel(sk::net::detail::native_socket_type &&fd)
+        explicit unixchannel(sk::net::detail::native_socket_type &&fd) noexcept
             : socket_type(std::move(fd))
         {
         }
@@ -157,23 +165,22 @@ namespace sk::net {
         ~unixchannel() = default;
 
         unixchannel(unixchannel const &) = delete;
-
         auto operator=(unixchannel const &) -> unixchannel & = delete;
 
-        [[nodiscard]] auto connect(unix_endpoint const &ep)
+        [[nodiscard]] auto connect(unix_endpoint const &ep) noexcept
             -> expected<void, std::error_code>
         {
             auto sun = ep.as_sockaddr_un();
             return socket_type::_connect(
-                AF_UNIX, reinterpret_cast<sockaddr *>(&sun), sizeof(sun));
+                AF_UNIX, detail::sockaddr_cast<sockaddr const *>(&sun), sizeof(sun));
         }
 
-        [[nodiscard]] auto async_connect(unix_endpoint const &ep)
+        [[nodiscard]] auto async_connect(unix_endpoint const &ep) noexcept
             -> task<expected<void, std::error_code>>
         {
             auto sun = ep.as_sockaddr_un();
             co_return co_await socket_type::_async_connect(
-                AF_UNIX, reinterpret_cast<sockaddr *>(&sun), sizeof(sun));
+                AF_UNIX, detail::sockaddr_cast<sockaddr const *>(&sun), sizeof(sun));
         }
     };
 
@@ -181,17 +188,17 @@ namespace sk::net {
 
     class unixserverchannel
         : public detail::streamsocketserver<unixserverchannel,
-            unixchannel,
-            SOCK_STREAM,
-            0> {
+                                            unixchannel,
+                                            SOCK_STREAM,
+                                            0> {
         using socket_type = detail::
-        streamsocketserver<unixserverchannel, unixchannel, SOCK_STREAM, 0>;
+            streamsocketserver<unixserverchannel, unixchannel, SOCK_STREAM, 0>;
 
     public:
         using value_type = std::byte;
 
         explicit unixserverchannel(sk::net::detail::native_socket_type &&fd,
-                                   int af = AF_UNIX)
+                                   int af = AF_UNIX) noexcept
             : socket_type(std::move(fd), af)
         {
         }
@@ -202,12 +209,11 @@ namespace sk::net {
         }
 
         unixserverchannel(unixserverchannel const &) = delete;
-
         auto operator=(unixserverchannel const &)
-        -> unixserverchannel & = delete;
+            -> unixserverchannel & = delete;
 
         auto operator=(unixserverchannel &&other) noexcept
-        -> unixserverchannel &
+            -> unixserverchannel &
         {
             if (&other != this)
                 socket_type::operator=(std::move(other));
@@ -216,12 +222,12 @@ namespace sk::net {
 
         ~unixserverchannel() = default;
 
-        static auto listen(unix_endpoint const &addr)
-        -> expected<unixserverchannel, std::error_code>
+        [[nodiscard]] static auto listen(unix_endpoint const &addr) noexcept
+            -> expected<unixserverchannel, std::error_code>
         {
             auto sun = addr.as_sockaddr_un();
             return _listen(
-                AF_UNIX, reinterpret_cast<sockaddr *>(&sun), sizeof(sun));
+                AF_UNIX, detail::sockaddr_cast<sockaddr const *>(&sun), sizeof(sun));
         }
     };
 

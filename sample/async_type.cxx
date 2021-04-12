@@ -44,9 +44,11 @@ auto print_file(std::string const &name) -> sk::task<void> {
         co_return;
     }
 
+    auto cchnl = sk::make_iseqcharchannel<char>(std::move(chnl));
+
     for (;;) {
-        sk::fixed_buffer<std::byte, 1024> buf;
-        auto nbytes = co_await sk::async_read_some(chnl, buf);
+        sk::fixed_buffer<char, 1024> buf;
+        auto nbytes = co_await sk::async_read_some(cchnl, buf);
 
         if (!nbytes) {
             if (nbytes.error() != sk::error::end_of_file)
@@ -56,13 +58,13 @@ auto print_file(std::string const &name) -> sk::task<void> {
 
         for (auto &&range : buf.readable_ranges())
             std::cout.write(
-                reinterpret_cast<char const *>(std::ranges::data(range)),
-                std::ranges::size(range));
+                std::ranges::data(range),
+                static_cast<std::streamsize>(std::ranges::size(range)));
 
         buf.discard(*nbytes);
     }
 
-    co_await chnl.async_close();
+    co_await cchnl.async_close();
 }
 
 auto co_main(int argc, char **argv) -> sk::task<int> {

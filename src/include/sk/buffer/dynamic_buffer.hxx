@@ -103,9 +103,15 @@ namespace sk {
         return n + (sizeof(char *) * 3);
     }
 
+    // How large the extents will be by default (in bytes).
+    static constexpr std::size_t dynamic_buffer_default_extent_bytes = 4096;
+
+    // How many ranges we can return in a single call to readable/writable_ranges.
+    static constexpr std::size_t dynamic_buffer_default_max_ranges = 5;
+
     template <typename Char,
-              std::size_t extent_bytes = 4096,
-              std::size_t max_ranges = 5>
+              std::size_t extent_bytes = dynamic_buffer_default_extent_bytes,
+              std::size_t max_ranges = dynamic_buffer_default_max_ranges>
     struct dynamic_buffer {
         using size_type = std::size_t;
         using value_type = Char;
@@ -134,11 +140,14 @@ namespace sk {
             {
             }
 
+            ~extent_type() {
+                delete next;
+            }
+
             extent_type(extent_type const &) = delete;
             extent_type(extent_type &&) = delete;
             auto operator=(extent_type const &) = delete;
             auto operator=(extent_type &&) = delete;
-            ~extent_type() = default;
 
             constexpr auto readable() -> std::size_t
             {
@@ -181,7 +190,8 @@ namespace sk {
 
         // Head and tail of the extent list.  The tail is not the actual tail
         // of the list, but rather the extent we're currently writing to.
-        extent_type *_head = nullptr, *_tail = nullptr;
+        extent_type *_head = nullptr;
+        extent_type *_tail = nullptr;
 
         // Remove the current head (read) extent.
         auto _kill_head() noexcept -> void;
@@ -198,10 +208,10 @@ namespace sk {
         ~dynamic_buffer();
 
         // dynamic_buffer is not copyable, but can be moved.
-        dynamic_buffer(dynamic_buffer const &) = delete;
-        auto operator=(dynamic_buffer const &) -> dynamic_buffer & = delete;
-        dynamic_buffer(dynamic_buffer &&) noexcept;
-        auto operator=(dynamic_buffer &&) noexcept -> dynamic_buffer &;
+        dynamic_buffer(dynamic_buffer const &other) = delete;
+        auto operator=(dynamic_buffer const &other) -> dynamic_buffer & = delete;
+        dynamic_buffer(dynamic_buffer &&other) noexcept;
+        auto operator=(dynamic_buffer &&other) noexcept -> dynamic_buffer &;
 
         auto write(const_value_type *dptr, size_type dsize) -> size_type;
         auto read(value_type *dptr, size_type dsize) -> size_type;
@@ -223,8 +233,8 @@ namespace sk {
 
     template <typename Char, std::size_t extent_size, std::size_t max_ranges>
     dynamic_buffer<Char, extent_size, max_ranges>::dynamic_buffer()
+    : _head(new extent_type), _tail(_head)
     {
-        _tail = _head = new extent_type;
     }
 
     template <typename Char, std::size_t extent_size, std::size_t max_ranges>
@@ -289,13 +299,9 @@ namespace sk {
     auto dynamic_buffer<Char, extent_size, max_ranges>::_xfree() noexcept
         -> void
     {
-        while (_head) {
-            auto *p = _head;
-            _head = _head->next;
-            delete p;
-        }
-
-        _head = _tail = nullptr;
+        delete _head;
+        _head = nullptr;
+        _tail = nullptr;
     }
 
     template <typename Char, std::size_t extent_size, std::size_t max_ranges>
@@ -473,7 +479,7 @@ namespace sk {
     {
         auto left = n;
 
-        while (left) {
+        while (left > 0) {
             SK_CHECK(
                 _head->readable() > 0,
                 "INTERNAL ERROR: dynamic_buffer::discard: unreadable head");

@@ -50,63 +50,76 @@ namespace sk::win32::detail {
      * filechannel_base: base class for file channels.
      *
      */
-    struct filechannel_base {
+    class filechannel_base {
+    public:
+        filechannel_base(filechannel_base const &) = delete;
+        auto operator=(filechannel_base const &) -> filechannel_base & = delete;
+
+    protected:
         using value_type = std::byte;
         using native_handle_type = win32::unique_handle;
 
-        filechannel_base(filechannel_base const &) = delete;
-        filechannel_base(filechannel_base &&) noexcept = default;
-        auto operator=(filechannel_base const &) -> filechannel_base & = delete;
-        auto operator=(filechannel_base &&) noexcept
-        -> filechannel_base & = default;
+        filechannel_base() noexcept = default;
+        ~filechannel_base() = default;
 
+        filechannel_base(filechannel_base &&) noexcept = default;
+        auto operator=(filechannel_base &&) noexcept
+            -> filechannel_base & = default;
+
+    public:
         /*
          * Test if this channel has been opened.
          */
-        [[nodiscard]] auto is_open() const -> bool;
+        [[nodiscard]] auto is_open() const noexcept -> bool;
 
-        [[nodiscard]] auto async_close()
-        -> task<expected<void, std::error_code>>;
+        [[nodiscard]] auto async_close() noexcept
+            -> task<expected<void, std::error_code>>;
 
-        [[nodiscard]] auto close() -> expected<void, std::error_code>;
+        [[nodiscard]] auto close() noexcept -> expected<void, std::error_code>;
 
     protected:
-        [[nodiscard]] auto _async_open(std::filesystem::path const &,
-                                       fileflags_t)
-        -> task<expected<void, std::error_code>>;
+        [[nodiscard]] auto async_da_open(std::filesystem::path const &path,
+                                         fileflag::flagset flags) noexcept
+            -> task<expected<void, std::error_code>>;
 
-        [[nodiscard]] auto _open(std::filesystem::path const &, fileflags_t)
-        -> expected<void, std::error_code>;
+        [[nodiscard]] auto da_open(std::filesystem::path const &path,
+                                   fileflag::flagset flags) noexcept
+            -> expected<void, std::error_code>;
 
-        [[nodiscard]] auto _make_flags(fileflags_t flags,
+        [[nodiscard]] auto _make_flags(fileflag::flagset flags,
                                        DWORD &dwDesiredAccess,
                                        DWORD &dwCreationDisposition,
-                                       DWORD &dwShareMode) -> bool;
+                                       DWORD &dwShareMode) noexcept -> bool;
 
         /*
          * Read data.
          */
+        template <std::size_t extent>
         [[nodiscard]] auto
-        _async_read_some_at(io_offset_t loc, std::byte *buffer, io_size_t nobjs)
-        -> task<expected<io_size_t, std::error_code>>;
+        async_read_some_at(io_offset_t loc,
+                           std::span<value_type, extent> buf) noexcept
+            -> task<expected<io_size_t, std::error_code>>;
 
+        template <std::size_t extent>
         [[nodiscard]] auto
-        _read_some_at(io_offset_t loc, std::byte *buffer, io_size_t nobjs)
-        -> expected<io_size_t, std::error_code>;
+        read_some_at(io_offset_t loc,
+                     std::span<value_type, extent> buf) noexcept
+            -> expected<io_size_t, std::error_code>;
 
         /*
          * Write data.
          */
+        template <std::size_t extent>
         [[nodiscard]] auto
-        _async_write_some_at(io_offset_t, std::byte const *, io_size_t)
-        -> task<expected<io_size_t, std::error_code>>;
+        async_write_some_at(io_offset_t loc,
+                            std::span<value_type const, extent> buf) noexcept
+            -> task<expected<io_size_t, std::error_code>>;
 
+        template <std::size_t extent>
         [[nodiscard]] auto
-        _write_some_at(io_offset_t, std::byte const *, io_size_t)
-        -> expected<io_size_t, std::error_code>;
-
-        filechannel_base() = default;
-        ~filechannel_base() = default;
+        write_some_at(io_offset_t loc,
+                      std::span<value_type const, extent> buf) noexcept
+            -> expected<io_size_t, std::error_code>;
 
         native_handle_type _native_handle;
     };
@@ -114,22 +127,23 @@ namespace sk::win32::detail {
     /*************************************************************************
      * filechannel_base::_make_flags()
      */
-    // clang-format off
-    inline auto filechannel_base::_make_flags(
-        fileflags_t flags, DWORD &dwDesiredAccess,
-        DWORD &dwCreationDisposition, DWORD &dwShareMode)
-    -> bool {
-        // clang-format on
-
+    inline auto filechannel_base::_make_flags(fileflag::flagset flags,
+                                              DWORD &dwDesiredAccess,
+                                              DWORD &dwCreationDisposition,
+                                              DWORD &dwShareMode) noexcept
+        -> bool
+    {
         // Must specify either read or write.
-        if ((flags & (fileflags::read | fileflags::write)) == 0)
+        if (!any_set(flags, fileflags::read | fileflags::write))
             return false;
 
         // Read access only
-        if ((flags & fileflags::read) && !(flags & fileflags::write)) {
+        if (is_set(flags, fileflags::read) &&
+            !is_set(flags, fileflags::write)) {
             // These flags are not valid for reading.
-            if (flags &
-                (fileflags::trunc | fileflags::append | fileflags::create_new))
+            if (any_set(flags,
+                        fileflags::trunc | fileflags::append |
+                            fileflags::create_new))
                 return false;
 
             dwDesiredAccess = GENERIC_READ;
@@ -139,9 +153,10 @@ namespace sk::win32::detail {
         }
 
         // Write access or read-write access
-        if (flags & fileflags::write) {
+        if (is_set(flags, fileflags::write)) {
             // Must specify either create_new or open_existing (or both).
-            if (!(flags & (fileflags::create_new | fileflags::open_existing)))
+            if (!any_set(flags,
+                         fileflags::create_new | fileflags::open_existing))
                 return false;
 
             // Per
@@ -154,20 +169,20 @@ namespace sk::win32::detail {
             //    dwDesiredAccess |= GENERIC_READ;
 
             // Must create a new file.
-            if ((flags & fileflags::create_new) &&
-                !(flags & fileflags::open_existing))
+            if (is_set(flags, fileflags::create_new) &&
+                !is_set(flags, fileflags::open_existing))
                 dwCreationDisposition = CREATE_NEW;
-                // Can create a new file or open an existing one.
-            else if ((flags & fileflags::create_new) &&
-                     (flags & fileflags::open_existing)) {
-                if (flags & fileflags::trunc)
+            // Can create a new file or open an existing one.
+            else if (is_set(flags, fileflags::create_new) &&
+                     is_set(flags, fileflags::open_existing)) {
+                if (is_set(flags, fileflags::trunc))
                     dwCreationDisposition = CREATE_ALWAYS;
                 else
                     dwCreationDisposition = OPEN_ALWAYS;
                 // Can only open an existing file.
-            } else if (!(flags & fileflags::create_new) &&
-                       (flags & fileflags::open_existing)) {
-                if (flags & fileflags::trunc)
+            } else if (!is_set(flags, fileflags::create_new) &&
+                       is_set(flags, fileflags::open_existing)) {
+                if (is_set(flags, fileflags::trunc))
                     dwCreationDisposition = TRUNCATE_EXISTING;
                 else
                     dwCreationDisposition = OPEN_EXISTING;
@@ -182,13 +197,11 @@ namespace sk::win32::detail {
     /*************************************************************************
      * filechannel_base::async_open()
      */
-    // clang-format off
-    inline auto filechannel_base::_async_open(
-        std::filesystem::path const &path,
-        fileflags_t flags)
-    -> task<expected<void, std::error_code>> {
-        // clang-format on
-
+    inline auto
+    filechannel_base::async_da_open(std::filesystem::path const &path,
+                                    fileflag::flagset flags) noexcept
+        -> task<expected<void, std::error_code>>
+    {
         if (is_open())
             co_return make_unexpected(sk::error::channel_already_open);
 
@@ -197,7 +210,7 @@ namespace sk::win32::detail {
         DWORD dwCreationDisposition = 0;
 
         if (!_make_flags(
-            flags, dwDesiredAccess, dwCreationDisposition, dwShareMode))
+                flags, dwDesiredAccess, dwCreationDisposition, dwShareMode))
             co_return make_unexpected(sk::error::filechannel_invalid_flags);
 
         auto const &wpath(path.native());
@@ -208,7 +221,7 @@ namespace sk::win32::detail {
                                                        nullptr,
                                                        dwCreationDisposition,
                                                        FILE_ATTRIBUTE_NORMAL |
-                                                       FILE_FLAG_OVERLAPPED,
+                                                           FILE_FLAG_OVERLAPPED,
                                                        nullptr);
 
         if (!handle)
@@ -222,13 +235,10 @@ namespace sk::win32::detail {
     /*************************************************************************
      * filechannel_base::open()
      */
-    // clang-format off
-    inline auto filechannel_base::_open(
-        std::filesystem::path const &path,
-        fileflags_t flags)
-    -> expected<void, std::error_code> {
-        // clang-format on
-
+    inline auto filechannel_base::da_open(std::filesystem::path const &path,
+                                          fileflag::flagset flags) noexcept
+        -> expected<void, std::error_code>
+    {
         if (is_open())
             return make_unexpected(sk::error::channel_already_open);
 
@@ -237,12 +247,12 @@ namespace sk::win32::detail {
         DWORD dwCreationDisposition = 0;
 
         if (!_make_flags(
-            flags, dwDesiredAccess, dwCreationDisposition, dwShareMode))
+                flags, dwDesiredAccess, dwCreationDisposition, dwShareMode))
             return make_unexpected(sk::error::filechannel_invalid_flags);
 
         auto const &wpath(path.native());
 
-        auto handle =
+        HANDLE handle =
             ::CreateFileW(wpath.c_str(),
                           dwDesiredAccess,
                           dwShareMode,
@@ -258,7 +268,7 @@ namespace sk::win32::detail {
 
         // Because we didn't use AsyncCreateFileW(), we have to manually
         // associate the handle with the completion port.
-        auto reactor = get_weak_reactor_handle();
+        auto reactor = weak_reactor_handle::get();
         auto aret = reactor->associate_handle(handle);
 
         if (!aret)
@@ -271,10 +281,8 @@ namespace sk::win32::detail {
     /*************************************************************************
      * filechannel_base::is_open()
      */
-    // clang-format off
-    inline auto filechannel_base::is_open() const
-    -> bool {
-        // clang-format on
+    inline auto filechannel_base::is_open() const noexcept -> bool
+    {
 
         return static_cast<bool>(_native_handle);
     }
@@ -282,11 +290,9 @@ namespace sk::win32::detail {
     /*************************************************************************
      * filechannel_base::close()
      */
-    // clang-format off
-    inline auto filechannel_base::close()
-    -> expected<void, std::error_code> {
-        // clang-format on
-
+    inline auto filechannel_base::close() noexcept
+        -> expected<void, std::error_code>
+    {
         if (!is_open())
             return make_unexpected(sk::error::channel_not_open);
 
@@ -299,11 +305,9 @@ namespace sk::win32::detail {
     /*************************************************************************
      * filechannel_base::async_close()
      */
-    // clang-format off
-    inline auto filechannel_base::async_close()
-    -> task<expected<void, std::error_code>> {
-        // clang-format on
-
+    inline auto filechannel_base::async_close() noexcept
+        -> task<expected<void, std::error_code>>
+    {
         auto ret =
             co_await async_invoke([&] { return _native_handle.close(); });
 
@@ -316,19 +320,21 @@ namespace sk::win32::detail {
     /*************************************************************************
      * filechannel_base::_async_read_some_at()
      */
-
-    inline auto filechannel_base::_async_read_some_at(io_offset_t loc,
-                                                      std::byte *buffer,
-                                                      io_size_t nobjs)
-    -> task<expected<io_size_t, std::error_code>>
+    template <std::size_t extent>
+    auto filechannel_base::async_read_some_at(
+        io_offset_t loc, std::span<value_type, extent> buf) noexcept
+        -> task<expected<io_size_t, std::error_code>>
     {
         SK_CHECK(is_open(), "attempt to read on a closed channel");
 
-        auto dwbytes = sk::detail::int_cast<DWORD>(nobjs);
+        auto dwbytes = sk::detail::truncate<DWORD>(buf.size());
 
         DWORD bytes_read = 0;
-        auto ret = co_await win32::AsyncReadFile(
-            _native_handle.native_handle(), buffer, dwbytes, &bytes_read, loc);
+        auto ret = co_await win32::AsyncReadFile(_native_handle.native_handle(),
+                                                 buf.data(),
+                                                 dwbytes,
+                                                 &bytes_read,
+                                                 loc);
 
         if (!ret)
             co_return make_unexpected(
@@ -338,17 +344,17 @@ namespace sk::win32::detail {
     }
 
     /*************************************************************************
-     * filechannel_base::_read_some_at()
+     * filechannel_base::read_some_at()
      */
-
-    inline auto filechannel_base::_read_some_at(io_offset_t loc,
-                                                std::byte *buffer,
-                                                io_size_t nobjs)
-    -> expected<io_size_t, std::error_code>
+    template <std::size_t extent>
+    auto
+    filechannel_base::read_some_at(io_offset_t loc,
+                                   std::span<value_type, extent> buf) noexcept
+        -> expected<io_size_t, std::error_code>
     {
         SK_CHECK(is_open(), "attempt to read on a closed channel");
 
-        auto dwbytes = sk::detail::int_cast<DWORD>(nobjs);
+        auto dwbytes = sk::detail::truncate<DWORD>(buf.size());
 
         OVERLAPPED overlapped;
         std::memset(&overlapped, 0, sizeof(overlapped));
@@ -372,7 +378,7 @@ namespace sk::win32::detail {
 
         DWORD bytes_read = 0;
         auto ret = ::ReadFile(_native_handle.native_handle(),
-                              buffer,
+                              buf.data(),
                               dwbytes,
                               &bytes_read,
                               &overlapped);
@@ -389,22 +395,21 @@ namespace sk::win32::detail {
     }
 
     /*************************************************************************
-     * odafilechannel::async_write_some_at()
+     * filechannel_base::async_write_some_at()
      */
-
-    inline auto filechannel_base::_async_write_some_at(io_offset_t loc,
-                                                       std::byte const *buffer,
-                                                       io_size_t nobjs)
-    -> task<expected<io_size_t, std::error_code>>
+    template <std::size_t extent>
+    auto filechannel_base::async_write_some_at(
+        io_offset_t loc, std::span<value_type const, extent> buf) noexcept
+        -> task<expected<io_size_t, std::error_code>>
     {
         SK_CHECK(is_open(), "attempt to write on a closed channel");
 
-        auto dwbytes = sk::detail::int_cast<DWORD>(nobjs);
+        auto dwbytes = sk::detail::truncate<DWORD>(buf.size());
         DWORD bytes_written = 0;
 
         auto ret =
             co_await win32::AsyncWriteFile(_native_handle.native_handle(),
-                                           buffer,
+                                           buf.data(),
                                            dwbytes,
                                            &bytes_written,
                                            loc);
@@ -417,17 +422,17 @@ namespace sk::win32::detail {
     }
 
     /*************************************************************************
-     * idafilechannel::write_some_at()
+     * filechannel_base::write_some_at()
      */
 
-    inline auto filechannel_base::_write_some_at(io_offset_t loc,
-                                                 std::byte const *buffer,
-                                                 io_size_t nobjs)
-    -> expected<io_size_t, std::error_code>
+    template <std::size_t extent>
+    auto filechannel_base::write_some_at(
+        io_offset_t loc, std::span<value_type const, extent> buf) noexcept
+        -> expected<io_size_t, std::error_code>
     {
         SK_CHECK(is_open(), "attempt to write on a closed channel");
 
-        auto dwbytes = sk::detail::int_cast<DWORD>(nobjs);
+        auto dwbytes = sk::detail::truncate<DWORD>(buf.size());
 
         OVERLAPPED overlapped;
         std::memset(&overlapped, 0, sizeof(overlapped));
@@ -451,202 +456,7 @@ namespace sk::win32::detail {
 
         DWORD bytes_written = 0;
         auto ret = ::WriteFile(_native_handle.native_handle(),
-                               buffer,
-                               dwbytes,
-                               &bytes_written,
-                               &overlapped);
-
-        if (!ret && (::GetLastError() == ERROR_IO_PENDING))
-            ret = ::GetOverlappedResult(_native_handle.native_handle(),
-                                        &overlapped,
-                                        &bytes_written,
-                                        TRUE);
-
-        if (!ret)
-            return make_unexpected(
-                win32::win32_to_generic_error(win32::get_last_error()));
-
-        return bytes_written;
-    }
-
-    /*************************************************************************
-     *
-     * dafilechannel_base: base class for direct access file channels.
-     *
-     */
-    struct dafilechannel_base : filechannel_base {
-        dafilechannel_base(dafilechannel_base const &) = delete;
-        dafilechannel_base(dafilechannel_base &&) noexcept = default;
-        dafilechannel_base &operator=(dafilechannel_base const &) = delete;
-        dafilechannel_base &operator=(dafilechannel_base &&) noexcept = default;
-
-    protected:
-        /*
-         * Read data.
-         */
-        [[nodiscard]] auto
-        _async_read_some_at(io_offset_t loc, std::byte *buffer, io_size_t nobjs)
-        -> task<expected<io_size_t, std::error_code>>;
-
-        [[nodiscard]] auto
-        _read_some_at(io_offset_t loc, std::byte *buffer, io_size_t nobjs)
-        -> expected<io_size_t, std::error_code>;
-
-        /*
-         * Write data.
-         */
-        [[nodiscard]] auto
-        _async_write_some_at(io_offset_t, std::byte const *, io_size_t)
-        -> task<expected<io_size_t, std::error_code>>;
-
-        [[nodiscard]] auto
-        _write_some_at(io_offset_t, std::byte const *, io_size_t)
-        -> expected<io_size_t, std::error_code>;
-
-        dafilechannel_base() = default;
-        ~dafilechannel_base() = default;
-    };
-
-    /*************************************************************************
-     * filechannel_base::_async_read_some_at()
-     */
-
-    inline auto dafilechannel_base::_async_read_some_at(io_offset_t loc,
-                                                        std::byte *buffer,
-                                                        io_size_t nobjs)
-    -> task<expected<io_size_t, std::error_code>>
-    {
-        SK_CHECK(is_open(), "attempt to read on a closed channel");
-
-        auto dwbytes = sk::detail::int_cast<DWORD>(nobjs);
-
-        DWORD bytes_read = 0;
-        auto ret = co_await win32::AsyncReadFile(
-            _native_handle.native_handle(), buffer, dwbytes, &bytes_read, loc);
-
-        if (!ret)
-            co_return make_unexpected(
-                win32::win32_to_generic_error(ret.error()));
-
-        co_return bytes_read;
-    }
-
-    /*************************************************************************
-     * dafilechannel_base::_read_some_at()
-     */
-
-    inline auto dafilechannel_base::_read_some_at(io_offset_t loc,
-                                                  std::byte *buffer,
-                                                  io_size_t nobjs)
-    -> expected<io_size_t, std::error_code>
-    {
-        SK_CHECK(is_open(), "attempt to read on a closed channel");
-
-        auto dwbytes = sk::detail::int_cast<DWORD>(nobjs);
-
-        OVERLAPPED overlapped;
-        std::memset(&overlapped, 0, sizeof(overlapped));
-        overlapped.Offset = static_cast<DWORD>(loc & 0xFFFFFFFFUL);
-        overlapped.OffsetHigh = static_cast<DWORD>(loc >> 32);
-
-        // Create an event for the OVERLAPPED.  We don't actually use the event
-        // but it has to be present.
-        auto event_handle = ::CreateEventW(nullptr, FALSE, FALSE, nullptr);
-        if (event_handle == nullptr)
-            return make_unexpected(
-                win32::win32_to_generic_error(win32::get_last_error()));
-
-        unique_handle evt(event_handle);
-
-        // Set the low bit on the event handle to prevent the completion packet
-        // being queued to the iocp_reactor, which won't know what to do with
-        // it.
-        overlapped.hEvent = reinterpret_cast<HANDLE>(
-            reinterpret_cast<std::uintptr_t>(event_handle) | 0x1);
-
-        DWORD bytes_read = 0;
-        auto ret = ::ReadFile(_native_handle.native_handle(),
-                              buffer,
-                              dwbytes,
-                              &bytes_read,
-                              &overlapped);
-
-        if (!ret && (::GetLastError() == ERROR_IO_PENDING))
-            ret = ::GetOverlappedResult(
-                _native_handle.native_handle(), &overlapped, &bytes_read, TRUE);
-
-        if (!ret)
-            return make_unexpected(
-                win32::win32_to_generic_error(win32::get_last_error()));
-
-        return bytes_read;
-    }
-
-    /*************************************************************************
-     * dafilechannel_base::async_write_some_at()
-     */
-
-    inline auto dafilechannel_base::_async_write_some_at(
-        io_offset_t loc, std::byte const *buffer, io_size_t nobjs)
-    -> task<expected<io_size_t, std::error_code>>
-    {
-
-        SK_CHECK(is_open(), "attempt to write on a closed channel");
-
-        auto dwbytes = sk::detail::int_cast<DWORD>(nobjs);
-        DWORD bytes_written = 0;
-
-        auto ret =
-            co_await win32::AsyncWriteFile(_native_handle.native_handle(),
-                                           buffer,
-                                           dwbytes,
-                                           &bytes_written,
-                                           loc);
-
-        if (ret)
-            co_return make_unexpected(
-                win32::win32_to_generic_error(ret.error()));
-
-        co_return bytes_written;
-    }
-
-    /*************************************************************************
-     * dafilechannel_base::write_some_at()
-     */
-
-    inline auto dafilechannel_base::_write_some_at(io_offset_t loc,
-                                                   std::byte const *buffer,
-                                                   io_size_t nobjs)
-    -> expected<io_size_t, std::error_code>
-    {
-
-        SK_CHECK(is_open(), "attempt to write on a closed channel");
-
-        auto dwbytes = sk::detail::int_cast<DWORD>(nobjs);
-
-        OVERLAPPED overlapped;
-        std::memset(&overlapped, 0, sizeof(overlapped));
-        overlapped.Offset = static_cast<DWORD>(loc & 0xFFFFFFFFUL);
-        overlapped.OffsetHigh = static_cast<DWORD>(loc >> 32);
-
-        // Create an event for the OVERLAPPED.  We don't actually use the event
-        // but it has to be present.
-        auto event_handle = ::CreateEventW(nullptr, FALSE, FALSE, nullptr);
-        if (event_handle == nullptr)
-            return make_unexpected(
-                win32::win32_to_generic_error(win32::get_last_error()));
-
-        unique_handle evt(event_handle);
-
-        // Set the low bit on the event handle to prevent the completion packet
-        // being queued to the iocp_reactor, which won't know what to do with
-        // it.
-        overlapped.hEvent = reinterpret_cast<HANDLE>(
-            reinterpret_cast<std::uintptr_t>(event_handle) | 0x1);
-
-        DWORD bytes_written = 0;
-        auto ret = ::WriteFile(_native_handle.native_handle(),
-                               buffer,
+                               buf.data(),
                                dwbytes,
                                &bytes_written,
                                &overlapped);
@@ -669,144 +479,114 @@ namespace sk::win32::detail {
      * seqfilechannel_base: base class for sequential access file channels.
      *
      */
-    struct seqfilechannel_base : dafilechannel_base {
+    class seqfilechannel_base : protected filechannel_base {
+    public:
+        using filechannel_base::value_type;
+
         seqfilechannel_base(seqfilechannel_base const &) = delete;
-        seqfilechannel_base(seqfilechannel_base &&) noexcept = default;
-        seqfilechannel_base &operator=(seqfilechannel_base const &) = delete;
-        seqfilechannel_base &
-        operator=(seqfilechannel_base &&) noexcept = default;
+        auto operator=(seqfilechannel_base const &)
+            -> seqfilechannel_base & = delete;
 
     protected:
-        /*
-         * Open a file.
-         */
-        [[nodiscard]] auto _async_open(std::filesystem::path const &,
-                                       fileflags_t = fileflags::none)
-        -> task<expected<void, std::error_code>>;
+        seqfilechannel_base() noexcept = default;
+        ~seqfilechannel_base() = default;
 
-        [[nodiscard]] auto _open(std::filesystem::path const &,
-                                 fileflags_t = fileflags::none)
-        -> expected<void, std::error_code>;
+        seqfilechannel_base(seqfilechannel_base &&) noexcept = default;
+        auto operator=(seqfilechannel_base &&) noexcept
+            -> seqfilechannel_base & = default;
+
+        [[nodiscard]] auto
+        async_seq_open(std::filesystem::path const &path,
+                       fileflag::flagset flags = fileflags::none) noexcept
+            -> task<expected<void, std::error_code>>
+        {
+            if (is_set(flags, fileflags::append))
+                _write_position = at_end;
+            else
+                _write_position = 0;
+
+            _read_position = 0;
+
+            co_return co_await async_da_open(path, flags);
+        }
+
+        [[nodiscard]] auto
+        seq_open(std::filesystem::path const &path,
+                 fileflag::flagset flags = fileflags::none) noexcept
+            -> expected<void, std::error_code>
+        {
+            if (is_set(flags, fileflags::append))
+                _write_position = at_end;
+            else
+                _write_position = 0;
+
+            _read_position = 0;
+
+            return da_open(path, flags);
+        }
 
         /*
          * Read data.
          */
-        [[nodiscard]] auto _async_read_some(std::byte *buffer, io_size_t nobjs)
-        -> task<expected<io_size_t, std::error_code>>;
+        template <std::size_t extent>
+        [[nodiscard]] auto async_read_some(std::span<value_type, extent> buf)
+            -> task<expected<io_size_t, std::error_code>>
+        {
+            auto ret = co_await async_read_some_at(_read_position, buf);
+            if (ret)
+                _read_position += *ret;
+            co_return ret;
+        }
 
-        [[nodiscard]] auto _read_some(std::byte *buffer, io_size_t nobjs)
-        -> expected<io_size_t, std::error_code>;
+        template <std::size_t extent>
+        [[nodiscard]] auto read_some(std::span<value_type, extent> buf)
+            -> expected<io_size_t, std::error_code>
+        {
+            auto ret = read_some_at(_read_position, buf);
+            if (ret)
+                _read_position += *ret;
+            return ret;
+        }
 
         /*
          * Write data.
          */
-        [[nodiscard]] auto _async_write_some(std::byte const *, io_size_t)
-        -> task<expected<io_size_t, std::error_code>>;
+        template <std::size_t extent>
+        [[nodiscard]] auto
+        async_write_some(std::span<value_type const, extent> buf) noexcept
+            -> task<expected<io_size_t, std::error_code>>
+        {
+            auto ret = co_await async_write_some_at(_write_position, buf);
+            if (_write_position != at_end && ret)
+                _write_position += *ret;
+            co_return ret;
+        }
 
-        [[nodiscard]] auto _write_some(std::byte const *, io_size_t)
-        -> expected<io_size_t, std::error_code>;
-
-        seqfilechannel_base() = default;
-        ~seqfilechannel_base() = default;
+        template <std::size_t extent>
+        [[nodiscard]] auto
+        write_some(std::span<value_type const, extent> buf) noexcept
+            -> expected<io_size_t, std::error_code>
+        {
+            auto ret = write_some_at(_write_position, buf);
+            if (_write_position != at_end && ret)
+                _write_position += *ret;
+            return ret;
+        }
 
     private:
-        io_offset_t _read_position;
-        io_offset_t _write_position;
+        io_offset_t _read_position{};
+        io_offset_t _write_position{};
     };
 
     /*************************************************************************
-     * seqfilechannel_base::_async_open()
+     *
+     * dafilechannel_base: base class for direct access file channels.
+     *
+     * In Win32, filechannel_base always uses direct access, so this doesn't
+     * do anything.
      */
-    inline auto
-    seqfilechannel_base::_async_open(std::filesystem::path const &path,
-                                     fileflags_t flags)
-    -> task<expected<void, std::error_code>>
-    {
-
-        if (flags & fileflags::append)
-            _write_position = at_end;
-        else
-            _write_position = 0;
-
-        _read_position = 0;
-
-        co_return co_await this->dafilechannel_base::_async_open(path, flags);
-    }
-
-    /*************************************************************************
-     * seqfilechannel_base::_open()
-     */
-    inline auto seqfilechannel_base::_open(std::filesystem::path const &path,
-                                           fileflags_t flags)
-    -> expected<void, std::error_code>
-    {
-
-        if (flags & fileflags::append)
-            _write_position = at_end;
-        else
-            _write_position = 0;
-
-        _read_position = 0;
-
-        return this->dafilechannel_base::_open(path, flags);
-    }
-
-    /*************************************************************************
-     * seqfilechannel_base::_async_read_some()
-     */
-
-    inline auto seqfilechannel_base::_async_read_some(std::byte *buffer,
-                                                      io_size_t nobjs)
-    -> task<expected<io_size_t, std::error_code>>
-    {
-        auto ret = co_await _async_read_some_at(_read_position, buffer, nobjs);
-        if (ret)
-            _read_position += *ret;
-        co_return ret;
-    }
-
-    /*************************************************************************
-     * seqfilechannel_base::_read_some()
-     */
-
-    inline auto seqfilechannel_base::_read_some(std::byte *buffer,
-                                                io_size_t nobjs)
-    -> expected<io_size_t, std::error_code>
-    {
-        auto ret = _read_some_at(_read_position, buffer, nobjs);
-        if (ret)
-            _read_position += *ret;
-        return ret;
-    }
-
-    /*************************************************************************
-     * seqfilechannel_base::async_write_some()
-     */
-
-    inline auto seqfilechannel_base::_async_write_some(std::byte const *buffer,
-                                                       io_size_t nobjs)
-    -> task<expected<io_size_t, std::error_code>>
-    {
-        auto ret =
-            co_await _async_write_some_at(_write_position, buffer, nobjs);
-        if (_write_position != at_end && ret)
-            _write_position += *ret;
-        co_return ret;
-    }
-
-    /*************************************************************************
-     * seqfilechannel_base::write_some_at()
-     */
-
-    inline auto seqfilechannel_base::_write_some(std::byte const *buffer,
-                                                 io_size_t nobjs)
-    -> expected<io_size_t, std::error_code>
-    {
-        auto ret = _write_some_at(_write_position, buffer, nobjs);
-        if (_write_position != at_end && ret)
-            _write_position += *ret;
-        return ret;
-    }
+    class dafilechannel_base : protected filechannel_base {
+    };
 
 } // namespace sk::win32::detail
 

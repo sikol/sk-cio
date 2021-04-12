@@ -45,7 +45,7 @@ namespace sk {
 
         wait_executor(task<T> &taskp) : _task(taskp) {}
 
-        auto post(work_type &&work) -> void;
+        auto post(work_type &&work) -> void final;
         auto run() -> void;
 
     private:

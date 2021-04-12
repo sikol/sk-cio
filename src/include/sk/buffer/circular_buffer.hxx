@@ -51,7 +51,7 @@ namespace sk {
      *
      */
 
-    template <typename Char, std::size_t buffer_size = 4096>
+    template <typename Char, std::size_t buffer_size>
     struct circular_buffer {
         using array_type = std::array<Char, buffer_size + 1>;
         using size_type = std::size_t;
@@ -169,6 +169,9 @@ namespace sk {
         auto commit(size_type n) -> size_type;
     };
 
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers)
+    static_assert(buffer<circular_buffer<char, 4096>>);
+
     /*
      * circular_buffer::write()
      */
@@ -176,8 +179,8 @@ namespace sk {
     auto circular_buffer<Char, buffer_size>::write(const_value_type *dptr,
                                                    size_type dsize) -> size_type
     {
-        auto cptr = dptr;
-        auto cend = dptr + dsize;
+        auto const *cptr = dptr;
+        auto const *cend = dptr + dsize;
 
         if (read_pointer <= write_pointer) {
             auto wend = data.end();
@@ -319,8 +322,8 @@ namespace sk {
     auto circular_buffer<Char, buffer_size>::read(value_type *dptr,
                                                   size_type dsize) -> size_type
     {
-        auto cptr = dptr;
-        auto cend = dptr + dsize;
+        auto *cptr = dptr;
+        auto *cend = dptr + dsize;
 
         if (read_pointer > write_pointer) {
             auto rd = std::min(std::distance(cptr, cend),

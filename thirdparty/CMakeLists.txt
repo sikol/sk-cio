@@ -26,4 +26,7 @@
 
 add_subdirectory(catch)
 add_subdirectory(fmt)
-add_subdirectory(expected)
+
+if (NOT SK_CIO_USE_EXTERNAL_EXPECTED)
+    add_subdirectory(expected)
+endif ()

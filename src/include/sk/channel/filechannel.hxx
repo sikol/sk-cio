@@ -37,37 +37,39 @@
 #include <sk/channel/error.hxx>
 #include <sk/channel/types.hxx>
 #include <sk/detail/platform.hxx>
+#include <sk/flagset.hxx>
 #include <sk/task.hxx>
 
 namespace sk {
 
-    using fileflags_t = std::uint32_t;
+    struct fileflag_tag {};
+    using fileflag = flag<fileflag_tag, std::uint_fast16_t>;
 
     namespace fileflags {
         // No flags
-        inline constexpr fileflags_t none = 0x0;
+        static constexpr fileflag none{0u};
 
         // Open the file for writing.
-        inline constexpr fileflags_t write = 0x1;
+        static constexpr fileflag write{1u << 0};
 
         // Open the file for reading.
-        inline constexpr fileflags_t read = 0x2;
+        static constexpr fileflag read{1u << 1};
 
         // When opening a file for writing, truncate it.
-        inline constexpr fileflags_t trunc = 0x4;
+        static constexpr fileflag trunc{1u << 2};
 
         // When opening a file for writing, seek to the end.
-        inline constexpr fileflags_t append = 0x8;
+        static constexpr fileflag append{1u << 3};
 
         // When opening a file for writing, allowing creating a new file.
-        inline constexpr fileflags_t create_new = 0x10;
+        static constexpr fileflag create_new{1u << 4};
 
         // When opening a file, allowing opening an existing file.
         // This can be specified for input files, but it's implied anyway.
-        inline constexpr fileflags_t open_existing = 0x20;
+        static constexpr fileflag open_existing{1u << 5};
     } // namespace fileflags
 
-}
+} // namespace sk
 
 #if defined(SK_CIO_PLATFORM_WINDOWS)
 #    include <sk/win32/detail/filechannel_base.hxx>
@@ -98,587 +100,318 @@ namespace sk {
      * idafilechannel: a direct access channel that reads from a file.
      */
 
-    // clang-format off
-    struct idafilechannel final : detail::dafilechannel_base {
+    class idafilechannel final : protected detail::dafilechannel_base {
+    public:
+        using dafilechannel_base::value_type;
+        using dafilechannel_base::is_open;
+        using dafilechannel_base::async_close;
+        using dafilechannel_base::close;
+        using dafilechannel_base::async_read_some_at;
+        using dafilechannel_base::read_some_at;
 
         /*
          * Create an idafilechannel which is closed.
          */
-        idafilechannel() = default;
+        idafilechannel() noexcept = default;
         ~idafilechannel() = default;
 
-        idafilechannel(idafilechannel const &) = delete;
         idafilechannel(idafilechannel &&) noexcept = default;
+        auto operator=(idafilechannel &&) noexcept
+            -> idafilechannel & = default;
+
+        idafilechannel(idafilechannel const &) = delete;
         auto operator=(idafilechannel const &) -> idafilechannel & = delete;
-        auto operator=(idafilechannel &&) noexcept -> idafilechannel & = default;
 
-        /*
-         * Open a file.
-         */
-        [[nodiscard]]
-        auto async_open(std::filesystem::path const &,
-                        fileflags_t = fileflags::none)
-        -> task<expected<void, std::error_code>>;
+        [[nodiscard]] auto
+        async_open(std::filesystem::path const &path,
+                   fileflag::flagset flags = fileflags::none) noexcept
+            -> task<expected<void, std::error_code>>
+        {
+            if (is_set(flags, fileflags::write))
+                co_return make_unexpected(sk::error::filechannel_invalid_flags);
 
-        [[nodiscard]]
-        auto open(std::filesystem::path const &,
-                  fileflags_t = fileflags::none)
-        -> expected<void, std::error_code>;
-
-        /*
-         * Read data.
-         */
-        [[nodiscard]]
-        auto async_read_some_at(io_offset_t loc,
-                                std::byte* buffer,
-                                io_size_t nobjs)
-        -> task<expected<io_size_t, std::error_code>> {
-
-            return _async_read_some_at(loc, buffer, nobjs);
+            flags |= fileflags::read;
+            co_return co_await this->async_da_open(path, flags);
         }
 
-        [[nodiscard]]
-        auto read_some_at(io_offset_t loc,
-                          std::byte* buffer,
-                          io_size_t nobjs)
-        -> expected<io_size_t, std::error_code> {
+        [[nodiscard]] auto open(std::filesystem::path const &path,
+                                fileflag::flagset flags = fileflags::none) noexcept
+            -> expected<void, std::error_code>
+        {
+            if (is_set(flags, fileflags::write))
+                return make_unexpected(sk::error::filechannel_invalid_flags);
 
-            return _read_some_at(loc, buffer, nobjs);
+            flags |= fileflags::read;
+            return this->da_open(path, flags);
         }
     };
-    // clang-format on
 
     static_assert(idachannel<idafilechannel>);
-
-    /*************************************************************************
-     * idafilechannel::async_open()
-     */
-    inline auto idafilechannel::async_open(std::filesystem::path const &path,
-                                           fileflags_t flags)
-        -> task<expected<void, std::error_code>>
-    {
-
-        if (flags & fileflags::write)
-            co_return make_unexpected(sk::error::filechannel_invalid_flags);
-
-        flags |= fileflags::read;
-        co_return co_await this->_async_open(path, flags);
-    }
-
-    /*************************************************************************
-     * idafilechannel::open()
-     */
-    inline auto idafilechannel::open(std::filesystem::path const &path,
-                                     fileflags_t flags)
-        -> expected<void, std::error_code>
-    {
-
-        if (flags & fileflags::write)
-            return make_unexpected(sk::error::filechannel_invalid_flags);
-
-        flags |= fileflags::read;
-        return this->_open(path, flags);
-    }
 
     /*************************************************************************
      *
      * odafilechannel: a direct access channel that writes to a file.
      */
 
-    // clang-format off
-    struct odafilechannel final : detail::dafilechannel_base {
+    class odafilechannel final : protected detail::dafilechannel_base {
+    public:
+        using dafilechannel_base::value_type;
+        using dafilechannel_base::is_open;
+        using dafilechannel_base::async_close;
+        using dafilechannel_base::close;
+        using dafilechannel_base::async_write_some_at;
+        using dafilechannel_base::write_some_at;
 
         /*
          * Create an odafilechannel which is closed.
          */
-        odafilechannel() = default;
+        odafilechannel() noexcept = default;
+        ~odafilechannel() = default;
+
+        odafilechannel(odafilechannel &&) noexcept = default;
+        auto operator=(odafilechannel &&) noexcept
+            -> odafilechannel & = default;
+
+        odafilechannel(odafilechannel const &) = delete;
+        auto operator=(odafilechannel const &) -> odafilechannel & = delete;
 
         /*
          * Open a file.
          */
-        [[nodiscard]]
-        auto async_open(std::filesystem::path const &,
-                        fileflags_t = fileflags::none)
-        -> task<expected<void, std::error_code>>;
+        [[nodiscard]] auto
+        async_open(std::filesystem::path const &path,
+                   fileflag::flagset flags = fileflags::none) noexcept
+            -> task<expected<void, std::error_code>>
+        {
+            if (is_set(flags, fileflags::read))
+                co_return make_unexpected(sk::error::filechannel_invalid_flags);
 
-        [[nodiscard]]
-        auto open(std::filesystem::path const &,
-                  fileflags_t = fileflags::none)
-        -> expected<void, std::error_code>;
-
-        odafilechannel(odafilechannel const &) = delete;
-        odafilechannel(odafilechannel &&) noexcept = default;
-        auto operator=(odafilechannel const &) -> odafilechannel & = delete;
-        auto operator=(odafilechannel &&) noexcept -> odafilechannel & = default;
-        ~odafilechannel() = default;
-
-        /*
-         * Write data.
-         */
-        [[nodiscard]]
-        auto async_write_some_at(io_offset_t loc,
-                                 std::byte const *buffer,
-                                 io_size_t n)
-        -> task<expected<io_size_t, std::error_code>> {
-            return _async_write_some_at(loc, buffer, n);
+            flags |= fileflags::write;
+            co_return co_await this->async_da_open(path, flags);
         }
 
-        [[nodiscard]]
-        auto write_some_at(io_offset_t loc,
-                           std::byte const *buffer,
-                           io_size_t n)
-        -> expected<io_size_t, std::error_code> {
-            return _write_some_at(loc, buffer, n);
+        [[nodiscard]] auto open(std::filesystem::path const &path,
+                                fileflag::flagset flags = fileflags::none) noexcept
+            -> expected<void, std::error_code>
+        {
+            if (is_set(flags, fileflags::read))
+                return make_unexpected(sk::error::filechannel_invalid_flags);
+
+            flags |= fileflags::write;
+            return this->da_open(path, flags);
         }
     };
-    // clang-format on
 
     static_assert(odachannel<odafilechannel>);
-
-    /*************************************************************************
-     * odafilechannel::async_open()
-     */
-    inline auto odafilechannel::async_open(std::filesystem::path const &path,
-                                           fileflags_t flags)
-        -> task<expected<void, std::error_code>>
-    {
-
-        if (flags & fileflags::read)
-            co_return make_unexpected(sk::error::filechannel_invalid_flags);
-
-        flags |= fileflags::write;
-        co_return co_await this->_async_open(path, flags);
-    }
-
-    /*************************************************************************
-     * odafilechannel::open()
-     */
-    inline auto odafilechannel::open(std::filesystem::path const &path,
-                                     fileflags_t flags)
-        -> expected<void, std::error_code>
-    {
-
-        if (flags & fileflags::read)
-            return make_unexpected(sk::error::filechannel_invalid_flags);
-
-        flags |= fileflags::write;
-        return this->_open(path, flags);
-    }
 
     /*************************************************************************
      *
      * dafilechannel: a direct access channel that reads and writes a file.
      */
 
-    // clang-format off
-    struct dafilechannel final : detail::dafilechannel_base {
+    class dafilechannel final : protected detail::dafilechannel_base {
+    public:
+        using dafilechannel_base::value_type;
+        using dafilechannel_base::is_open;
+        using dafilechannel_base::async_close;
+        using dafilechannel_base::close;
+        using dafilechannel_base::async_read_some_at;
+        using dafilechannel_base::read_some_at;
+        using dafilechannel_base::async_write_some_at;
+        using dafilechannel_base::write_some_at;
+
         /*
          * Create an dafilechannel which is closed.
          */
-        dafilechannel() = default;
+        dafilechannel() noexcept = default;
+        ~dafilechannel() = default;
+
+        dafilechannel(dafilechannel &&) noexcept = default;
+        auto operator=(dafilechannel &&) noexcept -> dafilechannel & = default;
 
         dafilechannel(dafilechannel const &) = delete;
-        dafilechannel(dafilechannel &&) noexcept = default;
         auto operator=(dafilechannel const &) -> dafilechannel & = delete;
-        auto operator=(dafilechannel &&) noexcept -> dafilechannel & = default;
-        ~dafilechannel() = default;
 
         /*
          * Open a file.
          */
-        [[nodiscard]]
-        auto async_open(std::filesystem::path const &,
-                        fileflags_t = fileflags::none)
-        -> task<expected<void, std::error_code>>;
-
-        [[nodiscard]]
-        auto open(std::filesystem::path const &,
-                  fileflags_t = fileflags::none)
-        -> expected<void, std::error_code>;
-
-        /*
-         * Read data.
-         */
-        [[nodiscard]]
-        auto async_read_some_at(io_offset_t loc,
-                                std::byte* buffer,
-                                io_size_t nobjs)
-        -> task<expected<io_size_t, std::error_code>> {
-
-            return _async_read_some_at(loc, buffer, nobjs);
+        [[nodiscard]] auto
+        async_open(std::filesystem::path const &path,
+                   fileflag::flagset flags = fileflags::none) noexcept
+            -> task<expected<void, std::error_code>>
+        {
+            flags |= fileflags::read | fileflags::write;
+            co_return co_await this->async_da_open(path, flags);
         }
 
-        [[nodiscard]]
-        auto read_some_at(io_offset_t loc,
-                          std::byte* buffer,
-                          io_size_t nobjs)
-        -> expected<io_size_t, std::error_code> {
-
-            return _read_some_at(loc, buffer, nobjs);
-        }
-
-        /*
-         * Write data.
-         */
-        [[nodiscard]]
-        auto async_write_some_at(io_offset_t loc,
-                                 std::byte const* buffer,
-                                 io_size_t nobjs)
-        -> task<expected<io_size_t, std::error_code>> {
-
-            return _async_write_some_at(loc, buffer, nobjs);
-        }
-
-        [[nodiscard]]
-        auto write_some_at(io_offset_t loc,
-                           std::byte const* buffer,
-                           io_size_t nobjs)
-        -> expected<io_size_t, std::error_code> {
-
-            return _write_some_at(loc, buffer, nobjs);
+        [[nodiscard]] auto open(std::filesystem::path const &path,
+                                fileflag::flagset flags = fileflags::none) noexcept
+            -> expected<void, std::error_code>
+        {
+            flags |= fileflags::read | fileflags::write;
+            return this->da_open(path, flags);
         }
     };
-    // clang-format on
 
     static_assert(dachannel<dafilechannel>);
-
-    /*************************************************************************
-     * dafilechannel::async_open()
-     */
-    inline auto dafilechannel::async_open(std::filesystem::path const &path,
-                                          fileflags_t flags)
-        -> task<expected<void, std::error_code>>
-    {
-
-        flags |= fileflags::read | fileflags::write;
-        co_return co_await this->_async_open(path, flags);
-    }
-
-    /*************************************************************************
-     * dafilechannel::open()
-     */
-    inline auto dafilechannel::open(std::filesystem::path const &path,
-                                    fileflags_t flags)
-        -> expected<void, std::error_code>
-    {
-
-        flags |= fileflags::read | fileflags::write;
-        return this->_open(path, flags);
-    }
 
     /*************************************************************************
      *
      * iseqfilechannel: a sequential-access channel to a file.
      *
      */
-    struct iseqfilechannel final : detail::seqfilechannel_base {
-        /*
-         * Create an iseqfilechannel which is closed.
-         */
-        iseqfilechannel() = default;
+    class iseqfilechannel final : protected detail::seqfilechannel_base {
+    public:
+        using seqfilechannel_base::value_type;
+        using seqfilechannel_base::is_open;
+        using seqfilechannel_base::async_close;
+        using seqfilechannel_base::close;
+        using seqfilechannel_base::async_read_some;
+        using seqfilechannel_base::read_some;
+
+        iseqfilechannel() noexcept = default;
+        ~iseqfilechannel() = default;
+
+        auto operator=(iseqfilechannel &&) noexcept
+            -> iseqfilechannel & = default;
+        iseqfilechannel(iseqfilechannel &&) noexcept = default;
+
+        explicit iseqfilechannel(iseqfilechannel const &) = delete;
+        auto operator=(iseqfilechannel const &) -> iseqfilechannel & = delete;
 
         /*
          * Open a file.
          */
-        [[nodiscard]] auto async_open(std::filesystem::path const &,
-                                      fileflags_t = fileflags::none)
-            -> task<expected<void, std::error_code>>;
+        [[nodiscard]] auto
+        async_open(std::filesystem::path const &path,
+                   fileflag::flagset flags = fileflags::none) noexcept
+            -> task<expected<void, std::error_code>>
+        {
+            if (is_set(flags, fileflags::write))
+                co_return make_unexpected(sk::error::filechannel_invalid_flags);
 
-        [[nodiscard]] auto open(std::filesystem::path const &,
-                                fileflags_t = fileflags::none)
-            -> expected<void, std::error_code>;
+            flags |= fileflags::read;
+            co_return co_await async_seq_open(path, flags);
+        }
 
-        explicit iseqfilechannel(iseqfilechannel const &) = delete;
-        iseqfilechannel(iseqfilechannel &&) noexcept = default;
-        auto operator=(iseqfilechannel const &) -> iseqfilechannel & = delete;
-        auto operator=(iseqfilechannel &&) noexcept
-            -> iseqfilechannel & = default;
-        ~iseqfilechannel() = default;
+        [[nodiscard]] auto open(std::filesystem::path const &path,
+                                fileflag::flagset flags = fileflags::none) noexcept
+            -> expected<void, std::error_code>
+        {
+            if (is_set(flags, fileflags::write))
+                return make_unexpected(sk::error::filechannel_invalid_flags);
 
-        /*
-         * Read data.
-         */
-        [[nodiscard]] auto async_read_some(std::byte *buffer, io_size_t nobjs)
-            -> task<expected<io_size_t, std::error_code>>;
-
-        [[nodiscard]] auto read_some(std::byte *buffer, io_size_t nobjs)
-            -> expected<io_size_t, std::error_code>;
+            flags |= fileflags::read;
+            return seq_open(path, flags);
+        }
     };
 
     static_assert(iseqchannel<iseqfilechannel>);
 
     /*************************************************************************
-     * iseqfilechannel::async_open()
-     */
-    inline auto iseqfilechannel::async_open(std::filesystem::path const &path,
-                                            fileflags_t flags)
-        -> task<expected<void, std::error_code>>
-    {
-
-        if (flags & fileflags::write)
-            co_return make_unexpected(sk::error::filechannel_invalid_flags);
-
-        flags |= fileflags::read;
-        co_return co_await this->_async_open(path, flags);
-    }
-
-    /*************************************************************************
-     * iseqfilechannel::open()
-     */
-    inline auto iseqfilechannel::open(std::filesystem::path const &path,
-                                      fileflags_t flags)
-        -> expected<void, std::error_code>
-    {
-
-        if (flags & fileflags::write)
-            return make_unexpected(sk::error::filechannel_invalid_flags);
-
-        flags |= fileflags::read;
-        return this->_open(path, flags);
-    }
-
-    /*************************************************************************
-     * iseqfilechannel::async_read_some()
-     */
-    inline auto iseqfilechannel::async_read_some(std::byte *buffer,
-                                                 io_size_t nobjs)
-        -> task<expected<io_size_t, std::error_code>>
-    {
-        return _async_read_some(buffer, nobjs);
-    }
-
-    /*************************************************************************
-     * iseqfilechannel::read_some()
-     */
-    inline auto iseqfilechannel::read_some(std::byte *buffer, io_size_t nobjs)
-        -> expected<io_size_t, std::error_code>
-    {
-        return _read_some(buffer, nobjs);
-    }
-
-    /*************************************************************************
      *
-     * oseqfilechannel: a direct access channel that writes to a file.
+     * oseqfilechannel: a sequential channel that writes to a file.
      */
 
-    // clang-format off
-    struct oseqfilechannel final : detail::seqfilechannel_base {
+    class oseqfilechannel final : protected detail::seqfilechannel_base {
+    public:
+        using seqfilechannel_base::value_type;
+        using seqfilechannel_base::is_open;
+        using seqfilechannel_base::async_close;
+        using seqfilechannel_base::close;
+        using seqfilechannel_base::async_write_some;
+        using seqfilechannel_base::write_some;
 
         /*
          * Create an oseqfilechannel which is closed.
          */
-        oseqfilechannel() = default;
-
-        /*
-         * Open a file.
-         */
-        [[nodiscard]]
-        auto async_open(std::filesystem::path const &,
-                        fileflags_t = fileflags::none)
-        -> task<expected<void, std::error_code>>;
-
-        [[nodiscard]]
-        auto open(std::filesystem::path const &,
-                  fileflags_t = fileflags::none)
-        -> expected<void, std::error_code>;
-
-        /*
-         * Write data.
-         */
-        [[nodiscard]]
-        auto async_write_some(std::byte const *buffer, io_size_t)
-        -> task<expected<io_size_t, std::error_code>>;
-
-        [[nodiscard]]
-        auto write_some(std::byte const *buffer, io_size_t)
-        -> expected<io_size_t, std::error_code>;
+        oseqfilechannel() noexcept = default;
 
         oseqfilechannel(oseqfilechannel const &) = delete;
         oseqfilechannel(oseqfilechannel &&) noexcept = default;
         auto operator=(oseqfilechannel const &) -> oseqfilechannel & = delete;
-        auto operator=(oseqfilechannel &&) noexcept -> oseqfilechannel & = default;
+        auto operator=(oseqfilechannel &&) noexcept
+            -> oseqfilechannel & = default;
         ~oseqfilechannel() = default;
+
+        /*
+         * Open a file.
+         */
+        [[nodiscard]] auto async_open(std::filesystem::path const &path,
+                                      fileflag::flagset flags = fileflags::none) noexcept
+            -> task<expected<void, std::error_code>>
+        {
+            if (is_set(flags, fileflags::read))
+                co_return make_unexpected(sk::error::filechannel_invalid_flags);
+
+            flags |= fileflags::write;
+            co_return co_await this->async_seq_open(path, flags);
+        }
+
+        [[nodiscard]] auto open(std::filesystem::path const &path,
+                                fileflag::flagset flags = fileflags::none) noexcept
+            -> expected<void, std::error_code>
+        {
+            if (is_set(flags, fileflags::read))
+                return make_unexpected(sk::error::filechannel_invalid_flags);
+
+            flags |= fileflags::write;
+            return this->seq_open(path, flags);
+        }
     };
 
-    // clang-format on
-
     static_assert(oseqchannel<oseqfilechannel>);
-
-    /*************************************************************************
-     * oseqfilechannel::async_open()
-     */
-    inline auto oseqfilechannel::async_open(std::filesystem::path const &path,
-                                            fileflags_t flags)
-        -> task<expected<void, std::error_code>>
-    {
-
-        if (flags & fileflags::read)
-            co_return make_unexpected(sk::error::filechannel_invalid_flags);
-
-        flags |= fileflags::write;
-        co_return co_await this->_async_open(path, flags);
-    }
-
-    /*************************************************************************
-     * oseqfilechannel::open()
-     */
-    inline auto oseqfilechannel::open(std::filesystem::path const &path,
-                                      fileflags_t flags)
-        -> expected<void, std::error_code>
-    {
-
-        if (flags & fileflags::read)
-            return make_unexpected(sk::error::filechannel_invalid_flags);
-
-        flags |= fileflags::write;
-        return this->_open(path, flags);
-    }
-
-    /*************************************************************************
-     * oseqfilechannel::async_write_some()
-     */
-
-    inline auto oseqfilechannel::async_write_some(std::byte const *buffer,
-                                                  io_size_t nobjs)
-        -> task<expected<io_size_t, std::error_code>>
-    {
-        return _async_write_some(buffer, nobjs);
-    }
-
-    /*************************************************************************
-     * oseqfilechannel::write_some()
-     */
-
-    inline auto oseqfilechannel::write_some(std::byte const *buffer,
-                                            io_size_t nobjs)
-        -> expected<io_size_t, std::error_code>
-    {
-        return _write_some(buffer, nobjs);
-    }
 
     /*************************************************************************
      *
      * seqfilechannel: a direct access channel that writes to a file.
      */
 
-    // clang-format off
-    struct seqfilechannel final : detail::seqfilechannel_base {
+    class seqfilechannel final : protected detail::seqfilechannel_base {
+    public:
+        using seqfilechannel_base::value_type;
+        using seqfilechannel_base::is_open;
+        using seqfilechannel_base::async_close;
+        using seqfilechannel_base::close;
+        using seqfilechannel_base::async_write_some;
+        using seqfilechannel_base::write_some;
+        using seqfilechannel_base::async_read_some;
+        using seqfilechannel_base::read_some;
 
         /*
          * Create a seqfilechannel which is closed.
          */
-        seqfilechannel() = default;
-
-        /*
-         * Open a file.
-         */
-        [[nodiscard]]
-        auto async_open(std::filesystem::path const &,
-                        fileflags_t = fileflags::none)
-        -> task<expected<void, std::error_code>>;
-
-        [[nodiscard]]
-        auto open(std::filesystem::path const &,
-                  fileflags_t = fileflags::none)
-        -> expected<void, std::error_code>;
-
-        /*
-         * Read data.
-         */
-        [[nodiscard]]
-        auto async_read_some(std::byte *buffer, io_size_t nobjs)
-        -> task<expected<io_size_t, std::error_code>>;
-
-        [[nodiscard]]
-        auto read_some(std::byte *buffer, io_size_t nobjs)
-        -> expected<io_size_t, std::error_code>;
-
-        /*
-         * Write data.
-         */
-        [[nodiscard]]
-        auto async_write_some(std::byte const *buffer, io_size_t)
-        -> task<expected<io_size_t, std::error_code>>;
-
-        [[nodiscard]]
-        auto write_some(std::byte const *buffer, io_size_t)
-        -> expected<io_size_t, std::error_code>;
+        seqfilechannel() noexcept = default;
 
         seqfilechannel(seqfilechannel const &) = delete;
         seqfilechannel(seqfilechannel &&) noexcept = default;
         auto operator=(seqfilechannel const &) -> seqfilechannel & = delete;
-        auto operator=(seqfilechannel &&) noexcept -> seqfilechannel & = default;
-        ~seqfilechannel() = default;
+        auto operator=(seqfilechannel &&) noexcept
+            -> seqfilechannel & = default;
+        ~seqfilechannel() noexcept = default;
+
+        /*
+         * Open a file.
+         */
+        [[nodiscard]] auto
+        async_open(std::filesystem::path const &path,
+                   fileflag::flagset flags = fileflags::none) noexcept
+            -> task<expected<void, std::error_code>>
+        {
+            flags |= fileflags::read | fileflags::write;
+            co_return co_await this->async_seq_open(path, flags);
+        }
+
+        [[nodiscard]] auto open(std::filesystem::path const &path,
+                                fileflag::flagset flags = fileflags::none) noexcept
+            -> expected<void, std::error_code>
+        {
+            flags |= fileflags::read | fileflags::write;
+            return this->seq_open(path, flags);
+        }
     };
 
-    // clang-format on
-
     static_assert(seqchannel<seqfilechannel>);
-
-    /*************************************************************************
-     * seqfilechannel::async_open()
-     */
-    inline auto seqfilechannel::async_open(std::filesystem::path const &path,
-                                           fileflags_t flags)
-        -> task<expected<void, std::error_code>>
-    {
-        flags |= fileflags::read | fileflags::write;
-        co_return co_await this->_async_open(path, flags);
-    }
-
-    /*************************************************************************
-     * seqfilechannel::open()
-     */
-    inline auto seqfilechannel::open(std::filesystem::path const &path,
-                                     fileflags_t flags)
-        -> expected<void, std::error_code>
-    {
-        flags |= fileflags::read | fileflags::write;
-        return this->_open(path, flags);
-    }
-
-    /*************************************************************************
-     * seqfilechannel::async_read_some()
-     */
-
-    inline auto seqfilechannel::async_read_some(std::byte *buffer,
-                                                io_size_t nobjs)
-        -> task<expected<io_size_t, std::error_code>>
-    {
-        return this->_async_read_some(buffer, nobjs);
-    }
-
-    /*************************************************************************
-     * seqfilechannel::read_some()
-     */
-
-    inline auto seqfilechannel::read_some(std::byte *buffer, io_size_t nobjs)
-        -> expected<io_size_t, std::error_code>
-    {
-        return this->_read_some(buffer, nobjs);
-    }
-
-    /*************************************************************************
-     * seqfilechannel::async_write_some()
-     */
-
-    inline auto seqfilechannel::async_write_some(std::byte const *buffer,
-                                                 io_size_t nobjs)
-        -> task<expected<io_size_t, std::error_code>>
-    {
-        return this->_async_write_some(buffer, nobjs);
-    }
-
-    /*************************************************************************
-     * seqfilechannel::write_some()
-     */
-
-    inline auto seqfilechannel::write_some(std::byte const *buffer,
-                                           io_size_t nobjs)
-        -> expected<io_size_t, std::error_code>
-    {
-        return this->_write_some(buffer, nobjs);
-    }
 
 } // namespace sk
 

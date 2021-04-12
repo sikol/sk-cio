@@ -34,8 +34,7 @@ static_assert(sk::iseqchannel<sk::iseqcharchannel<char, sk::imemchannel>>);
 
 TEST_CASE("seqcharchannel<char> write_some") {
     std::array<char, 4> outbuf{};
-    auto mchan = sk::make_memchannel(outbuf);
-    auto cchan = sk::make_seqcharchannel<char>(mchan);
+    auto cchan = sk::make_seqcharchannel<char>(sk::make_memchannel(outbuf));
 
     std::array const inbuf{ 'A', 'B', 'C' };
     auto r = sk::write_some(cchan, inbuf);
@@ -46,8 +45,7 @@ TEST_CASE("seqcharchannel<char> write_some") {
 
 TEST_CASE("seqcharchannel<char> async_write_some") {
     std::array<char, 4> outbuf{};
-    auto mchan = sk::make_memchannel(outbuf);
-    auto cchan = sk::make_seqcharchannel<char>(mchan);
+    auto cchan = sk::make_seqcharchannel<char>(sk::make_memchannel(outbuf));
 
     std::array const inbuf{ 'A', 'B', 'C' };
     auto r = wait(sk::async_write_some(cchan, std::span(inbuf)));
@@ -56,11 +54,9 @@ TEST_CASE("seqcharchannel<char> async_write_some") {
     REQUIRE(outbuf == std::array{'A', 'B', 'C', '\0'});
 }
 
-
 TEST_CASE("seqcharchannel<char> read_some") {
     std::array inbuf{ 'A', 'B', 'C' };
-    auto mchan = sk::make_memchannel(inbuf);
-    auto cchan = sk::make_seqcharchannel<char>(mchan);
+    auto cchan = sk::make_seqcharchannel<char>(sk::make_memchannel(inbuf));
 
     std::array<char, 4> outbuf{};
     auto r = read_some(cchan, outbuf, sizeof(outbuf));
@@ -71,8 +67,7 @@ TEST_CASE("seqcharchannel<char> read_some") {
 
 TEST_CASE("seqcharchannel<char> async_read_some") {
     std::array inbuf{ 'A', 'B', 'C' };
-    auto mchan = sk::make_memchannel(inbuf);
-    auto cchan = sk::make_seqcharchannel<char>(mchan);
+    auto cchan = sk::make_seqcharchannel<char>(sk::make_memchannel(inbuf));
 
     std::array<char, 4> outbuf{};
     auto r = wait(sk::async_read_some(cchan, outbuf, sizeof(outbuf)));

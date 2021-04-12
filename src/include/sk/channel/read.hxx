@@ -58,12 +58,11 @@ namespace sk {
                           std::ranges::range_value_t<Range>>
     // clang-format on
     {
-        auto data = std::ranges::data(range);
-        auto size = sk::detail::int_cast<io_size_t>(std::ranges::size(range));
-        if (n < size)
-            size = n;
+        std::span<channel_value_t<Channel>> span(range);
+        if (n < span.size())
+            span = span.first(n);
 
-        return channel.read_some(data, size);
+        return channel.read_some(span);
     }
 
     // clang-format off
@@ -77,12 +76,11 @@ namespace sk {
                           std::ranges::range_value_t<Range>>
     // clang-format on
     {
-        auto data = std::ranges::data(range);
-        auto size = sk::detail::int_cast<io_size_t>(std::ranges::size(range));
-        if (n < size)
-            size = n;
+        std::span<channel_value_t<Channel>> span(range);
+        if (n < span.size())
+            span = span.first(n);
 
-        return channel.async_read_some(data, size);
+        return channel.async_read_some(span);
     }
 
     // clang-format off
@@ -149,12 +147,11 @@ namespace sk {
                           std::ranges::range_value_t<Range>>
     // clang-format on
     {
-        auto data = std::ranges::data(range);
-        auto size = sk::detail::int_cast<io_size_t>(std::ranges::size(range));
-        if (n < size)
-            size = n;
+        std::span<channel_value_t<Channel>> span(range);
+        if (n < span.size())
+            span = span.first(n);
 
-        return channel.read_some_at(loc, data, size);
+        return channel.read_some_at(loc, span);
     }
 
     // clang-format off
@@ -169,12 +166,11 @@ namespace sk {
                           std::ranges::range_value_t<Range>>
     // clang-format on
     {
-        auto data = std::ranges::data(range);
-        auto size = sk::detail::int_cast<io_size_t>(std::ranges::size(range));
-        if (n < size)
-            size = n;
+        std::span<channel_value_t<Channel>> span(range);
+        if (n < span.size())
+            span = span.first(n);
 
-        co_return co_await channel.async_read_some_at(loc, data, size);
+        co_return co_await channel.async_read_some_at(loc, span);
     }
 
     // clang-format off
@@ -240,25 +236,23 @@ namespace sk {
                           std::add_const_t<std::ranges::range_value_t<Range>>>
     // clang-format on
     {
-        auto data = std::ranges::data(range);
-        auto size = sk::detail::int_cast<io_size_t>(std::ranges::size(range));
-        if (n < size)
-            size = n;
+        std::span<channel_value_t<Channel>> span(range);
+        if (n < span.size())
+            span = span.first(n);
 
-        io_size_t bytes_read = 0;
+        io_size_t nread = 0;
 
-        while (size) {
-            auto ret = channel.read_some(data, size);
+        while (!span.empty()) {
+            auto ret = channel.read_some(span);
 
             if (!ret)
-                return {bytes_read, ret.error()};
+                return {nread, ret.error()};
 
-            bytes_read += *ret;
-            size -= *ret;
-            data += *ret;
+            nread += *ret;
+            span = span.subspan(*ret);
         }
 
-        return {bytes_read, sk::error::no_error};
+        return {nread, sk::error::no_error};
     }
 
     // clang-format off
@@ -272,25 +266,23 @@ namespace sk {
                           std::ranges::range_value_t<Range>>
     // clang-format on
     {
-        auto data = std::ranges::data(range);
-        auto size = sk::detail::int_cast<io_size_t>(std::ranges::size(range));
-        if (n < size)
-            size = n;
+        std::span<channel_value_t<Channel>> span(range);
+        if (n < span.size())
+            span = span.first(n);
 
-        io_size_t bytes_read = 0;
+        io_size_t nread = 0;
 
-        while (size) {
-            auto ret = co_await channel.async_read_some(data, size);
+        while (!span.empty()) {
+            auto ret = co_await channel.async_read_some(span);
 
             if (!ret)
-                co_return {bytes_read, ret.error()};
+                co_return {nread, ret.error()};
 
-            bytes_read += *ret;
-            size -= *ret;
-            data += *ret;
+            nread += *ret;
+            span = span.subspan(*ret);
         }
 
-        co_return {bytes_read, sk::error::no_error};
+        co_return {nread, sk::error::no_error};
     }
 
     // clang-format off
@@ -304,19 +296,19 @@ namespace sk {
                           sk::buffer_value_t<Buffer>>
     // clang-format on
     {
-        io_size_t bytes_read = 0;
+        io_size_t nread = 0;
         std::pair<io_size_t, std::error_code> ret;
 
         for (auto &&range : buffer.writable_ranges()) {
-            ret = read_all(channel, range, n - bytes_read);
-            bytes_read += ret.first;
+            ret = read_all(channel, range, n - nread);
+            nread += ret.first;
 
-            if (ret.first == 0 || ret.second)
+            if (ret.first == 0 || ret.second || nread == n)
                 break;
         }
 
-        buffer.commit(bytes_read);
-        return {bytes_read, ret.second};
+        buffer.commit(nread);
+        return {nread, ret.second};
     }
 
     // clang-format off
@@ -330,19 +322,19 @@ namespace sk {
                           sk::buffer_value_t<Buffer>>
     // clang-format on
     {
-        io_size_t bytes_read = 0;
+        io_size_t nread = 0;
         std::pair<io_size_t, std::error_code> ret;
 
         for (auto &&range : buffer.writable_ranges()) {
-            ret = co_await async_read_all(channel, range, n - bytes_read);
-            bytes_read += ret.first;
+            ret = co_await async_read_all(channel, range, n - nread);
+            nread += ret.first;
 
-            if (ret.first == 0 || ret.second)
+            if (ret.first == 0 || ret.second || n == nread)
                 break;
         }
 
-        buffer.commit(bytes_read);
-        co_return {bytes_read, ret.second};
+        buffer.commit(nread);
+        co_return {nread, ret.second};
     }
 
 } // namespace sk

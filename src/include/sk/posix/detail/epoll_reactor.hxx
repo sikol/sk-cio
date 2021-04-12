@@ -40,7 +40,10 @@
 #include <system_error>
 #include <thread>
 
+#include <gsl/gsl>
+
 #include <sk/async_invoke.hxx>
+#include <sk/detail/safeint.hxx>
 #include <sk/executor.hxx>
 #include <sk/expected.hxx>
 #include <sk/posix/error.hxx>
@@ -49,9 +52,9 @@
 namespace sk::posix::detail {
 
     struct epoll_coro_state {
-        bool was_pending;
-        int ret;
-        int error;
+        // bool was_pending;
+        int ret = 0;
+        int error = 0;
         coroutine_handle<> coro_handle;
         std::mutex mutex;
         executor *task_executor = nullptr;
@@ -88,9 +91,9 @@ namespace sk::posix::detail {
         unique_fd epoll_fd;
 
         // Associate a new fd with our epoll.
-        [[nodiscard]] auto associate_fd(int) noexcept
+        [[nodiscard]] auto associate_fd(int fd) noexcept
             -> expected<void, std::error_code>;
-        auto deassociate_fd(int) noexcept -> void;
+        auto deassociate_fd(int fd) noexcept -> void;
 
         // Register interest in an fd
         auto register_read_interest(int fd, epoll_coro_state *state) noexcept
@@ -106,13 +109,15 @@ namespace sk::posix::detail {
 
         // POSIX async API
         [[nodiscard]] auto
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers)
         async_fd_open(char const *path, int flags, int mode = 0777) noexcept
             -> task<expected<int, std::error_code>>;
 
         [[nodiscard]] auto async_fd_close(int fd) noexcept
             -> task<expected<int, std::error_code>>;
 
-        [[nodiscard]] auto async_fd_read(int fd, void *buf, std::size_t n) noexcept
+        [[nodiscard]] auto
+        async_fd_read(int fd, void *buf, std::size_t n) noexcept
             -> task<expected<ssize_t, std::error_code>>;
 
         [[nodiscard]] auto
@@ -123,22 +128,29 @@ namespace sk::posix::detail {
         async_fd_recv(int fd, void *buf, std::size_t n, int flags) noexcept
             -> task<expected<ssize_t, std::error_code>>;
 
-        [[nodiscard]] auto
-        async_fd_send(int fd, void const *buf, std::size_t n, int flags) noexcept
+        [[nodiscard]] auto async_fd_send(int fd,
+                                         void const *buf,
+                                         std::size_t n,
+                                         int flags) noexcept
             -> task<expected<ssize_t, std::error_code>>;
 
         [[nodiscard]] auto
         async_fd_write(int fd, void const *buf, std::size_t n) noexcept
             -> task<expected<ssize_t, std::error_code>>;
 
-        [[nodiscard]] auto
-        async_fd_pwrite(int fd, void const *buf, std::size_t n, off_t offs) noexcept
+        [[nodiscard]] auto async_fd_pwrite(int fd,
+                                           void const *buf,
+                                           std::size_t n,
+                                           off_t offs) noexcept
             -> task<expected<ssize_t, std::error_code>>;
 
-        [[nodiscard]] auto async_fd_connect(int, sockaddr const *, socklen_t) noexcept
+        [[nodiscard]] auto async_fd_connect(int fd,
+                                            sockaddr const *addr,
+                                            socklen_t addrlen) noexcept
             -> task<expected<void, std::error_code>>;
 
-        [[nodiscard]] auto async_fd_accept(int, sockaddr *addr, socklen_t *) noexcept
+        [[nodiscard]] auto
+        async_fd_accept(int fd, sockaddr *addr, socklen_t *addrlen) noexcept
             -> task<expected<int, std::error_code>>;
 
     private:
@@ -147,24 +159,27 @@ namespace sk::posix::detail {
 
         void epoll_thread_fn() noexcept;
         std::thread _epoll_thread;
-        std::array<int, 2> _shutdown_pipe;
+        std::array<int, 2> _shutdown_pipe{-1, -1};
     };
 
-    inline epoll_reactor::epoll_reactor() noexcept {}
+    inline epoll_reactor::epoll_reactor() noexcept = default;
 
     inline auto epoll_reactor::epoll_thread_fn() noexcept -> void
     {
+        // How many events we want to pull at a time.
+        static constexpr std::size_t max_events = 16;
+
         auto ep = *epoll_fd;
 
-        epoll_event events[16];
-        int nevents;
+        std::array<epoll_event, max_events> events{};
+        int nevents{};
 
-        while ((nevents = epoll_wait(
-                    ep, events, sizeof(events) / sizeof(*events), -1)) != -1) {
+        while ((nevents = epoll_wait(ep, &events[0], events.size(), -1)) !=
+               -1) {
             std::lock_guard state_lock(_state_mtx);
 
             for (int i = 0; i < nevents; ++i) {
-                auto &event = events[i];
+                auto &event = gsl::at(events, i);
                 auto fd = event.data.fd;
 
                 if (fd == _shutdown_pipe[0])
@@ -172,8 +187,8 @@ namespace sk::posix::detail {
 
                 auto &state = _state[fd];
 
-                if (event.events & EPOLLIN) {
-                    if (state->read_waiter) {
+                if ((event.events & EPOLLIN) != 0) {
+                    if (state->read_waiter != nullptr) {
                         std::lock_guard h_lock(state->read_waiter->mutex);
                         auto &h = state->read_waiter->coro_handle;
                         auto *x = state->read_waiter->task_executor;
@@ -183,8 +198,8 @@ namespace sk::posix::detail {
                     }
                 }
 
-                if (event.events & EPOLLOUT) {
-                    if (state->write_waiter) {
+                if ((event.events & EPOLLOUT) != 0) {
+                    if (state->write_waiter != nullptr) {
                         std::lock_guard h_lock(state->write_waiter->mutex);
                         auto h = state->write_waiter->coro_handle;
                         auto *x = state->write_waiter->task_executor;
@@ -203,7 +218,7 @@ namespace sk::posix::detail {
         if (::pipe(_shutdown_pipe.data()) == -1)
             return make_unexpected(get_errno());
 
-        auto epoll_fd_ = ::epoll_create(64);
+        auto epoll_fd_ = ::epoll_create1(0);
         if (epoll_fd_ == -1)
             return make_unexpected(get_errno());
 
@@ -249,7 +264,7 @@ namespace sk::posix::detail {
         SK_CHECK(fd >= 0, "attempt to associate a negative fd");
 
         try {
-            if (_state.size() < static_cast<std::size_t>(fd + 1))
+            if (_state.size() <= (static_cast<std::size_t>(fd)))
                 _state.resize(fd + 1);
 
             if (!_state[fd])
@@ -337,11 +352,11 @@ namespace sk::posix::detail {
      */
 
     struct co_fd_is_readable {
-        epoll_reactor &reactor;
+        epoll_reactor *reactor;
         int fd;
         epoll_coro_state cstate;
 
-        explicit co_fd_is_readable(epoll_reactor &reactor_, int fd_)
+        explicit co_fd_is_readable(epoll_reactor *reactor_, int fd_)
             : reactor(reactor_), fd(fd_)
         {
         }
@@ -361,7 +376,7 @@ namespace sk::posix::detail {
                      "attempt to suspend with no executor");
 
             cstate.coro_handle = coro_handle_;
-            reactor.register_read_interest(fd, &cstate);
+            reactor->register_read_interest(fd, &cstate);
             return true;
         }
 
@@ -369,17 +384,17 @@ namespace sk::posix::detail {
     };
 
     struct co_fd_is_writable {
-        epoll_reactor &reactor;
+        epoll_reactor *reactor;
         int fd;
         epoll_coro_state cstate;
 
-        explicit co_fd_is_writable(epoll_reactor &reactor_, int fd_)
+        explicit co_fd_is_writable(epoll_reactor *reactor_, int fd_)
             : reactor(reactor_), fd(fd_)
         {
         }
 
         // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
-        bool await_ready()
+        auto await_ready() -> bool
         {
             return false;
         }
@@ -393,15 +408,17 @@ namespace sk::posix::detail {
                      "attempt to suspend with no executor");
 
             cstate.coro_handle = coro_handle_;
-            reactor.register_write_interest(fd, &cstate);
+            reactor->register_write_interest(fd, &cstate);
             return true;
         }
 
         void await_resume() {}
     };
 
-    inline auto
-    epoll_reactor::async_fd_recv(int fd, void *buf, std::size_t n, int flags) noexcept
+    inline auto epoll_reactor::async_fd_recv(int fd,
+                                             void *buf,
+                                             std::size_t n,
+                                             int flags) noexcept
         -> task<expected<ssize_t, std::error_code>>
     {
         do {
@@ -412,7 +429,7 @@ namespace sk::posix::detail {
             if (errno != EWOULDBLOCK)
                 co_return make_unexpected(get_errno());
 
-            co_await co_fd_is_readable(*this, fd);
+            co_await co_fd_is_readable(this, fd);
         } while (true);
     }
 
@@ -430,7 +447,7 @@ namespace sk::posix::detail {
             if (errno != EWOULDBLOCK)
                 co_return make_unexpected(get_errno());
 
-            co_await co_fd_is_writable(*this, fd);
+            co_await co_fd_is_writable(this, fd);
         } while (true);
     }
 
@@ -447,12 +464,13 @@ namespace sk::posix::detail {
         if (errno != EWOULDBLOCK)
             co_return make_unexpected(get_errno());
 
-        co_await co_fd_is_writable(*this, fd);
+        co_await co_fd_is_writable(this, fd);
         co_return {};
     }
 
-    inline auto
-    epoll_reactor::async_fd_accept(int fd, sockaddr *addr, socklen_t *addrlen) noexcept
+    inline auto epoll_reactor::async_fd_accept(int fd,
+                                               sockaddr *addr,
+                                               socklen_t *addrlen) noexcept
         -> task<expected<int, std::error_code>>
     {
         do {
@@ -463,7 +481,7 @@ namespace sk::posix::detail {
             if (errno != EWOULDBLOCK)
                 co_return make_unexpected(get_errno());
 
-            co_await co_fd_is_readable(*this, fd);
+            co_await co_fd_is_readable(this, fd);
         } while (true);
     }
 
@@ -503,7 +521,8 @@ namespace sk::posix::detail {
             co_return fd;
     }
 
-    inline auto epoll_reactor::async_fd_read(int fd, void *buf, std::size_t n) noexcept
+    inline auto
+    epoll_reactor::async_fd_read(int fd, void *buf, std::size_t n) noexcept
         -> task<expected<ssize_t, std::error_code>>
     {
         ssize_t ret = co_await async_invoke([&]() -> ssize_t {
@@ -512,14 +531,16 @@ namespace sk::posix::detail {
         });
 
         if (ret < 0)
-            co_return make_unexpected(
-                std::error_code(-ret, std::system_category()));
+            co_return make_unexpected(std::error_code(
+                sk::detail::narrow<int>(-ret), std::system_category()));
         else
             co_return ret;
     }
 
-    inline auto
-    epoll_reactor::async_fd_pread(int fd, void *buf, std::size_t n, off_t offs) noexcept
+    inline auto epoll_reactor::async_fd_pread(int fd,
+                                              void *buf,
+                                              std::size_t n,
+                                              off_t offs) noexcept
         -> task<expected<ssize_t, std::error_code>>
     {
         ssize_t ret = co_await async_invoke([&]() -> ssize_t {
@@ -528,14 +549,15 @@ namespace sk::posix::detail {
         });
 
         if (ret < 0)
-            co_return make_unexpected(
-                std::error_code(-ret, std::system_category()));
+            co_return make_unexpected(std::error_code(
+                sk::detail::narrow<int>(-ret), std::system_category()));
         else
             co_return ret;
     }
 
-    inline auto
-    epoll_reactor::async_fd_write(int fd, void const *buf, std::size_t n) noexcept
+    inline auto epoll_reactor::async_fd_write(int fd,
+                                              void const *buf,
+                                              std::size_t n) noexcept
         -> task<expected<ssize_t, std::error_code>>
     {
         ssize_t ret = co_await async_invoke([&]() -> ssize_t {
@@ -544,8 +566,8 @@ namespace sk::posix::detail {
         });
 
         if (ret < 0)
-            co_return make_unexpected(
-                std::error_code(-ret, std::system_category()));
+            co_return make_unexpected(std::error_code(
+                sk::detail::narrow<int>(-ret), std::system_category()));
         else
             co_return ret;
     }
@@ -562,8 +584,8 @@ namespace sk::posix::detail {
         });
 
         if (ret < 0)
-            co_return make_unexpected(
-                std::error_code(-ret, std::system_category()));
+            co_return make_unexpected(std::error_code(
+                sk::detail::narrow<int>(-ret), std::system_category()));
         else
             co_return ret;
     }

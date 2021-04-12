@@ -284,17 +284,19 @@ TEST_CASE("dynamic_buffer<>, small buffer discard")
 
 TEST_CASE("dynamic_buffer<>, large buffer discard")
 {
+    static constexpr std::size_t test_buffer_size = 4096;
+    static constexpr std::size_t test_slice_size = 7;
     std::string input_string =
         "this is a test string that will not fill more than one extent";
-    sk::dynamic_buffer<char, 4096> buf;
+    sk::dynamic_buffer<char, test_buffer_size> buf;
 
     buffer_write(buf, input_string);
-    buf.discard(7);
+    buf.discard(test_slice_size);
 
-    std::string output_string(input_string.size() - 7, 'A');
+    std::string output_string(input_string.size() - test_slice_size, 'A');
     auto nbytes = buffer_read(buf, output_string);
-    REQUIRE(nbytes == (input_string.size() - 7));
-    REQUIRE(output_string == input_string.substr(7));
+    REQUIRE(nbytes == (input_string.size() - test_slice_size));
+    REQUIRE(output_string == input_string.substr(test_slice_size));
 
     nbytes = buffer_read(buf, output_string);
     REQUIRE(nbytes == 0);

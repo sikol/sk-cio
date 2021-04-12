@@ -55,35 +55,38 @@ namespace sk::posix::detail {
      *
      */
 
-    struct filechannel_base {
+    class filechannel_base {
+    public:
+        filechannel_base(filechannel_base const &) = delete;
+        auto operator=(filechannel_base const &) -> filechannel_base & = delete;
+
+    protected:
         using value_type = std::byte;
 
-        filechannel_base(filechannel_base const &) = delete;
         filechannel_base(filechannel_base &&) noexcept = default;
-        auto operator=(filechannel_base const &) -> filechannel_base & = delete;
         auto operator=(filechannel_base &&) noexcept
             -> filechannel_base & = default;
 
         /*
          * Test if this channel has been opened.
          */
-        [[nodiscard]] auto is_open() const -> bool;
+        [[nodiscard]] auto is_open() const noexcept -> bool;
 
-        [[nodiscard]] auto async_close()
+        [[nodiscard]] auto async_close() noexcept
             -> task<expected<void, std::error_code>>;
 
-        [[nodiscard]] auto close() -> expected<void, std::error_code>;
+        [[nodiscard]] auto close() noexcept -> expected<void, std::error_code>;
 
-    protected:
-        [[nodiscard]] auto _async_open(std::filesystem::path const &,
-                                       fileflags_t)
+        [[nodiscard]] auto async_base_open(std::filesystem::path const &path,
+                                           fileflag::flagset flags) noexcept
             -> task<expected<void, std::error_code>>;
 
-        [[nodiscard]] auto _open(std::filesystem::path const &, fileflags_t)
+        [[nodiscard]] auto base_open(std::filesystem::path const &path,
+                                     fileflag::flagset flags) noexcept
             -> expected<void, std::error_code>;
 
-        [[nodiscard]] static auto _make_flags(fileflags_t flags,
-                                              int *open_flags) -> bool;
+        [[nodiscard]] static auto _make_flags(fileflag::flagset flags,
+                                              int *open_flags) noexcept -> bool;
 
         filechannel_base() = default;
         ~filechannel_base() = default;
@@ -94,20 +97,22 @@ namespace sk::posix::detail {
     /*************************************************************************
      * filechannel_base::_make_flags()
      */
-    inline auto filechannel_base::_make_flags(fileflags_t flags,
-                                              int *open_flags) -> bool
+    inline auto filechannel_base::_make_flags(fileflag::flagset flags,
+                                              int *open_flags) noexcept -> bool
     {
         *open_flags = 0;
 
         // Must specify either read or write.
-        if ((flags & (fileflags::read | fileflags::write)) == 0)
+        if (!any_set(flags, fileflags::read | fileflags::write))
             return false;
 
         // Read access only
-        if ((flags & fileflags::read) && !(flags & fileflags::write)) {
+        if (is_set(flags, fileflags::read) &&
+            !is_set(flags, fileflags::write)) {
             // These flags are not valid for reading.
-            if (flags &
-                (fileflags::trunc | fileflags::append | fileflags::create_new))
+            if (any_set(flags,
+                        fileflags::trunc | fileflags::append |
+                            fileflags::create_new))
                 return false;
 
             *open_flags = O_RDONLY;
@@ -115,31 +120,32 @@ namespace sk::posix::detail {
         }
 
         // Write access or read-write access
-        if (flags & fileflags::write) {
+        if (is_set(flags, fileflags::write)) {
             // Must specify either create_new or open_existing (or both).
-            if (!(flags & (fileflags::create_new | fileflags::open_existing)))
+            if (!any_set(flags,
+                         fileflags::create_new | fileflags::open_existing))
                 return false;
 
-            if (flags & fileflags::read)
+            if (is_set(flags, fileflags::read))
                 *open_flags = O_RDWR;
             else
                 *open_flags = O_WRONLY;
 
             // Must create a new file.
-            if ((flags & fileflags::create_new) &&
-                !(flags & fileflags::open_existing))
+            if (is_set(flags, fileflags::create_new) &&
+                !is_set(flags, fileflags::open_existing))
                 *open_flags |= O_CREAT | O_EXCL;
             // Can create a new file or open an existing one.
-            else if ((flags & fileflags::create_new) &&
-                     (flags & fileflags::open_existing)) {
-                if (flags & fileflags::trunc)
+            else if (is_set(flags, fileflags::create_new) &&
+                     is_set(flags, fileflags::open_existing)) {
+                if (is_set(flags, fileflags::trunc))
                     *open_flags |= O_CREAT | O_TRUNC;
                 else
                     *open_flags |= O_CREAT;
                 // Can only open an existing file.
-            } else if (!(flags & fileflags::create_new) &&
-                       (flags & fileflags::open_existing)) {
-                if (flags & fileflags::trunc)
+            } else if (!is_set(flags, fileflags::create_new) &&
+                       is_set(flags, fileflags::open_existing)) {
+                if (is_set(flags, fileflags::trunc))
                     *open_flags |= O_TRUNC;
                 // else
                 //    *open_flags |= 0;
@@ -155,8 +161,9 @@ namespace sk::posix::detail {
      * filechannel_base::async_open()
      */
 
-    inline auto filechannel_base::_async_open(std::filesystem::path const &path,
-                                              fileflags_t flags)
+    inline auto
+    filechannel_base::async_base_open(std::filesystem::path const &path,
+                                      fileflag::flagset flags) noexcept
         -> task<expected<void, std::error_code>>
     {
         if (is_open())
@@ -168,9 +175,10 @@ namespace sk::posix::detail {
             co_return make_unexpected(error::filechannel_invalid_flags);
 
         auto native_path = path.native();
-        if (native_path.find('\0') != native_path.npos)
+        if (native_path.find('\0') != decltype(native_path)::npos)
             co_return make_unexpected(make_error(ENOENT));
 
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers)
         auto fd = co_await async_fd_open(native_path.c_str(), open_flags, 0777);
 
         if (!fd)
@@ -184,8 +192,8 @@ namespace sk::posix::detail {
      * filechannel_base::open()
      */
 
-    inline auto filechannel_base::_open(std::filesystem::path const &path,
-                                        fileflags_t flags)
+    inline auto filechannel_base::base_open(std::filesystem::path const &path,
+                                            fileflag::flagset flags) noexcept
         -> expected<void, std::error_code>
     {
         if (is_open())
@@ -197,9 +205,10 @@ namespace sk::posix::detail {
             return make_unexpected(error::filechannel_invalid_flags);
 
         auto native_path = path.native();
-        if (native_path.find('\0') != native_path.npos)
+        if (native_path.find('\0') != decltype(native_path)::npos)
             return make_unexpected(make_error(ENOENT));
 
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers)
         auto fd = ::open(native_path.c_str(), open_flags, 0777);
 
         if (fd == -1)
@@ -212,7 +221,7 @@ namespace sk::posix::detail {
     /*************************************************************************
      * filechannel_base::is_open()
      */
-    inline auto filechannel_base::is_open() const -> bool
+    inline auto filechannel_base::is_open() const noexcept -> bool
     {
         return static_cast<bool>(_fd);
     }
@@ -220,7 +229,8 @@ namespace sk::posix::detail {
     /*************************************************************************
      * filechannel_base::close()
      */
-    inline auto filechannel_base::close() -> expected<void, std::error_code>
+    inline auto filechannel_base::close() noexcept
+        -> expected<void, std::error_code>
     {
         if (!is_open())
             return make_unexpected(sk::error::channel_not_open);
@@ -234,7 +244,7 @@ namespace sk::posix::detail {
     /*************************************************************************
      * filechannel_base::async_close()
      */
-    inline auto filechannel_base::async_close()
+    inline auto filechannel_base::async_close() noexcept
         -> task<expected<void, std::error_code>>
     {
         int fd = _fd.release();
@@ -252,37 +262,54 @@ namespace sk::posix::detail {
      *
      */
 
-    struct dafilechannel_base : filechannel_base {
-        using value_type = std::byte;
-
+    class dafilechannel_base : protected filechannel_base {
+    public:
         dafilechannel_base(dafilechannel_base const &) = delete;
-        dafilechannel_base(dafilechannel_base &&) noexcept = default;
         auto operator=(dafilechannel_base const &)
             -> dafilechannel_base & = delete;
+
+    protected:
+        using value_type = std::byte;
+
+        dafilechannel_base(dafilechannel_base &&) noexcept = default;
         auto operator=(dafilechannel_base &&) noexcept
             -> dafilechannel_base & = default;
 
-    protected:
+        [[nodiscard]] auto async_da_open(std::filesystem::path const &path,
+                                         fileflag::flagset flags) noexcept
+            -> task<expected<void, std::error_code>>
+        {
+            return async_base_open(path, flags);
+        }
+
+        [[nodiscard]] auto da_open(std::filesystem::path const &path,
+                                   fileflag::flagset flags) noexcept
+            -> expected<void, std::error_code>
+        {
+            return base_open(path, flags);
+        }
+
         /*
          * Read data.
          */
         [[nodiscard]] auto
-        _async_read_some_at(io_offset_t loc, std::byte *buffer, io_size_t nobjs)
+        async_read_some_at(io_offset_t loc, std::span<value_type> buf) noexcept
             -> task<expected<io_size_t, std::error_code>>;
 
-        [[nodiscard]] auto
-        _read_some_at(io_offset_t loc, std::byte *buffer, io_size_t nobjs)
+        [[nodiscard]] auto read_some_at(io_offset_t loc,
+                                        std::span<value_type> buf) noexcept
             -> expected<io_size_t, std::error_code>;
 
         /*
          * Write data.
          */
         [[nodiscard]] auto
-        _async_write_some_at(io_offset_t, std::byte const *, io_size_t)
+        async_write_some_at(io_offset_t loc,
+                            std::span<value_type const> buf) noexcept
             -> task<expected<io_size_t, std::error_code>>;
 
         [[nodiscard]] auto
-        _write_some_at(io_offset_t, std::byte const *, io_size_t)
+        write_some_at(io_offset_t loc, std::span<value_type const> buf) noexcept
             -> expected<io_size_t, std::error_code>;
 
         dafilechannel_base() = default;
@@ -290,17 +317,18 @@ namespace sk::posix::detail {
     };
 
     /*************************************************************************
-     * filechannel_base::_async_read_some_at()
+     * dafilechannel_base::async_read_some_at()
      */
 
-    inline auto dafilechannel_base::_async_read_some_at(io_offset_t loc,
-                                                        std::byte *buffer,
-                                                        io_size_t nobjs)
+    inline auto
+    dafilechannel_base::async_read_some_at(io_offset_t loc,
+                                           std::span<value_type> buf) noexcept
         -> task<expected<io_size_t, std::error_code>>
     {
         SK_CHECK(is_open(), "attempt to read on a closed channel");
 
-        auto ret = co_await async_fd_pread(*_fd, buffer, nobjs, loc);
+        auto ret = co_await async_fd_pread(
+            *_fd, buf.data(), buf.size(), sk::detail::truncate<off_t>(loc));
 
         if (!ret)
             co_return make_unexpected(ret.error());
@@ -312,17 +340,18 @@ namespace sk::posix::detail {
     }
 
     /*************************************************************************
-     * filechannel_base::_read_some_at()
+     * dafilechannel_base::read_some_at()
      */
 
-    inline auto dafilechannel_base::_read_some_at(io_offset_t loc,
-                                                  std::byte *buffer,
-                                                  io_size_t nobjs)
+    inline auto
+    dafilechannel_base::read_some_at(io_offset_t loc,
+                                     std::span<value_type> buf) noexcept
         -> expected<io_size_t, std::error_code>
     {
         SK_CHECK(is_open(), "attempt to read on a closed channel");
 
-        auto ret = ::pread(*_fd, buffer, nobjs, loc);
+        auto ret = ::pread(
+            *_fd, buf.data(), buf.size(), sk::detail::truncate<off_t>(loc));
 
         if (ret == -1)
             return make_unexpected(get_errno());
@@ -334,16 +363,17 @@ namespace sk::posix::detail {
     }
 
     /*************************************************************************
-     * odafilechannel::async_write_some_at()
+     * dafilechannel_base::async_write_some_at()
      */
 
-    inline auto dafilechannel_base::_async_write_some_at(
-        io_offset_t loc, std::byte const *buffer, io_size_t nobjs)
+    inline auto dafilechannel_base::async_write_some_at(
+        io_offset_t loc, std::span<value_type const> buf) noexcept
         -> task<expected<io_size_t, std::error_code>>
     {
         SK_CHECK(is_open(), "attempt to read on a closed channel");
 
-        auto ret = co_await async_fd_pwrite(*_fd, buffer, nobjs, loc);
+        auto ret = co_await async_fd_pwrite(
+            *_fd, buf.data(), buf.size(), sk::detail::truncate<off_t>(loc));
 
         if (!ret)
             co_return make_unexpected(ret.error());
@@ -352,17 +382,18 @@ namespace sk::posix::detail {
     }
 
     /*************************************************************************
-     * idafilechannel::write_some_at()
+     * dafilechannel_base::write_some_at()
      */
 
-    inline auto dafilechannel_base::_write_some_at(io_offset_t loc,
-                                                   std::byte const *buffer,
-                                                   io_size_t nobjs)
+    inline auto
+    dafilechannel_base::write_some_at(io_offset_t loc,
+                                      std::span<value_type const> buf) noexcept
         -> expected<io_size_t, std::error_code>
     {
         SK_CHECK(is_open(), "attempt to read on a closed channel");
 
-        auto ret = ::pwrite(*_fd, buffer, nobjs, loc);
+        auto ret = ::pwrite(
+            *_fd, buf.data(), buf.size(), sk::detail::truncate<off_t>(loc));
 
         if (ret < 0)
             return make_unexpected(get_errno());
@@ -376,33 +407,49 @@ namespace sk::posix::detail {
      *
      */
 
-    struct seqfilechannel_base : filechannel_base {
-        using value_type = std::byte;
-
+    class seqfilechannel_base : protected filechannel_base {
+    public:
         seqfilechannel_base(seqfilechannel_base const &) = delete;
-        seqfilechannel_base(seqfilechannel_base &&) noexcept = default;
         auto operator=(seqfilechannel_base const &)
             -> seqfilechannel_base & = delete;
+
+    protected:
+        using value_type = std::byte;
+
+        seqfilechannel_base(seqfilechannel_base &&) noexcept = default;
         auto operator=(seqfilechannel_base &&) noexcept
             -> seqfilechannel_base & = default;
 
-    protected:
+        [[nodiscard]] auto async_seq_open(std::filesystem::path const &path,
+                                          fileflag::flagset flags) noexcept
+            -> task<expected<void, std::error_code>>
+        {
+            return async_base_open(path, flags);
+        }
+
+        [[nodiscard]] auto seq_open(std::filesystem::path const &path,
+                                    fileflag::flagset flags) noexcept
+            -> expected<void, std::error_code>
+        {
+            return base_open(path, flags);
+        }
+
         /*
          * Read data.
          */
-        [[nodiscard]] auto _async_read_some(std::byte *buffer, io_size_t nobjs)
+        [[nodiscard]] auto async_read_some(std::span<value_type> buf) noexcept
             -> task<expected<io_size_t, std::error_code>>;
 
-        [[nodiscard]] auto _read_some(std::byte *buffer, io_size_t nobjs)
+        [[nodiscard]] auto read_some(std::span<value_type> buf) noexcept
             -> expected<io_size_t, std::error_code>;
 
         /*
          * Write data.
          */
-        [[nodiscard]] auto _async_write_some(std::byte const *, io_size_t)
+        [[nodiscard]] auto async_write_some(std::span<value_type const> buf) noexcept
             -> task<expected<io_size_t, std::error_code>>;
 
-        [[nodiscard]] auto _write_some(std::byte const *, io_size_t)
+        [[nodiscard]] auto write_some(std::span<value_type const> buf) noexcept
             -> expected<io_size_t, std::error_code>;
 
         seqfilechannel_base() = default;
@@ -410,16 +457,15 @@ namespace sk::posix::detail {
     };
 
     /*************************************************************************
-     * seqfilechannel_base::_async_read_some()
+     * seqfilechannel_base::async_read_some()
      */
 
-    inline auto seqfilechannel_base::_async_read_some(std::byte *buffer,
-                                                      io_size_t nobjs)
+    inline auto seqfilechannel_base::async_read_some(std::span<value_type> buf) noexcept
         -> task<expected<io_size_t, std::error_code>>
     {
         SK_CHECK(is_open(), "attempt to read on a closed channel");
 
-        auto ret = co_await async_fd_read(*_fd, buffer, nobjs);
+        auto ret = co_await async_fd_read(*_fd, buf.data(), buf.size());
 
         if (!ret)
             co_return make_unexpected(ret.error());
@@ -434,13 +480,12 @@ namespace sk::posix::detail {
      * seqfilechannel_base::_read_some()
      */
 
-    inline auto seqfilechannel_base::_read_some(std::byte *buffer,
-                                                io_size_t nobjs)
+    inline auto seqfilechannel_base::read_some(std::span<value_type> buf) noexcept
         -> expected<io_size_t, std::error_code>
     {
         SK_CHECK(is_open(), "attempt to read on a closed channel");
 
-        auto ret = ::read(*_fd, buffer, nobjs);
+        auto ret = ::read(*_fd, buf.data(), buf.size());
 
         if (ret == 0)
             return make_unexpected(error::end_of_file);
@@ -455,13 +500,12 @@ namespace sk::posix::detail {
      * seqfilechannel::_async_write_some()
      */
 
-    inline auto seqfilechannel_base::_async_write_some(std::byte const *buffer,
-                                                       io_size_t nobjs)
+    inline auto seqfilechannel_base::async_write_some(std::span<value_type const> buf) noexcept
         -> task<expected<io_size_t, std::error_code>>
     {
         SK_CHECK(is_open(), "attempt to read on a closed channel");
 
-        auto ret = co_await async_fd_write(*_fd, buffer, nobjs);
+        auto ret = co_await async_fd_write(*_fd, buf.data(), buf.size());
 
         if (!ret)
             co_return make_unexpected(get_errno());
@@ -473,13 +517,12 @@ namespace sk::posix::detail {
      * seqfilechannel::_write_some()
      */
 
-    inline auto seqfilechannel_base::_write_some(std::byte const *buffer,
-                                                 io_size_t nobjs)
+    inline auto seqfilechannel_base::write_some(std::span<value_type const> buf) noexcept
         -> expected<io_size_t, std::error_code>
     {
         SK_CHECK(is_open(), "attempt to read on a closed channel");
 
-        auto ret = ::write(*_fd, buffer, nobjs);
+        auto ret = ::write(*_fd, buf.data(), buf.size());
 
         if (ret < 0)
             return make_unexpected(get_errno());

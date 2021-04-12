@@ -56,13 +56,12 @@ namespace sk {
                           std::ranges::range_value_t<Range>>
     // clang-format on
     {
-        auto data = std::ranges::data(range);
-        auto size = sk::detail::int_cast<io_size_t>(std::ranges::size(range));
+        std::span<std::add_const_t<channel_value_t<Channel>>> span(range);
 
-        if (n < size)
-            size = n;
+        if (n < span.size())
+            span = span.first(n);
 
-        return channel.write_some(data, size);
+        return channel.write_some(span);
     }
 
     // clang-format off
@@ -76,13 +75,12 @@ namespace sk {
                           std::ranges::range_value_t<Range>>
     // clang-format on
     {
-        auto data = std::ranges::data(range);
-        auto size = sk::detail::int_cast<io_size_t>(std::ranges::size(range));
+        std::span<std::add_const_t<channel_value_t<Channel>>> span(range);
 
-        if (n < size)
-            size = n;
+        if (n < span.size())
+            span = span.first(n);
 
-        co_return co_await channel.async_write_some(data, size);
+        co_return co_await channel.async_write_some(span);
     }
 
     // clang-format off
@@ -101,13 +99,17 @@ namespace sk {
             return 0u;
 
         auto &first_range = *std::ranges::begin(ranges);
-        auto bytes_written = write_some(channel, first_range, n);
+        std::span span(first_range);
+        if (n < span.size())
+            span = span.first(n);
 
-        if (!bytes_written)
-            return make_unexpected(bytes_written.error());
+        auto nwritten = write_some(channel, span);
 
-        buffer.discard(*bytes_written);
-        return *bytes_written;
+        if (!nwritten)
+            return make_unexpected(nwritten.error());
+
+        buffer.discard(*nwritten);
+        return *nwritten;
     }
 
     // clang-format off
@@ -126,13 +128,17 @@ namespace sk {
             co_return 0u;
 
         auto &first_range = *std::ranges::begin(ranges);
-        auto bytes_written = co_await async_write_some(channel, first_range, n);
+        std::span span(first_range);
+        if (n < span.size())
+            span = span.first(n);
 
-        if (!bytes_written)
-            co_return make_unexpected(bytes_written.error());
+        auto nwritten = co_await async_write_some(channel, span);
 
-        buffer.discard(*bytes_written);
-        co_return *bytes_written;
+        if (!nwritten)
+            co_return make_unexpected(nwritten.error());
+
+        buffer.discard(*nwritten);
+        co_return *nwritten;
     }
 
     /*************************************************************************
@@ -150,25 +156,23 @@ namespace sk {
                           std::add_const_t<std::ranges::range_value_t<Range>>>
     // clang-format on
     {
-        auto data = std::ranges::data(range);
-        auto size = sk::detail::int_cast<io_size_t>(std::ranges::size(range));
-        if (n < size)
-            size = n;
+        std::span span(range);
+        if (n < span.size())
+            span = span.first(n);
 
-        io_size_t bytes_written = 0;
+        io_size_t nwritten = 0;
 
-        while (size) {
-            auto ret = channel.write_some(data, size);
+        while (!span.empty()) {
+            auto ret = channel.write_some(span);
 
             if (!ret)
-                return {bytes_written, ret.error()};
+                return {nwritten, ret.error()};
 
-            bytes_written += *ret;
-            size -= *ret;
-            data += *ret;
+            nwritten += *ret;
+            span = span.subspan(*ret);
         }
 
-        return {bytes_written, sk::error::no_error};
+        return {nwritten, sk::error::no_error};
     }
 
     // clang-format off
@@ -182,25 +186,23 @@ namespace sk {
                           std::ranges::range_value_t<Range>>
     // clang-format on
     {
-        auto data = std::ranges::data(range);
-        auto size = sk::detail::int_cast<io_size_t>(std::ranges::size(range));
-        if (n < size)
-            size = n;
+        std::span span(range);
+        if (n < span.size())
+            span = span.first(n);
 
-        io_size_t bytes_written = 0;
+        io_size_t nwritten = 0;
 
-        while (size) {
-            auto ret = co_await channel.async_write_some(data, size);
+        while (!span.empty()) {
+            auto ret = co_await channel.async_write_some(span);
 
             if (!ret)
-                co_return {bytes_written, ret.error()};
+                co_return {nwritten, ret.error()};
 
-            bytes_written += *ret;
-            size -= *ret;
-            data += *ret;
+            nwritten += *ret;
+            span = span.subspan(*ret);
         }
 
-        co_return {bytes_written, error::no_error};
+        co_return {nwritten, sk::error::no_error};
     }
 
     // clang-format off
@@ -214,20 +216,20 @@ namespace sk {
                           sk::buffer_value_t<Buffer>>
     // clang-format on
     {
-        io_size_t bytes_written = 0;
+        io_size_t nwritten = 0;
 
         std::pair<io_size_t, std::error_code> ret;
 
         for (auto &&range : buffer.readable_ranges()) {
-            ret = write_all(channel, range, n - bytes_written);
-            bytes_written += ret.first;
+            ret = write_all(channel, range, n - nwritten);
+            nwritten += ret.first;
 
-            if (ret.first == 0 || ret.second)
+            if (ret.first == 0 || ret.second || nwritten == n)
                 break;
         }
 
-        buffer.discard(bytes_written);
-        return {bytes_written, ret.second};
+        buffer.discard(nwritten);
+        return {nwritten, ret.second};
     }
 
     // clang-format off
@@ -241,20 +243,20 @@ namespace sk {
                           sk::buffer_value_t<Buffer>>
     // clang-format on
     {
-        io_size_t bytes_written = 0;
+        io_size_t nwritten = 0;
 
         std::pair<io_size_t, std::error_code> ret;
 
         for (auto &&range : buffer.readable_ranges()) {
-            ret = co_await async_write_all(channel, range, n - bytes_written);
-            bytes_written += ret.first;
+            ret = co_await async_write_all(channel, range, n - nwritten);
+            nwritten += ret.first;
 
-            if (ret.first == 0 || ret.second)
+            if (ret.first == 0 || ret.second || nwritten == n)
                 break;
         }
 
-        buffer.discard(bytes_written);
-        co_return {bytes_written, ret.second};
+        buffer.discard(nwritten);
+        co_return {nwritten, ret.second};
     }
 
     /*************************************************************************
@@ -273,12 +275,11 @@ namespace sk {
                           std::ranges::range_value_t<Range>>
     // clang-format on
     {
-        auto data = std::ranges::data(range);
-        auto size = sk::detail::int_cast<io_size_t>(std::ranges::size(range));
-        if (n < size)
-            size = n;
+        std::span<std::add_const_t<channel_value_t<Channel>>> span(range);
+        if (n < span.size())
+            span = span.first(n);
 
-        return channel.write_some_at(loc, data, size);
+        return channel.write_some_at(loc, span);
     }
 
     // clang-format off
@@ -293,12 +294,11 @@ namespace sk {
                           std::ranges::range_value_t<Range>>
     // clang-format on
     {
-        auto data = std::ranges::data(range);
-        auto size = sk::detail::int_cast<io_size_t>(std::ranges::size(range));
-        if (n < size)
-            size = n;
+        std::span<std::add_const_t<channel_value_t<Channel>>> span(range);
+        if (n < span.size())
+            span = span.first(n);
 
-        co_return co_await channel.async_write_some_at(loc, data, size);
+        co_return co_await channel.async_write_some_at(loc, span);
     }
 
     // clang-format off
@@ -318,9 +318,11 @@ namespace sk {
             return 0u;
 
         auto &first_range = *std::ranges::begin(ranges);
+
         auto bytes_written = write_some_at(channel, loc, first_range, n);
         if (!bytes_written)
             return bytes_written.error();
+
         buffer.discard(*bytes_written);
         return *bytes_written;
     }
@@ -342,10 +344,12 @@ namespace sk {
             co_return 0u;
 
         auto &first_range = *std::ranges::begin(ranges);
+
         auto bytes_written =
             co_await async_write_some_at(channel, loc, first_range, n);
         if (!bytes_written)
             co_return bytes_written.error();
+
         buffer.discard(*bytes_written);
         co_return *bytes_written;
     }

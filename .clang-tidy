@@ -1,3 +1,54 @@
 ---
-Checks: "*,-android-*,-llvmlibc-*,-llvm-header-guard,-fuchsia-*,-cppcoreguidelines-pro-type-reinterpret-cast,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-cppcoreguidelines-avoid-magic-numbers,-readability-magic-numbers,-google-readability-braces-around-statements,-hicpp-braces-around-statements,-readability-braces-around-statements,-bugprone-reserved-identifier,-cert-dcl37-c,-cert-dcl51-cpp,-readability-convert-member-functions-to-static,-misc-non-private-member-variables-in-classes,-hicpp-named-parameter,-readability-named-parameter,-cppcoreguidelines-pro-type-const-cast,-hicpp-uppercase-literal-suffix,-readability-uppercase-literal-suffix,-altera-struct-pack-align,-llvm-include-order,-cppcoreguidelines-non-private-member-variables-in-classes,-readability-implicit-bool-conversion,-hicpp-signed-bitwise,-cppcoreguidelines-pro-type-vararg,-hicpp-vararg,-cppcoreguidelines-avoid-non-const-global-variables,-readability-static-accessed-through-instance,-google-explicit-constructor,-hicpp-explicit-conversions,-llvm-qualified-auto,-readability-qualified-auto,-cppcoreguidelines-owning-memory"
+# modernize-avoid-c-arrays: already covered by cppcoreguidelines-avoid-c-arrays.
+#
+# performance-no-int-to-ptr: we only use int<>ptr casts when required (e.g. io_uring).
+#
+# bugprone-reserved-identifier, cert-dcl37-c, cert-dcl51-cpp: this trips on certain
+# coroutines operations even when reserved identifiers aren't involved.
+#
+# cppcoreguidelines-pro-type-const-cast: this is difficult to avoid since it's the
+# usual method of implementing const + non-const versions of a member function.
+#
+# cppcoreguidelines-pro-type-vararg: Unix APIs use this all over the place, e.g.
+# open(), fcntl().
+#
+# cppcoreguidelines-pro-type-union-access: address<unspecified_family> uses union.
+#
+# cppcoreguidelines-macro-usage: not useful as things can still only be done
+# with macros.
+Checks: >
+  -*,
+  clang-static-analyzer-*,
+  bugprone-*,
+    -bugprone-reserved-identifier,
+  cert-*,
+    -cert-dcl37-c,
+    -cert-dcl51-cpp,
+  concurrency-*,
+  cppcoreguidelines-*,
+    -cppcoreguidelines-pro-type-const-cast,
+    -cppcoreguidelines-pro-type-vararg,
+    -cppcoreguidelines-pro-type-union-access,
+    -cppcoreguidelines-pro-bounds-*,
+    -cppcoreguidelines-non-private-member-variables-in-classes,
+    -cppcoreguidelines-macro-usage,
+    -cppcoreguidelines-avoid-non-const-global-variables,
+    -cppcoreguidelines-owning-memory,
+    -cppcoreguidelines-avoid-magic-numbers,
+  misc-*,
+    -misc-non-private-member-variables-in-classes,
+  modernize-*,
+    -modernize-avoid-c-arrays,
+  performance-*,
+    -performance-no-int-to-ptr,
+  portability-*,
+  readability-*,
+    -readability-magic-numbers,
+    -readability-braces-around-statements,
+    -readability-uppercase-literal-suffix,
+    -readability-convert-member-functions-to-static,
+    -readability-make-member-function-const,
+    -readability-function-cognitive-complexity,
+    -readability-qualified-auto,
+    -readability-isolate-declaration,
 HeaderFilterRegex: 'sk/.*'

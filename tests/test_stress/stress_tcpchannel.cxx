@@ -175,7 +175,7 @@ TEST_CASE("tcpchannel stress test")
     auto server = net::tcpserverchannel::listen(*ep);
     REQUIRE(server);
 
-    auto reactor = get_weak_reactor_handle();
+    auto reactor = weak_reactor_handle::get();
     auto *xer = reactor->get_system_executor();
     wait(co_detach(tcp_server_task(*server), xer));
 

@@ -31,8 +31,11 @@
 #include <sk/net/address.hxx>
 #include <sk/wait.hxx>
 
-using namespace sk::net;
-using sk::expected;
+using sk::net::make_address;
+using sk::net::inet6_family;
+using sk::net::inet6_address;
+using sk::net::unspecified_address;
+using sk::net::make_unspecified_zero_address;
 
 TEST_CASE("inet6_address: make_inet6_address", "[inet6_address][address]")
 {
@@ -174,8 +177,7 @@ TEST_CASE("inet6_address: resolve", "[inet6_address][address]")
     auto ret = wait(res.async_resolve(std::back_inserter(addrs), "localhost"));
     REQUIRE(ret);
 
-    // >= because on some platforms localhost has multiple aliases.
-    REQUIRE(addrs.size() >= 1);
+    REQUIRE(!addrs.empty());
 
     auto &first = addrs.front();
 

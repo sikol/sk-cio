@@ -34,6 +34,7 @@
 
 #include <sk/cio.hxx>
 #include <sk/co_main.hxx>
+#include <sk/detail/strparse.hxx>
 
 auto handle_client(sk::net::tcpchannel client) -> sk::task<void>
 {
@@ -47,20 +48,12 @@ auto handle_client(sk::net::tcpchannel client) -> sk::task<void>
             co_return;
         }
 
-        for (auto &&range : buf.readable_ranges()) {
-            std::cout.write(
-                reinterpret_cast<char const *>(std::ranges::data(range)),
-                std::ranges::size(range));
-        }
-
         auto wret = co_await sk::async_write_all(client, buf);
         if (wret.second) {
             co_await client.async_close();
             co_return;
         }
     }
-
-    fmt::print(stderr, "handle_client() : return\n");
 }
 
 auto co_main(int argc, char **argv) -> sk::task<int>
@@ -72,8 +65,14 @@ auto co_main(int argc, char **argv) -> sk::task<int>
         co_return 1;
     }
 
-    auto ep = sk::net::make_tcp_endpoint(
-        argv[1], static_cast<std::uint16_t>(std::atoi(argv[2])));
+    auto port = sk::detail::strtoi<std::uint16_t>(argv[2]);
+    if (!port) {
+        fmt::print(
+            stderr, "invalid port '{}': {}\n", argv[2], port.error().message());
+        co_return 1;
+    }
+
+    auto ep = sk::net::make_tcp_endpoint(argv[1], *port);
     if (!ep) {
         fmt::print(
             stderr, "{}:{}: {}\n", argv[1], argv[2], ep.error().message());

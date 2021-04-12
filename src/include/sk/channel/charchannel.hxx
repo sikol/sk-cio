@@ -60,20 +60,20 @@ namespace sk {
         struct charchannel_base {
             using value_type = Char;
 
-            [[nodiscard]] auto is_open() const -> bool
+            [[nodiscard]] auto is_open() const noexcept -> bool
             {
-                return _base->is_open();
+                return _base.is_open();
             }
 
-            [[nodiscard]] auto async_close()
+            [[nodiscard]] auto async_close() noexcept
                 -> task<expected<void, std::error_code>>
             {
-                return _base->async_close();
+                return _base.async_close();
             }
 
-            [[nodiscard]] auto close() -> expected<void, std::error_code>
+            [[nodiscard]] auto close() noexcept -> expected<void, std::error_code>
             {
-                return _base->close();
+                return _base.close();
             }
 
             charchannel_base(charchannel_base const &) noexcept = delete;
@@ -81,113 +81,105 @@ namespace sk {
             operator=(charchannel_base const &) noexcept -> charchannel_base & = delete;
 
         protected:
-            explicit charchannel_base(Channel *base) : _base(base) {}
+            explicit charchannel_base(Channel &&base) noexcept : _base(std::move(base)) {}
             ~charchannel_base() = default;
 
             charchannel_base(charchannel_base &&) noexcept = default;
             auto operator=(charchannel_base &&) noexcept -> charchannel_base & = default;
 
-            Channel *_base;
+            Channel _base;
         };
 
     } // namespace detail
 
     template <detail::bytesized_char Char, detail::charchannel_layer Channel>
     struct iseqcharchannel final : detail::charchannel_base<Char, Channel> {
-        explicit iseqcharchannel(Channel &base)
-            : detail::charchannel_base<Char, Channel>(&base)
+        explicit iseqcharchannel(Channel &&base) noexcept
+            : detail::charchannel_base<Char, Channel>(std::move(base))
         {
         }
 
-        [[nodiscard]] auto async_read_some(Char *buf, io_size_t nobjs)
+        [[nodiscard]] auto async_read_some(std::span<Char> buf) noexcept
             -> task<expected<io_size_t, std::error_code>>
         {
-            return this->_base->async_read_some(
-                reinterpret_cast<std::byte *>(buf), nobjs);
+            co_return co_await this->_base.async_read_some(as_writable_bytes(buf));
         }
 
-        [[nodiscard]] auto read_some(Char *buf, io_size_t nobjs)
+        [[nodiscard]] auto read_some(std::span<Char> buf) noexcept
             -> expected<io_size_t, std::error_code>
         {
-            return this->_base->read_some(reinterpret_cast<std::byte *>(buf),
-                                          nobjs);
+            return this->_base.read_some(as_writable_bytes(buf));
         }
     };
 
     template <typename Char, iseqchannel Channel>
-    auto make_iseqcharchannel(Channel &c)
+    [[nodiscard]] auto make_iseqcharchannel(Channel &&c) noexcept
     {
-        return iseqcharchannel<Char, Channel>(c);
+        return iseqcharchannel<Char, Channel>(std::forward<Channel>(c));
     }
 
     template <detail::bytesized_char Char, detail::charchannel_layer Channel>
     struct oseqcharchannel final : detail::charchannel_base<Char, Channel> {
-        explicit oseqcharchannel(Channel &base)
-            : detail::charchannel_base<Char, Channel>(&base)
+        explicit oseqcharchannel(Channel &&base) noexcept
+            : detail::charchannel_base<Char, Channel>(std::move(base))
         {
         }
 
-        [[nodiscard]] auto write_some(Char const *buf, io_size_t n)
+        [[nodiscard]] auto write_some(std::span<Char const> buf) noexcept
             -> expected<io_size_t, std::error_code>
         {
-            return this->_base->write_some(
-                reinterpret_cast<std::byte const *>(buf), n);
+            return this->_base.write_some(as_bytes(buf));
         }
 
-        [[nodiscard]] auto async_write_some(Char const *buf, io_size_t n)
+        [[nodiscard]] auto async_write_some(std::span<Char const> buf) noexcept
             -> task<expected<io_size_t, std::error_code>>
         {
-            return this->_base->async_write_some(
-                reinterpret_cast<std::byte const *>(buf), n);
+            co_return co_await this->_base.async_write_some(as_bytes(buf));
         }
     };
 
     template <typename Char, oseqchannel Channel>
-    auto make_oseqcharchannel(Channel &c)
+    [[nodiscard]] auto make_oseqcharchannel(Channel &&c) noexcept
     {
-        return oseqcharchannel<Char, Channel>(c);
+        return oseqcharchannel<Char, Channel>(std::forward<Channel>(c));
     }
 
     template <detail::bytesized_char Char, detail::charchannel_layer Channel>
     struct seqcharchannel final : detail::charchannel_base<Char, Channel> {
-        explicit seqcharchannel(Channel &base)
-            : detail::charchannel_base<Char, Channel>(&base)
+        explicit seqcharchannel(Channel &&base) noexcept
+            : detail::charchannel_base<Char, Channel>(std::move(base))
         {
         }
 
-        [[nodiscard]] auto async_read_some(Char *buf, io_size_t nobjs)
-            -> task<expected<io_size_t, std::error_code>>
+        [[nodiscard]] auto async_read_some(std::span<Char> buf) noexcept
+        -> task<expected<io_size_t, std::error_code>>
         {
-            return this->_base->async_read_some(
-                reinterpret_cast<std::byte *>(buf), nobjs);
+            co_return co_await this->_base.async_read_some(as_writable_bytes(buf));
         }
 
-        [[nodiscard]] auto read_some(Char *buf, io_size_t nobjs)
-            -> expected<io_size_t, std::error_code>
+        [[nodiscard]] auto read_some(std::span<Char> buf) noexcept
+        -> expected<io_size_t, std::error_code>
         {
-            return this->_base->read_some(reinterpret_cast<std::byte *>(buf),
-                                          nobjs);
+            return this->_base.read_some(as_writable_bytes(buf));
         }
 
-        [[nodiscard]] auto write_some(Char const *buf, io_size_t n)
-            -> expected<io_size_t, std::error_code>
+        [[nodiscard]] auto write_some(std::span<Char const> buf) noexcept
+        -> expected<io_size_t, std::error_code>
         {
-            return this->_base->write_some(
-                reinterpret_cast<std::byte const *>(buf), n);
+            return this->_base.write_some(as_bytes(buf));
         }
 
-        [[nodiscard]] auto async_write_some(Char const *buf, io_size_t n)
-            -> task<expected<io_size_t, std::error_code>>
+        [[nodiscard]] auto async_write_some(std::span<Char const> buf) noexcept
+        -> task<expected<io_size_t, std::error_code>>
         {
-            return this->_base->async_write_some(
-                reinterpret_cast<std::byte const *>(buf), n);
+            co_return co_await this->_base.async_write_some(as_bytes(buf));
         }
     };
 
     template <typename Char, seqchannel Channel>
-    auto make_seqcharchannel(Channel &c)
+    [[nodiscard]] auto make_seqcharchannel(Channel &&c) noexcept
     {
-        return seqcharchannel<Char, Channel>(c);
+        return seqcharchannel<Char, Channel>(std::forward<Channel>(c));
     }
 
 } // namespace sk

@@ -32,7 +32,7 @@
 
 using sk::net::parse_uri;
 using sk::net::uri_errors;
-using sk::net::uri_options;
+namespace uri_options = sk::net::uri_options;
 
 TEST_CASE("URI 1", "[uri]")
 {

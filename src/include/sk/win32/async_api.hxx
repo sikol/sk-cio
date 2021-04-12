@@ -127,7 +127,7 @@ namespace sk::win32 {
                                  HANDLE hTemplateFile)
         -> task<expected<HANDLE, std::error_code>>
     {
-        auto reactor = get_weak_reactor_handle();
+        auto reactor = weak_reactor_handle::get();
 
         // There's no overlapped CreateFile, so use a thread.
         co_return co_await async_invoke(
@@ -167,7 +167,7 @@ namespace sk::win32 {
                                  HANDLE hTemplateFile)
         -> task<expected<HANDLE, std::error_code>>
     {
-        auto reactor = get_weak_reactor_handle();
+        auto reactor = weak_reactor_handle::get();
 
         // There's no overlapped CreateFile, so use a thread.
         co_return co_await async_invoke(

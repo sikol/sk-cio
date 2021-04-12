@@ -32,7 +32,6 @@
 #include <sk/wait.hxx>
 
 using namespace sk::net;
-using sk::expected;
 
 TEST_CASE("inet_address: make_inet_address", "[inet_address][address]")
 {
@@ -157,7 +156,7 @@ TEST_CASE("inet_address: resolve", "[inet_address][address]")
     std::vector<inet_address> addrs;
     auto ret = wait(res.async_resolve(std::back_inserter(addrs), "localhost"));
     REQUIRE(ret);
-    REQUIRE(addrs.size() >= 1);
+    REQUIRE(!addrs.empty());
 
     auto &first = addrs.front();
 

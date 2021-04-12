@@ -34,8 +34,7 @@
 
 TEST_CASE("iseqcharchannel<char> read_some") {
     std::array const inbuf{ 'A', 'B', 'C' };
-    auto mchan = sk::make_imemchannel(inbuf);
-    auto cchan = sk::make_iseqcharchannel<char>(mchan);
+    auto cchan = sk::make_iseqcharchannel<char>(sk::make_imemchannel(inbuf));
 
     std::array<char, 4> outbuf{};
 
@@ -47,8 +46,7 @@ TEST_CASE("iseqcharchannel<char> read_some") {
 
 TEST_CASE("iseqcharchannel<char> async_read_some") {
     std::array const inbuf{ 'A', 'B', 'C' };
-    auto mchan = sk::make_imemchannel(inbuf);
-    auto cchan = sk::make_iseqcharchannel<char>(mchan);
+    auto cchan = sk::make_iseqcharchannel<char>(sk::make_imemchannel(inbuf));
 
     std::array<char, 4> outbuf{};
 

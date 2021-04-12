@@ -32,6 +32,8 @@
 #include <cstddef>
 #include <initializer_list>
 #include <type_traits>
+#include <iterator>
+#include <array>
 
 #include <sk/check.hxx>
 
@@ -66,7 +68,7 @@ namespace sk {
             static_vector_storage(std::initializer_list<T> items)
             {
                 SK_CHECK(items.size() <= max_size,
-                                  "static_range: too many items");
+                         "static_range: too many items");
 
                 for (auto &&item : items)
                     new (&_data[_size++]) T(std::move(item)); // NOLINT
@@ -127,13 +129,13 @@ namespace sk {
 
             [[nodiscard]] auto begin() noexcept -> T *
             {
+                // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
                 return std::launder(reinterpret_cast<T *>(&this->_data[0]));
             }
 
             [[nodiscard]] auto begin() const noexcept -> T const *
             {
-                return std::launder(
-                    reinterpret_cast<T const *>(&this->_data[0]));
+                return const_cast<static_vector_storage *>(this)->begin();
             }
 
         protected:
@@ -150,28 +152,30 @@ namespace sk {
             requires(std::is_trivially_copyable_v<T>)
         struct static_vector_storage<T, max_size> {
             // clang-format on
-            T _data[max_size]; // NOLINT
+            std::array<T, max_size> _data;
             std::size_t _size = 0;
 
             static_vector_storage(std::initializer_list<T> items)
                 : _size(items.size())
             {
                 SK_CHECK(items.size() <= max_size,
-                                  "static_range: too many items");
+                         "static_range: too many items");
 
-                std::copy(items.begin(), items.end(), _data); // NOLINT
+                std::ranges::copy(items, _data.begin());
             }
 
             static_vector_storage(static_vector_storage const &other) noexcept
                 : _size(other._size)
             {
-                std::copy(other._data, other._data + _size, _data); // NOLINT
+                std::ranges::copy(other._data, _data.begin());
             }
 
             static_vector_storage(static_vector_storage &&other) noexcept
                 : _size(std::exchange(other._size, 0))
             {
-                std::copy(other._data, other._data + _size, _data); // NOLINT
+                std::copy(other._data.begin(),
+                          std::next(other._data.begin(), _size),
+                          _data.begin());
             }
 
             auto operator=(static_vector_storage const &other) noexcept
@@ -180,8 +184,9 @@ namespace sk {
                 if (&other == this)
                     return *this;
 
-                std::copy(
-                    other._data, other._data + other._size, _data); // NOLINT
+                std::copy(other._data.begin(),
+                          std::next(other._data.begin(), other._size),
+                          _data.begin());
                 _size = other._size;
 
                 return *this;
@@ -193,8 +198,9 @@ namespace sk {
                 if (&other == this)
                     return *this;
 
-                std::copy(
-                    other._data, other._data + other._size, _data); // NOLINT
+                std::copy(other._data.begin(),
+                          std::next(other._data.begin(), other._size),
+                          _data.begin());
                 _size = std::exchange(other._size, 0);
 
                 return *this;
@@ -240,20 +246,16 @@ namespace sk {
 
         auto operator=(static_vector const &other) noexcept -> static_vector &
         {
-            if (&other == this)
-                return *this;
-
-            base_type::operator=(other);
+            if (&other != this)
+                base_type::operator=(other);
 
             return *this;
         }
 
         auto operator=(static_vector &&other) noexcept -> static_vector &
         {
-            if (&other == this)
-                return *this;
-
-            base_type::operator=(std::move(other));
+            if (&other != this)
+                base_type::operator=(std::move(other));
 
             return *this;
         }
@@ -276,7 +278,8 @@ namespace sk {
             return base_type::_size;
         }
 
-        [[nodiscard]] auto empty() const noexcept -> bool {
+        [[nodiscard]] auto empty() const noexcept -> bool
+        {
             return size() == 0;
         }
 
@@ -287,12 +290,12 @@ namespace sk {
 
         [[nodiscard]] auto end() noexcept -> iterator
         {
-            return this->begin() + size();
+            return this->begin() + size(); // NOLINT
         }
 
         [[nodiscard]] auto end() const noexcept -> const_iterator
         {
-            return this->begin() + size();
+            return this->begin() + size(); // NOLINT
         }
 
         auto push_back(T const &o) -> void

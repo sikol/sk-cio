@@ -33,6 +33,8 @@
 #include <concepts>
 #include <limits>
 
+#include <sk/check.hxx>
+
 namespace sk::detail {
 
     template <std::unsigned_integral To, std::unsigned_integral From>
@@ -73,6 +75,62 @@ namespace sk::detail {
 
         *r = a + b;
         return true;
+    }
+
+    template<std::unsigned_integral To, std::unsigned_integral From>
+    [[nodiscard]] constexpr auto widen(From v) -> To {
+        static_assert(sizeof(To) > sizeof(From));
+        return To(v);
+    }
+
+    template<std::signed_integral To, std::signed_integral From>
+    [[nodiscard]] constexpr auto widen(From v) -> To {
+        static_assert(sizeof(To) > sizeof(From));
+        return To(v);
+    }
+
+    template <std::unsigned_integral To, std::unsigned_integral From>
+    [[nodiscard]] constexpr auto narrow(From v) -> To
+    {
+        static_assert(sizeof(To) < sizeof(From));
+
+        if (v > widen<From>(std::numeric_limits<To>::max()))
+            sk::detail::unexpected("narrow() would truncate");
+
+        return static_cast<To>(v);
+    }
+
+    template <std::signed_integral To, std::signed_integral From>
+    [[nodiscard]] constexpr auto narrow(From v) -> To
+    {
+        static_assert(sizeof(To) < sizeof(From));
+
+        if (v > widen<From>(std::numeric_limits<To>::max()) ||
+            v < widen<From>(std::numeric_limits<To>::min()))
+            sk::detail::unexpected("narrow() would truncate");
+
+        return static_cast<To>(v);
+    }
+
+    template<std::unsigned_integral To, std::unsigned_integral From>
+    [[nodiscard]] constexpr auto truncate(From v) -> To {
+        static_assert(sizeof(To) < sizeof(From));
+
+        if (v > widen<From>(std::numeric_limits<To>::max()))
+            return std::numeric_limits<To>::max();
+
+        return static_cast<To>(v);
+    }
+
+    template<std::signed_integral To, std::unsigned_integral From>
+    [[nodiscard]] constexpr auto truncate(From v) -> To {
+        static_assert(sizeof(To) <= sizeof(From));
+        static_assert(std::numeric_limits<To>::max() < std::numeric_limits<From>::max());
+
+        if (v > static_cast<From>(std::numeric_limits<To>::max()))
+            return std::numeric_limits<To>::max();
+
+        return static_cast<To>(v);
     }
 
 } // namespace sk::detail

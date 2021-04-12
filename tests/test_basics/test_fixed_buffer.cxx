@@ -36,20 +36,21 @@
 TEST_CASE("small fixed_buffer")
 {
     // Our test subject.
-    sk::fixed_buffer<char, 5> buf;
+    static constexpr std::size_t test_buffer_size = 5;
+    sk::fixed_buffer<char, test_buffer_size> buf;
 
     // Add 5 characters to the buffer, which should fill it up.
     auto n = buffer_write(buf, std::string("testx"));
-    REQUIRE(n == 5);
+    REQUIRE(n == test_buffer_size);
 
     // Now adding more data should fail.
     n = buffer_write(buf, std::string("abc"));
     REQUIRE(n == 0);
 
     // Read the data we put in the buffer.
-    std::array<char, 5> ret{};
+    std::array<char, test_buffer_size> ret{};
     n = buffer_read(buf, ret);
-    REQUIRE(n == 5);
+    REQUIRE(n == test_buffer_size);
     REQUIRE(ret == std::array{'t', 'e', 's', 't', 'x'});
 
     // Adding data should still fail.
@@ -63,7 +64,7 @@ TEST_CASE("small fixed_buffer")
 
     // Add 5 characters to the buffer, which should fill it up.
     n = buffer_write(buf, std::string("testx"));
-    REQUIRE(n == 5);
+    REQUIRE(n == test_buffer_size);
 
     // Now adding more data should fail.
     n = buffer_write(buf, std::string("abc"));
@@ -71,7 +72,7 @@ TEST_CASE("small fixed_buffer")
 
     // Read the data we put in the buffer.
     n = buffer_read(buf, ret);
-    REQUIRE(n == 5);
+    REQUIRE(n == test_buffer_size);
     REQUIRE(ret == std::array{'t', 'e', 's', 't', 'x'});
 
     // Adding data should still fail.

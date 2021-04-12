@@ -31,7 +31,7 @@
 #include <array>
 #include <cstring>
 
-#include "sk/channel/memchannel/memchannel.hxx"
+#include "sk/channel/memchannel.hxx"
 #include "sk/channel/read.hxx"
 #include "sk/channel/write.hxx"
 
@@ -61,19 +61,19 @@ TEST_CASE("memchannel::write_some() single byte")
 
     auto chnl = sk::make_memchannel(std::span(out).subspan(0, 3));
 
-    auto nbytes = chnl.write_some(&buf[0], 1);
+    auto nbytes = sk::write_some(chnl, std::span(buf).subspan(0, 1));
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.write_some(&buf[1], 1);
+    nbytes = sk::write_some(chnl, std::span(buf).subspan(1, 1));
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.write_some(&buf[2], 1);
+    nbytes = sk::write_some(chnl, std::span(buf).subspan(2, 1));
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.write_some(&buf[2], 1);
+    nbytes = sk::write_some(chnl, std::span(buf).subspan(2, 1));
     REQUIRE(!nbytes);
     REQUIRE(nbytes.error() == sk::error::end_of_file);
 
@@ -91,19 +91,19 @@ TEST_CASE("memchannel::write_some_at() single byte")
 
     auto chnl = sk::make_memchannel(std::span(out).subspan(0, 3));
 
-    auto nbytes = chnl.write_some_at(0, &buf[0], 1);
+    auto nbytes = sk::write_some(chnl, std::span(buf).subspan(0, 1));
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.write_some_at(1, &buf[1], 1);
+    nbytes = sk::write_some(chnl, std::span(buf).subspan(1, 1));
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.write_some_at(2, &buf[2], 1);
+    nbytes = sk::write_some(chnl, std::span(buf).subspan(2, 1));
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.write_some_at(3, &buf[2], 1);
+    nbytes = sk::write_some(chnl, std::span(buf).subspan(2, 1));
     REQUIRE(!nbytes);
     REQUIRE(nbytes.error() == sk::error::end_of_file);
 
@@ -199,7 +199,7 @@ TEST_CASE("memchannel::read_some_at() single-byte")
 
     auto chnl = sk::make_memchannel(buf);
 
-    auto nbytes = sk::read_some_at(chnl, 0, dat, 1);
+    auto nbytes = sk::read_some_at(chnl, 0, std::span(dat).subspan(0, 1));
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 

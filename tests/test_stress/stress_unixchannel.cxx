@@ -183,7 +183,7 @@ TEST_CASE("unixchannel stress test")
         REQUIRE(server);
     }
 
-    auto reactor = get_weak_reactor_handle();
+    auto reactor = weak_reactor_handle::get();
     auto *xer = reactor->get_system_executor();
     wait(co_detach(unix_server_task(*server), xer));
 

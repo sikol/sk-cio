@@ -30,7 +30,7 @@
 
 #include <cstring>
 
-#include "sk/channel/memchannel/imemchannel.hxx"
+#include "sk/channel/memchannel.hxx"
 #include "sk/channel/read.hxx"
 #include "sk/wait.hxx"
 

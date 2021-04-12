@@ -139,12 +139,12 @@ namespace sk::posix::detail {
         }
 
         template <typename P>
-        bool await_suspend(coroutine_handle<P> coro_handle_) noexcept
+        auto await_suspend(coroutine_handle<P> coro_handle_) noexcept -> bool
         {
             coro_handle = coro_handle_;
             task_executor = coro_handle_.promise().task_executor;
             SK_CHECK(task_executor != nullptr,
-                              "suspending a task with no executor");
+                     "suspending a task with no executor");
 
             std::lock_guard lock(mutex);
             if (auto pret = reactor->_put_sq(sqe); !pret) {
@@ -156,7 +156,7 @@ namespace sk::posix::detail {
             return true;
         }
 
-        int await_resume() noexcept
+        auto await_resume() noexcept -> int
         {
             // Don't allow the wait object to be destroyed until the reactor
             // has released the lock.
@@ -169,12 +169,12 @@ namespace sk::posix::detail {
         -> expected<std::unique_ptr<io_uring_reactor>, std::error_code>
     {
         // Create the ring.
-        auto reactor_ = new (std::nothrow) io_uring_reactor();
-        if (!reactor_)
+
+        auto reactor = std::unique_ptr<io_uring_reactor>(
+            new (std::nothrow) io_uring_reactor());
+        if (!reactor)
             return make_unexpected(
                 std::make_error_code(std::errc::not_enough_memory));
-
-        auto reactor = std::unique_ptr<io_uring_reactor>(reactor_);
 
         auto ret = io_uring_queue_init(
             _max_queue_size, &reactor->ring, IORING_SETUP_CLAMP);
@@ -187,22 +187,21 @@ namespace sk::posix::detail {
         if ((reactor->ring.features & required_features) != required_features)
             return nullptr;
 
-        auto probe = io_uring_get_probe_ring(&reactor->ring);
+        std::unique_ptr<io_uring_probe, void (*)(io_uring_probe *)> probe(
+            io_uring_get_probe_ring(&reactor->ring), io_uring_free_probe);
         if (!probe)
             return nullptr;
-        std::unique_ptr<io_uring_probe, void (*)(io_uring_probe *)> probe_(
-            probe, io_uring_free_probe);
 
         // Check the ring supports the opcodes we need.
-        if (!io_uring_opcode_supported(probe, IORING_OP_NOP))
+        if (io_uring_opcode_supported(probe.get(), IORING_OP_NOP) == 0)
             return nullptr;
-        if (!io_uring_opcode_supported(probe, IORING_OP_OPENAT))
+        if (io_uring_opcode_supported(probe.get(), IORING_OP_OPENAT) == 0)
             return nullptr;
-        if (!io_uring_opcode_supported(probe, IORING_OP_CLOSE))
+        if (io_uring_opcode_supported(probe.get(), IORING_OP_CLOSE) == 0)
             return nullptr;
-        if (!io_uring_opcode_supported(probe, IORING_OP_READ))
+        if (io_uring_opcode_supported(probe.get(), IORING_OP_READ) == 0)
             return nullptr;
-        if (!io_uring_opcode_supported(probe, IORING_OP_WRITE))
+        if (io_uring_opcode_supported(probe.get(), IORING_OP_WRITE) == 0)
             return nullptr;
 
         // Reactor is okay.
@@ -213,8 +212,8 @@ namespace sk::posix::detail {
     inline auto io_uring_reactor::_try_put_sq(io_uring_sqe *newsqe) noexcept
         -> bool
     {
-        auto sqe = io_uring_get_sqe(&ring);
-        if (!sqe)
+        auto *sqe = io_uring_get_sqe(&ring);
+        if (sqe == nullptr)
             return false;
 
         std::memcpy(sqe, newsqe, sizeof(*sqe));
@@ -232,16 +231,15 @@ namespace sk::posix::detail {
             auto r = io_uring_submit(&ring);
             if (r >= 0 || r == -EBUSY)
                 return {};
-            else
-                return make_unexpected(get_errno());
-        } else {
-            try {
-                _pending.push_back(newsqe);
-                return {};
-            } catch (std::bad_alloc const &) {
-                return make_unexpected(
-                    std::make_error_code(std::errc::not_enough_memory));
-            }
+            return make_unexpected(get_errno());
+        }
+
+        try {
+            _pending.push_back(newsqe);
+            return {};
+        } catch (std::bad_alloc const &) {
+            return make_unexpected(
+                std::make_error_code(std::errc::not_enough_memory));
         }
     }
 
@@ -266,6 +264,9 @@ namespace sk::posix::detail {
                     return;
 
                 // Resume the queued coro.
+                // Cast is required because io_uring only gives us the data as
+                // a __u64.
+                // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
                 auto *cstate = reinterpret_cast<co_sqe_wait *>(cqe->user_data);
                 std::lock_guard h_lock(cstate->mutex);
                 cstate->ret = cqe->res;

@@ -56,26 +56,26 @@ template <class P> struct hash<coroutine_handle<P>>;
 namespace std::experimental { // NOLINT
 
     template <class>
-    struct __void_t {
+    struct void_t {
         using type = void;
     };
 
-    template <class _Tp, class = void>
-    struct __coroutine_traits_sfinae {
+    template <class Tp, class = void>
+    struct coroutine_traits_sfinae {
     };
 
-    template <class _Tp>
-    struct __coroutine_traits_sfinae<
-        _Tp,
-        typename __void_t<typename _Tp::promise_type>::type> {
-        using promise_type = typename _Tp::promise_type;
+    template <class Tp>
+    struct coroutine_traits_sfinae<
+        Tp,
+        typename void_t<typename Tp::promise_type>::type> {
+        using promise_type = typename Tp::promise_type;
     };
 
-    template <typename _Ret, typename... _Args>
-    struct coroutine_traits : public __coroutine_traits_sfinae<_Ret> {
+    template <typename Ret, typename... Args>
+    struct coroutine_traits : public coroutine_traits_sfinae<Ret> {
     };
 
-    template <typename _Promise = void>
+    template <typename Promise = void>
     class coroutine_handle;
 
     template <>
@@ -86,18 +86,18 @@ namespace std::experimental { // NOLINT
 
         auto operator=(std::nullptr_t) noexcept -> coroutine_handle &
         {
-            __handle_ = nullptr;
+            _handle = nullptr;
             return *this;
         }
 
         [[nodiscard]] constexpr auto address() const noexcept -> void *
         {
-            return __handle_;
+            return _handle;
         }
 
         constexpr explicit operator bool() const noexcept
         {
-            return __handle_ != nullptr;
+            return _handle != nullptr;
         }
 
         void operator()()
@@ -107,33 +107,33 @@ namespace std::experimental { // NOLINT
 
         void resume()
         {
-            SK_CHECK(__is_suspended(),
+            SK_CHECK(_is_suspended(),
                      "resume() can only be called on suspended coroutines");
             SK_CHECK(
                 !done(),
                 "resume() has undefined behavior when the coroutine is done");
-            __builtin_coro_resume(__handle_);
+            __builtin_coro_resume(_handle);
         }
 
         void destroy()
         {
-            SK_CHECK(__is_suspended(),
+            SK_CHECK(_is_suspended(),
                      "destroy() can only be called on suspended coroutines");
-            __builtin_coro_destroy(__handle_);
+            __builtin_coro_destroy(_handle);
         }
 
         [[nodiscard]] auto done() const -> bool
         {
-            SK_CHECK(__is_suspended(),
+            SK_CHECK(_is_suspended(),
                      "done() can only be called on suspended coroutines");
-            return __builtin_coro_done(__handle_);
+            return __builtin_coro_done(_handle);
         }
 
-        static auto from_address(void *__addr) noexcept -> coroutine_handle
+        static auto from_address(void *addr) noexcept -> coroutine_handle
         {
-            coroutine_handle __tmp;
-            __tmp.__handle_ = __addr;
-            return __tmp;
+            coroutine_handle tmp;
+            tmp._handle = addr;
+            return tmp;
         }
 
         // FIXME: Should from_address(nullptr) be allowed?
@@ -143,62 +143,62 @@ namespace std::experimental { // NOLINT
             return coroutine_handle(nullptr);
         }
 
-        template <class _Tp, bool _CallIsValid = false>
-        static auto from_address(_Tp *) -> coroutine_handle
+        template <class Tp, bool CallIsValid = false>
+        static auto from_address(Tp * /*address*/) -> coroutine_handle
         {
             static_assert(
-                _CallIsValid,
+                CallIsValid,
                 "coroutine_handle<void>::from_address cannot be called with "
                 "non-void pointers");
         }
 
     private:
-        [[nodiscard]] auto __is_suspended() const noexcept -> bool
+        [[nodiscard]] auto _is_suspended() const noexcept -> bool
         {
             // FIXME actually implement a check for if the coro is suspended.
-            return __handle_ != nullptr;
+            return _handle != nullptr;
         }
 
-        template <class _PromiseT>
+        template <class PromiseT>
         friend class coroutine_handle;
-        void *__handle_ = nullptr;
+        void *_handle = nullptr;
     };
 
     // 18.11.2.7 comparison operators:
-    inline auto operator==(coroutine_handle<> __x,
-                           coroutine_handle<> __y) noexcept -> bool
+    inline auto operator==(coroutine_handle<> x,
+                           coroutine_handle<> y) noexcept -> bool
     {
-        return __x.address() == __y.address();
+        return x.address() == y.address();
     }
-    inline auto operator!=(coroutine_handle<> __x,
-                           coroutine_handle<> __y) noexcept -> bool
+    inline auto operator!=(coroutine_handle<> x,
+                           coroutine_handle<> y) noexcept -> bool
     {
-        return !(__x == __y);
+        return !(x == y);
     }
-    inline auto operator<(coroutine_handle<> __x,
-                          coroutine_handle<> __y) noexcept -> bool
+    inline auto operator<(coroutine_handle<> x,
+                          coroutine_handle<> y) noexcept -> bool
     {
-        return std::less<>()(__x.address(), __y.address());
+        return std::less<>()(x.address(), y.address());
     }
-    inline auto operator>(coroutine_handle<> __x,
-                          coroutine_handle<> __y) noexcept -> bool
+    inline auto operator>(coroutine_handle<> x,
+                          coroutine_handle<> y) noexcept -> bool
     {
-        return __y < __x;
+        return y < x;
     }
-    inline auto operator<=(coroutine_handle<> __x,
-                           coroutine_handle<> __y) noexcept -> bool
+    inline auto operator<=(coroutine_handle<> x,
+                           coroutine_handle<> y) noexcept -> bool
     {
-        return !(__x > __y);
+        return !(x > y);
     }
-    inline auto operator>=(coroutine_handle<> __x,
-                           coroutine_handle<> __y) noexcept -> bool
+    inline auto operator>=(coroutine_handle<> x,
+                           coroutine_handle<> y) noexcept -> bool
     {
-        return !(__x < __y);
+        return !(x < y);
     }
 
-    template <typename _Promise>
+    template <typename Promise>
     class coroutine_handle : public coroutine_handle<> {
-        using _Base = coroutine_handle<>;
+        using Base = coroutine_handle<>;
 
     public:
 #ifndef _LIBCPP_CXX03_LANG
@@ -211,21 +211,21 @@ namespace std::experimental { // NOLINT
 
         auto operator=(std::nullptr_t) noexcept -> coroutine_handle &
         {
-            _Base::operator=(nullptr);
+            Base::operator=(nullptr);
             return *this;
         }
 
-        [[nodiscard]] auto promise() const -> _Promise &
+        [[nodiscard]] auto promise() const -> Promise &
         {
-            return *static_cast<_Promise *>(__builtin_coro_promise(
-                this->__handle_, alignof(_Promise), false));
+            return *static_cast<Promise *>(__builtin_coro_promise(
+                this->_handle, alignof(Promise), false));
         }
 
-        [[nodiscard]] static auto from_address(void *__addr) noexcept -> coroutine_handle
+        [[nodiscard]] static auto from_address(void *addr) noexcept -> coroutine_handle
         {
-            coroutine_handle __tmp;
-            __tmp.__handle_ = __addr;
-            return __tmp;
+            coroutine_handle tmp;
+            tmp._handle = addr;
+            return tmp;
         }
 
         // NOTE: this overload isn't required by the standard but is needed so
@@ -238,34 +238,34 @@ namespace std::experimental { // NOLINT
             return coroutine_handle(nullptr);
         }
 
-        template <class _Tp, bool _CallIsValid = false>
-        static auto from_address(_Tp *) -> coroutine_handle
+        template <class Tp, bool CallIsValid = false>
+        static auto from_address(Tp * /*address*/) -> coroutine_handle
         {
-            static_assert(_CallIsValid,
+            static_assert(CallIsValid,
                           "coroutine_handle<promise_type>::from_address cannot "
                           "be called with "
                           "non-void pointers");
         }
 
-        template <bool _CallIsValid = false>
-        static auto from_address(_Promise *) -> coroutine_handle
+        template <bool CallIsValid = false>
+        static auto from_address(Promise * /*address*/) -> coroutine_handle
         {
-            static_assert(_CallIsValid,
+            static_assert(CallIsValid,
                           "coroutine_handle<promise_type>::from_address cannot "
                           "be used with "
                           "pointers to the coroutine's promise type; use "
                           "'from_promise' instead");
         }
 
-        static auto from_promise(_Promise &__promise) noexcept -> coroutine_handle
+        static auto from_promise(Promise &promise) noexcept -> coroutine_handle
         {
-            using _RawPromise = typename std::remove_cv<_Promise>::type;
-            coroutine_handle __tmp;
-            __tmp.__handle_ = __builtin_coro_promise(
-                std::addressof(const_cast<_RawPromise &>(__promise)),
-                alignof(_Promise),
+            using RawPromise = typename std::remove_cv<Promise>::type;
+            coroutine_handle tmp;
+            tmp._handle = __builtin_coro_promise(
+                std::addressof(const_cast<RawPromise &>(promise)),
+                alignof(Promise),
                 true);
-            return __tmp;
+            return tmp;
         }
     };
 
@@ -275,14 +275,14 @@ namespace std::experimental { // NOLINT
 
     template <>
     class coroutine_handle<noop_coroutine_promise> : public coroutine_handle<> {
-        using _Base = coroutine_handle<>;
-        using _Promise = noop_coroutine_promise;
+        using Base = coroutine_handle<>;
+        using Promise = noop_coroutine_promise;
 
     public:
-        [[nodiscard]] auto promise() const -> _Promise &
+        [[nodiscard]] auto promise() const -> Promise &
         {
-            return *static_cast<_Promise *>(__builtin_coro_promise(
-                this->__handle_, alignof(_Promise), false));
+            return *static_cast<Promise *>(__builtin_coro_promise(
+                this->_handle, alignof(Promise), false));
         }
 
         [[nodiscard]] constexpr explicit operator bool() const noexcept
@@ -304,7 +304,7 @@ namespace std::experimental { // NOLINT
 
         coroutine_handle() noexcept
         {
-            this->__handle_ = __builtin_coro_noop();
+            this->_handle = __builtin_coro_noop();
         }
     };
 
@@ -323,7 +323,7 @@ namespace std::experimental { // NOLINT
             return true;
         }
 
-        void await_suspend(coroutine_handle<>) const noexcept {}
+        void await_suspend(coroutine_handle<> /*handle*/) const noexcept {}
 
         void await_resume() const noexcept {}
     };
@@ -335,7 +335,7 @@ namespace std::experimental { // NOLINT
             return false;
         }
 
-        void await_suspend(coroutine_handle<>) const noexcept {}
+        void await_suspend(coroutine_handle<> /*handle*/) const noexcept {}
 
         void await_resume() const noexcept {}
     };
@@ -344,12 +344,12 @@ namespace std::experimental { // NOLINT
 
 namespace std {
 
-    template <class _Tp>
-    struct hash<std::experimental::coroutine_handle<_Tp>> {
-        using __arg_type = std::experimental::coroutine_handle<_Tp>;
-        auto operator()(__arg_type const &__v) const noexcept -> size_t
+    template <class Tp>
+    struct hash<std::experimental::coroutine_handle<Tp>> {
+        using arg_type = std::experimental::coroutine_handle<Tp>;
+        auto operator()(arg_type const &v) const noexcept -> size_t
         {
-            return hash<void *>()(__v.address());
+            return hash<void *>()(v.address());
         }
     };
 

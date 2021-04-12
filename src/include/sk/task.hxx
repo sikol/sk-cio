@@ -178,7 +178,7 @@ namespace sk {
 
 #ifdef SK_HAS_STD_COROUTINES
         // NOLINTNEXTLINE(bugprone-exception-escape)
-        template<typename P>
+        template <typename P>
         auto await_suspend(coroutine_handle<P> h) noexcept
         {
             auto &promise = coro_handle.promise();
@@ -189,7 +189,7 @@ namespace sk {
         }
 #else
         // NOLINTNEXTLINE(bugprone-exception-escape)
-        template<typename P>
+        template <typename P>
         auto await_suspend(coroutine_handle<P> h) noexcept -> bool
         {
             auto &promise = coro_handle.promise();
@@ -218,17 +218,20 @@ namespace sk {
     struct co_get_executor {
         executor *task_executor = nullptr;
 
-        auto await_ready() noexcept -> bool {
+        auto await_ready() noexcept -> bool
+        {
             return false;
         }
 
-        template<typename P>
-        auto await_suspend(coroutine_handle<P> h) noexcept -> bool {
+        template <typename P>
+        auto await_suspend(coroutine_handle<P> h) noexcept -> bool
+        {
             task_executor = h.promise().task_executor;
             return false;
         }
 
-        auto await_resume() noexcept -> executor * {
+        auto await_resume() noexcept -> executor *
+        {
             return task_executor;
         }
     };

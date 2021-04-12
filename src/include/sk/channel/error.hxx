@@ -79,13 +79,13 @@ namespace sk {
 
     namespace detail {
 
-        struct cio_errc_category : std::error_category {
-            [[nodiscard]] auto name() const noexcept -> char const *
+        struct cio_errc_category final : std::error_category {
+            [[nodiscard]] auto name() const noexcept -> char const * final
             {
                 return "cio";
             }
 
-            [[nodiscard]] auto message(int c) const -> std::string
+            [[nodiscard]] auto message(int c) const -> std::string final
             {
                 switch (static_cast<error>(c)) {
                 case error::no_error:

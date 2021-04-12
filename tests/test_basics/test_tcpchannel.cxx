@@ -46,7 +46,7 @@ TEST_CASE("tcp_endpoint_resolver") {
     auto &second = *(++addrs.begin());
 
     if (str(first) == "127.0.0.1:80")
-        REQUIRE(str(second) == "[::1]:80");
+        REQUIRE(*str(second) == "[::1]:80");
     else if (str(first) == "[::1]:80")
-        REQUIRE(str(second) == "127.0.0.1:80");
+        REQUIRE(*str(second) == "127.0.0.1:80");
 }

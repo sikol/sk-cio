@@ -66,7 +66,7 @@ namespace sk {
         typename array_type::iterator write_pointer = data.begin();
 
         // Create a new, empty buffer.
-        //NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
         fixed_buffer() = default;
         ~fixed_buffer() = default;
 
@@ -109,15 +109,18 @@ namespace sk {
         auto writable_ranges() -> static_vector<std::span<value_type>, 1>;
 
     private:
-        [[nodiscard]] auto _end() -> typename array_type::iterator {
+        [[nodiscard]] auto _end() -> typename array_type::iterator
+        {
             return data.begin() + buffer_size;
         }
 
-        [[nodiscard]] auto _writable() -> size_type {
+        [[nodiscard]] auto _writable() -> size_type
+        {
             return std::distance(write_pointer, _end());
         }
 
-        [[nodiscard]] auto _readable() -> size_type {
+        [[nodiscard]] auto _readable() -> size_type
+        {
             return std::distance(read_pointer, write_pointer);
         }
     };
@@ -193,7 +196,7 @@ namespace sk {
         return {std::span(write_pointer, data.end())};
     }
 
-    // fixed_buffer is a buffer.
+    // NOLINT(cppcoreguidelines-avoid-magic-numbers)
     static_assert(buffer<fixed_buffer<char, 4096>>);
 
 } // namespace sk

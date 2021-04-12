@@ -43,7 +43,7 @@ using sk::patricia_set;
 using sk::patricia_trie;
 using sk::detail::bit_diff;
 
-TEST_CASE("bit_diff")
+TEST_CASE("bit_diff", "[patricia]")
 {
     std::array a{std::byte{0b11111111}, std::byte{0b00000000}};
     std::array b{std::byte{0b00000000}, std::byte{0b11111111}};
@@ -66,7 +66,7 @@ TEST_CASE("bit_diff")
     REQUIRE(bit_diff(a, b) == 16);
 }
 
-TEST_CASE("patricia_key")
+TEST_CASE("patricia_key", "[patricia]")
 {
     patricia_key a, b;
 
@@ -120,7 +120,7 @@ TEST_CASE("patricia_key")
     REQUIRE(a != b);
 }
 
-TEST_CASE("patricia bit masks")
+TEST_CASE("patricia bit masks", "[patricia]")
 {
     std::byte b1{0b11110000};
     std::byte b2{0b11111000};
@@ -172,7 +172,7 @@ TEST_CASE("patricia bit masks")
     }
 }
 
-TEST_CASE("patricia byte inserts")
+TEST_CASE("patricia byte inserts", "[patricia]")
 {
     patricia_trie<int> trie;
 
@@ -208,7 +208,7 @@ TEST_CASE("patricia byte inserts")
     REQUIRE(!b);
 }
 
-TEST_CASE("patricia_trie basic inserts")
+TEST_CASE("patricia_trie basic inserts", "[patricia]")
 {
     std::vector<std::string_view> test_strings{
         "test"sv,
@@ -264,7 +264,7 @@ TEST_CASE("patricia_trie basic inserts")
     } while (std::ranges::next_permutation(test_strings).found);
 }
 
-TEST_CASE("patricia_key_maker<std::uint16_t>")
+TEST_CASE("patricia_key_maker<std::uint16_t>", "[patricia]")
 {
     sk::patricia_key_maker<std::uint16_t> km;
     auto k = km(0x1234);
@@ -272,7 +272,7 @@ TEST_CASE("patricia_key_maker<std::uint16_t>")
     REQUIRE(k.key[1] == std::byte{0x34});
 }
 
-TEST_CASE("patricia_key_maker<std::int16_t>")
+TEST_CASE("patricia_key_maker<std::int16_t>", "[patricia]")
 {
     sk::patricia_key_maker<std::int16_t> km;
     auto k = km(-0x1234);
@@ -280,7 +280,7 @@ TEST_CASE("patricia_key_maker<std::int16_t>")
     REQUIRE(k.key[1] == std::byte{0xcc});
 }
 
-TEST_CASE("patricia_key_maker<std::uint32_t>")
+TEST_CASE("patricia_key_maker<std::uint32_t>", "[patricia]")
 {
     sk::patricia_key_maker<std::uint32_t> km;
     auto k = km(0x12345678);
@@ -290,7 +290,7 @@ TEST_CASE("patricia_key_maker<std::uint32_t>")
     REQUIRE(k.key[3] == std::byte{0x78});
 }
 
-TEST_CASE("patricia_key_maker<std::int32_t>")
+TEST_CASE("patricia_key_maker<std::int32_t>", "[patricia]")
 {
     sk::patricia_key_maker<std::int32_t> km;
     auto k = km(-0x12345678);
@@ -300,7 +300,7 @@ TEST_CASE("patricia_key_maker<std::int32_t>")
     REQUIRE(k.key[3] == std::byte{0x88});
 }
 
-TEST_CASE("patricia_key_maker<std::uint64_t>")
+TEST_CASE("patricia_key_maker<std::uint64_t>", "[patricia]")
 {
     sk::patricia_key_maker<std::uint64_t> km;
     auto k = km(0x1234567811223344ULL);
@@ -314,7 +314,7 @@ TEST_CASE("patricia_key_maker<std::uint64_t>")
     REQUIRE(k.key[7] == std::byte{0x44});
 }
 
-TEST_CASE("patricia_key_maker<std::int64_t>")
+TEST_CASE("patricia_key_maker<std::int64_t>", "[patricia]")
 {
     sk::patricia_key_maker<std::int64_t> km;
     auto k = km(-0x1234567811223344LL);
@@ -328,7 +328,7 @@ TEST_CASE("patricia_key_maker<std::int64_t>")
     REQUIRE(k.key[7] == std::byte{0xbc});
 }
 
-TEST_CASE("patricia_set<std::string>")
+TEST_CASE("patricia_set<std::string>", "[patricia][patricia_set]")
 {
     patricia_set<std::string> s;
 
@@ -345,7 +345,7 @@ TEST_CASE("patricia_set<std::string>")
     REQUIRE(s.contains("bar"));
 }
 
-TEST_CASE("patricia_set<int>")
+TEST_CASE("patricia_set<int>", "[patricia][patricia_set]")
 {
     patricia_set<int> s;
 
@@ -362,7 +362,7 @@ TEST_CASE("patricia_set<int>")
     REQUIRE(s.contains(666));
 }
 
-TEST_CASE("patricia_map<std::string, int>")
+TEST_CASE("patricia_map<std::string, int>", "[patricia][patricia_map]")
 {
     sk::patricia_map<std::string, int> m;
 
@@ -379,7 +379,7 @@ TEST_CASE("patricia_map<std::string, int>")
     REQUIRE(m["bar"] == 666);
 }
 
-TEST_CASE("patricia_set<std::string>::iterator")
+TEST_CASE("patricia_set<std::string>::iterator", "[patricia][patricia_set]")
 {
     sk::patricia_set<std::string> set;
 
@@ -405,7 +405,7 @@ TEST_CASE("patricia_set<std::string>::iterator")
     REQUIRE(it == end);
 }
 
-TEST_CASE("patricia_set<int>::iterator")
+TEST_CASE("patricia_set<int>::iterator", "[patricia][patricia_set]")
 {
     sk::patricia_set<int> set;
 
@@ -441,7 +441,7 @@ TEST_CASE("patricia_set<int>::iterator")
     REQUIRE(it == end);
 }
 
-TEST_CASE("patricia_map::iterator")
+TEST_CASE("patricia_map::iterator", "[patricia][patricia_map]")
 {
     sk::patricia_map<int, std::string> map;
 
@@ -518,7 +518,7 @@ auto random_set_test(unsigned int seed) -> bool
     return true;
 }
 
-TEST_CASE("patricia_set random test")
+TEST_CASE("patricia_set random test", "[patricia][patricia_set]")
 {
     // This test is non-deterministic, so it may fail on one run and then
     // succeed on the next.  The intention is that if the test fails, the
@@ -579,7 +579,7 @@ auto random_map_test(unsigned int seed) -> bool
     return true;
 }
 
-TEST_CASE("patricia_map random test")
+TEST_CASE("patricia_map random test", "[patricia][patricia_map]")
 {
     // This test is non-deterministic, so it may fail on one run and then
     // succeed on the next.  The intention is that if the test fails, the
@@ -594,7 +594,7 @@ TEST_CASE("patricia_map random test")
     }
 }
 
-TEST_CASE("patricia_trie iterator")
+TEST_CASE("patricia_trie iterator", "[patricia]")
 {
     patricia_trie<int> trie;
 
@@ -624,7 +624,7 @@ TEST_CASE("patricia_trie iterator")
     REQUIRE(ctrie.find("aaa") != ctrie.end());
 }
 
-TEST_CASE("patricia_set iterator")
+TEST_CASE("patricia_set iterator", "[patricia][patricia_set]")
 {
     patricia_set<int> set;
 
@@ -654,7 +654,7 @@ TEST_CASE("patricia_set iterator")
     REQUIRE(cset.find(42) != cset.end());
 }
 
-TEST_CASE("patricia_map iterator")
+TEST_CASE("patricia_map iterator", "[patricia][patricia_map]")
 {
     patricia_set<int> map;
 
@@ -685,7 +685,7 @@ TEST_CASE("patricia_map iterator")
 }
 
 
-TEST_CASE("patricia_set range for") {
+TEST_CASE("patricia_set range for", "[patricia][patricia_set]") {
     patricia_set<int> set;
 
     set.insert(1);
@@ -697,14 +697,16 @@ TEST_CASE("patricia_set range for") {
     REQUIRE(i == 3);
 }
 
-TEST_CASE("patricia_set empty string") {
+TEST_CASE("patricia_set empty string", "[patricia][patricia_set]") {
     patricia_set<std::string> s;
 
     s.insert("");
-    REQUIRE(*s.find(std::string()) == "");
+    auto i = s.find(std::string());
+    REQUIRE(i != s.end());
+    REQUIRE(i->empty());
 }
 
-TEST_CASE("patricia_set const range for") {
+TEST_CASE("patricia_set const range for", "[patricia][patricia_set]") {
     patricia_set<int> set;
 
     set.insert(1);
@@ -718,7 +720,7 @@ TEST_CASE("patricia_set const range for") {
     REQUIRE(i == 3);
 }
 
-TEST_CASE("patricia_set typedefs")
+TEST_CASE("patricia_set typedefs", "[patricia][patricia_set]")
 {
     REQUIRE(std::same_as<int, patricia_set<int>::value_type>);
     REQUIRE(std::same_as<int, patricia_set<int>::key_type>);
@@ -736,7 +738,7 @@ TEST_CASE("patricia_set typedefs")
                      patricia_set<int>::const_iterator>);
 }
 
-TEST_CASE("patricia_trie typedefs")
+TEST_CASE("patricia_trie typedefs", "[patricia]")
 {
     REQUIRE(std::same_as<int, patricia_trie<int>::value_type>);
     REQUIRE(std::same_as<int *, patricia_trie<int>::value_pointer>);
@@ -756,7 +758,7 @@ TEST_CASE("patricia_trie typedefs")
         patricia_trie<int>::const_iterator>);
 }
 
-TEST_CASE("patricia_set<> copy") {
+TEST_CASE("patricia_set<> copy", "[patricia][patricia_set]") {
     patricia_set<int> set;
 
     set.insert(1);
@@ -774,7 +776,7 @@ TEST_CASE("patricia_set<> copy") {
     REQUIRE(*cset.find(666) == 666);
 }
 
-TEST_CASE("patricia_set<> move") {
+TEST_CASE("patricia_set<> move", "[patricia][patricia_set]") {
     patricia_set<int> set;
 
     set.insert(1);
@@ -783,16 +785,16 @@ TEST_CASE("patricia_set<> move") {
 
     patricia_set<int> cset(std::move(set));
 
-    REQUIRE(set.find(1) == set.end());
-    REQUIRE(set.find(42) == set.end());
-    REQUIRE(set.find(666) == set.end());
+    REQUIRE(set.find(1) == set.end()); // NOLINT(bugprone-use-after-move)
+    REQUIRE(set.find(42) == set.end()); // NOLINT(bugprone-use-after-move)
+    REQUIRE(set.find(666) == set.end()); // NOLINT(bugprone-use-after-move)
 
     REQUIRE(*cset.find(1) == 1);
     REQUIRE(*cset.find(42) == 42);
     REQUIRE(*cset.find(666) == 666);
 }
 
-TEST_CASE("patricia_set<> copy assign") {
+TEST_CASE("patricia_set<> copy assign", "[patricia][patricia_set]") {
     patricia_set<int> set;
 
     set.insert(1);
@@ -811,7 +813,7 @@ TEST_CASE("patricia_set<> copy assign") {
     REQUIRE(*cset.find(666) == 666);
 }
 
-TEST_CASE("patricia_set<> move assign") {
+TEST_CASE("patricia_set<> move assign", "[patricia][patricia_set]") {
     patricia_set<int> set;
 
     set.insert(1);
@@ -821,9 +823,9 @@ TEST_CASE("patricia_set<> move assign") {
     patricia_set<int> cset;
     cset = std::move(set);
 
-    REQUIRE(set.find(1) == set.end());
-    REQUIRE(set.find(42) == set.end());
-    REQUIRE(set.find(666) == set.end());
+    REQUIRE(set.find(1) == set.end()); //NOLINT(bugprone-use-after-move)
+    REQUIRE(set.find(42) == set.end()); //NOLINT(bugprone-use-after-move)
+    REQUIRE(set.find(666) == set.end()); //NOLINT(bugprone-use-after-move)
 
     REQUIRE(*cset.find(1) == 1);
     REQUIRE(*cset.find(42) == 42);

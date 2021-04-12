@@ -43,7 +43,7 @@ TEST_CASE("static_vector<int> push_back")
 {
     static_vector<int, 3> v;
 
-    REQUIRE(v.size() == 0);
+    REQUIRE(v.empty());
     REQUIRE(v.capacity() == 3);
 
     v.push_back(1);
@@ -60,7 +60,7 @@ TEST_CASE("static_vector<std::string> push_back")
 {
     static_vector<std::string, 3> v;
 
-    REQUIRE(v.size() == 0);
+    REQUIRE(v.empty());
     REQUIRE(v.capacity() == 3);
 
     v.push_back("1");
@@ -77,7 +77,7 @@ TEST_CASE("static_vector<int> emplace_back")
 {
     static_vector<int, 3> v;
 
-    REQUIRE(v.size() == 0);
+    REQUIRE(v.empty());
     REQUIRE(v.capacity() == 3);
 
     v.emplace_back(1);
@@ -94,7 +94,7 @@ TEST_CASE("static_vector<std::string> emplace_back")
 {
     static_vector<std::string, 3> v;
 
-    REQUIRE(v.size() == 0);
+    REQUIRE(v.empty());
     REQUIRE(v.capacity() == 3);
 
     v.emplace_back("1");
@@ -111,7 +111,7 @@ TEST_CASE("static_vector<int> copy construct")
 {
     static_vector<int, 3> v;
 
-    REQUIRE(v.size() == 0);
+    REQUIRE(v.empty());
     REQUIRE(v.capacity() == 3);
 
     v.emplace_back(1);
@@ -134,7 +134,7 @@ TEST_CASE("static_vector<std::string> copy construct")
 {
     static_vector<std::string, 3> v;
 
-    REQUIRE(v.size() == 0);
+    REQUIRE(v.empty());
     REQUIRE(v.capacity() == 3);
 
     v.emplace_back("1");
@@ -157,7 +157,7 @@ TEST_CASE("static_vector<int> copy assign")
 {
     static_vector<int, 3> v;
 
-    REQUIRE(v.size() == 0);
+    REQUIRE(v.empty());
     REQUIRE(v.capacity() == 3);
 
     v.emplace_back(1);
@@ -182,7 +182,7 @@ TEST_CASE("static_vector<std::string> copy assign")
 {
     static_vector<std::string, 3> v;
 
-    REQUIRE(v.size() == 0);
+    REQUIRE(v.empty());
     REQUIRE(v.capacity() == 3);
 
     v.emplace_back("1");
@@ -207,7 +207,7 @@ TEST_CASE("static_vector<int> copy self-assign")
 {
     static_vector<int, 3> v;
 
-    REQUIRE(v.size() == 0);
+    REQUIRE(v.empty());
     REQUIRE(v.capacity() == 3);
 
     v.emplace_back(1);
@@ -227,7 +227,7 @@ TEST_CASE("static_vector<std::string> copy self-assign")
 {
     static_vector<std::string, 3> v;
 
-    REQUIRE(v.size() == 0);
+    REQUIRE(v.empty());
     REQUIRE(v.capacity() == 3);
 
     v.emplace_back("1");
@@ -247,7 +247,7 @@ TEST_CASE("static_vector<int> move self-assign")
 {
     static_vector<int, 3> v;
 
-    REQUIRE(v.size() == 0);
+    REQUIRE(v.empty());
     REQUIRE(v.capacity() == 3);
 
     v.emplace_back(1);
@@ -267,7 +267,7 @@ TEST_CASE("static_vector<std::string> move self-assign")
 {
     static_vector<std::string, 3> v;
 
-    REQUIRE(v.size() == 0);
+    REQUIRE(v.empty());
     REQUIRE(v.capacity() == 3);
 
     v.emplace_back("1");
@@ -287,7 +287,7 @@ TEST_CASE("static_vector<int> move construct")
 {
     static_vector<int, 3> v;
 
-    REQUIRE(v.size() == 0);
+    REQUIRE(v.empty());
     REQUIRE(v.capacity() == 3);
 
     v.emplace_back(1);
@@ -307,7 +307,7 @@ TEST_CASE("static_vector<std::string> move construct")
 {
     static_vector<std::string, 3> v;
 
-    REQUIRE(v.size() == 0);
+    REQUIRE(v.empty());
     REQUIRE(v.capacity() == 3);
 
     v.emplace_back("1");
@@ -327,7 +327,7 @@ TEST_CASE("static_vector<int> move assign")
 {
     static_vector<int, 3> v;
 
-    REQUIRE(v.size() == 0);
+    REQUIRE(v.empty());
     REQUIRE(v.capacity() == 3);
 
     v.emplace_back(1);
@@ -349,7 +349,7 @@ TEST_CASE("static_vector<std::string> move assign")
 {
     static_vector<std::string, 3> v;
 
-    REQUIRE(v.size() == 0);
+    REQUIRE(v.empty());
     REQUIRE(v.capacity() == 3);
 
     v.emplace_back("1");
@@ -403,7 +403,7 @@ TEST_CASE("static_vector<std::string> iterators work")
 TEST_CASE("static_vector<unique_ptr<std::string>> calls destructor")
 {
     int dtor_count = 0;
-    auto destroy = [&](auto *p) { ++dtor_count; delete p; };
+    auto destroy = [&](std::string *p) { ++dtor_count; delete p; };
 
     {
         static_vector<std::unique_ptr<std::string, decltype(destroy)>, 2> v;

@@ -54,11 +54,17 @@ namespace sk {
      */
 
     struct mt_executor final : executor {
+        mt_executor() = default;
+        mt_executor(mt_executor const &) = delete;
+        mt_executor(mt_executor &&) = delete;
+        auto operator= (mt_executor const &) -> mt_executor & = delete;
+        auto operator= (mt_executor &&) -> mt_executor & = delete;
         ~mt_executor();
+
         using work_type = std::function<void()>;
 
         // Post work to the queue
-        auto post(work_type &&work) -> void;
+        auto post(work_type &&work) -> void final;
 
         // Run the workq until the exit flag is set.
         auto run() -> void;
@@ -144,7 +150,7 @@ namespace sk {
         using work_type = std::function<void()>;
 
         // Post work to the queue
-        auto post(work_type &&work) -> void;
+        auto post(work_type &&work) -> void final;
 
         // Run the executor until no work is available.
         auto run() -> void;

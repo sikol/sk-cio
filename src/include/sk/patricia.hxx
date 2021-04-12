@@ -78,10 +78,17 @@ namespace sk {
         bit_t bits = 0;
 
         patricia_key() noexcept = default;
+        ~patricia_key() noexcept = default;
+        patricia_key(patricia_key &&other) noexcept = default;
+        patricia_key(patricia_key const &other) noexcept = default;
+        auto operator=(patricia_key const &other) noexcept
+            -> patricia_key & = default;
+        auto operator=(patricia_key &&other) noexcept
+            -> patricia_key & = default;
 
         // NOLINTNEXTLINE non-explicit constructor
         patricia_key(std::span<std::byte const> key_, bit_t bits_ = 0) noexcept
-            : key(key_), bits(bits_ ? bits_ : (key.size() * CHAR_BIT))
+            : key(key_), bits(bits_ > 0 ? bits_ : (key.size() * CHAR_BIT))
         {
             if (bits > 0) {
                 std::size_t need_bytes = 1 + ((bits - 1) / CHAR_BIT);
@@ -100,8 +107,6 @@ namespace sk {
         {
         }
 
-        patricia_key(patricia_key const &other) noexcept = default;
-
         template <std::ranges::contiguous_range Range>
         // NOLINTNEXTLINE non-explicit constructor; forwarding constructor
         patricia_key(Range &&r, bit_t bits_ = 0) noexcept
@@ -112,9 +117,6 @@ namespace sk {
                   bits_)
         {
         }
-
-        auto operator=(patricia_key const &other) noexcept
-            -> patricia_key & = default;
 
         [[nodiscard]] auto size_bytes() const noexcept -> std::size_t
         {
@@ -143,7 +145,7 @@ namespace sk {
             // bool ret = (byte & test_mask) != 0;
 
             unsigned ret = (byte >> (CHAR_BIT - ((bit % CHAR_BIT) + 1))) & 1;
-            return ret;
+            return ret == 1;
         }
     };
 
@@ -270,7 +272,9 @@ namespace sk {
 
     template <typename T, typename Allocator>
     class patricia_node { // NOLINT uninitialized field
+        //NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init)
         patricia_node() noexcept = default;
+        ~patricia_node() noexcept(std::is_nothrow_destructible_v<T>) = default;
 
     public:
         using node_ptr = patricia_node<T, Allocator> *;
@@ -313,6 +317,7 @@ namespace sk {
 
             SK_PATRICIA_TRACE_MSG("[NODE] delete node @ {}\n", ptr);
 
+            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
             auto bytes = reinterpret_cast<std::byte *>(ptr);
             allocator.deallocate(bytes,
                                  sizeof(patricia_node<T, Allocator>) +
@@ -347,19 +352,60 @@ namespace sk {
             return node;
         }
 
-        auto copy() const -> patricia_node *
+        [[nodiscard]] static auto shallow_copy(patricia_node const *n)
+            -> patricia_node *
         {
-            auto new_node = make_node(key, bit);
-            new_node->value = value;
-            new_node->parent = parent;
-
-            if (edges[left])
-                new_node->edges[left] = edges[left]->copy();
-
-            if (edges[right])
-                new_node->edges[right] = edges[right]->copy();
+            auto new_node = make_node(n->key, n->bit);
+            new_node->value = n->value;
+            new_node->parent = n->parent;
 
             return new_node;
+        }
+
+        [[nodiscard]] auto copy() const -> patricia_node *
+        {
+            auto *new_root = shallow_copy(this);
+
+            auto *new_ptr = new_root;
+            auto const *current = this;
+
+            for (;;) {
+                if (current->leftedge()) {
+                    current = current->leftedge();
+                    new_ptr->edges[left] = shallow_copy(current);
+                    new_ptr->edges[left]->parent = new_ptr;
+                    new_ptr = new_ptr->leftedge();
+                    continue;
+                }
+
+                if (current->rightedge()) {
+                    current = current->rightedge();
+                    new_ptr->edges[right] = shallow_copy(current);
+                    new_ptr->edges[right]->parent = new_ptr;
+                    new_ptr = new_ptr->rightedge();
+                    continue;
+                }
+
+                for (;;) {
+                    auto here_is_left =
+                        (current == current->parent->leftedge());
+                    auto parent_has_right =
+                        (current->parent->rightedge() != nullptr);
+
+                    if (here_is_left && parent_has_right) {
+                        current = current->parent->rightedge();
+                        new_ptr->parent->edges[right] = shallow_copy(current);
+                        new_ptr->parent->edges[right]->parent = new_ptr->parent;
+                        new_ptr = new_ptr->parent->rightedge();
+                        break;
+                    }
+
+                    current = current->parent;
+                    new_ptr = new_ptr->parent;
+                    if (!current->parent)
+                        return new_root;
+                }
+            };
         }
 
         patricia_node(patricia_node const &) = delete;
@@ -367,16 +413,66 @@ namespace sk {
         auto operator=(patricia_node const &) = delete;
         auto operator=(patricia_node &&) = delete;
 
-        ~patricia_node() noexcept(std::is_nothrow_destructible_v<T>)
+        static auto _delete_children(patricia_node *current) noexcept(
+            std::is_nothrow_destructible_v<T>)
         {
-            delete edges[0];
-            delete edges[1];
+            current->parent = nullptr;
+
+            do {
+                if (current->leftedge()) {
+                    current = current->leftedge();
+                    continue;
+                }
+
+                if (current->rightedge()) {
+                    current = current->rightedge();
+                    continue;
+                }
+
+                for (;;) {
+                    auto here_is_left =
+                        (current->parent && current == current->parent->leftedge());
+                    auto parent_has_right =
+                        (current->parent && current->parent->rightedge() != nullptr);
+
+                    if (here_is_left && parent_has_right) {
+                        auto tmp = std::exchange(current->parent->edges[left], nullptr);
+                        current = current->parent->rightedge();
+                        delete tmp;
+                        break;
+                    }
+
+                    if (!current->parent)
+                        return;
+
+                    current = current->parent;
+                    if (current->edges[left])
+                        delete std::exchange(current->edges[left], nullptr);
+                    if (current->edges[right])
+                        delete std::exchange(current->edges[right], nullptr);
+                }
+            } while (current);
+        }
+
+        auto delete_self() noexcept(std::is_nothrow_destructible_v<T>)
+        {
+            if (edges[left]) {
+                _delete_children(edges[left]);
+                delete edges[left];
+            }
+
+            if (edges[right]) {
+                _delete_children(edges[right]);
+                delete edges[right];
+            }
+
+            delete this;
         }
 
         void clear_value() noexcept(std::is_nothrow_destructible_v<T>)
         {
-            // Can't reset the key because we need to know its byte length
-            // for operator delete.
+            // Can't reset the key because we need to know its byte
+            // length for operator delete.
             key.bits = 0;
             value.reset();
         }
@@ -438,10 +534,9 @@ namespace sk {
         {
             if (leftedge() == n)
                 return left;
-            else {
-                SK_PATRICIA_INVARIANT(rightedge() == n);
-                return right;
-            }
+
+            SK_PATRICIA_INVARIANT(rightedge() == n);
+            return right;
         }
 
         bit_t bit = 0;
@@ -449,6 +544,7 @@ namespace sk {
         patricia_node *parent = nullptr;
         std::optional<T> value;
         patricia_key key;
+        //NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays)
         std::byte _key_bytes[1]; // must be the last member
     };
 
@@ -572,27 +668,21 @@ namespace sk {
             return ret;
         }
 
-        auto get_node() const noexcept -> node_pointer
+        [[nodiscard]] auto get_node() const noexcept -> node_pointer
         {
             return current;
         }
-
-        template <typename T_, typename Alloc_, bool is_const_>
-        friend auto
-        operator==(patricia_iterator<T_, Alloc_, is_const_> const &a,
-                   patricia_iterator<T_, Alloc_, is_const_> const &b) noexcept
-            -> bool;
     };
 
     template <typename T, typename Alloc, bool is_const>
-    auto operator==(patricia_iterator<T, Alloc, is_const> const &a,
-                    patricia_iterator<T, Alloc, is_const> const &b) noexcept
-        -> bool
+    [[nodiscard]] auto
+    operator==(patricia_iterator<T, Alloc, is_const> const &a,
+               patricia_iterator<T, Alloc, is_const> const &b) noexcept -> bool
     {
         SK_PATRICIA_TRACE_MSG("iterator::op==: a.current={} b.current={}\n",
-                              (void *)a.current,
-                              (void *)b.current);
-        return a.current == b.current;
+                              (void *)a.get_node(),
+                              (void *)b.get_node());
+        return a.get_node() == b.get_node();
     }
 
     /*************************************************************************
@@ -634,12 +724,12 @@ namespace sk {
 
     public:
         patricia_trie() noexcept = default;
-        patricia_trie(patricia_trie &&) noexcept;
-        patricia_trie(patricia_trie const &);
+        patricia_trie(patricia_trie &&other) noexcept;
+        patricia_trie(patricia_trie const &other);
         ~patricia_trie() noexcept(std::is_nothrow_destructible_v<node_type>);
 
-        auto operator=(patricia_trie &&) noexcept -> patricia_trie &;
-        auto operator=(patricia_trie const &) -> patricia_trie &;
+        auto operator=(patricia_trie &&other) noexcept -> patricia_trie &;
+        auto operator=(patricia_trie const &other) -> patricia_trie &;
 
         // Node operations.
         [[nodiscard]] auto find_node(patricia_key const &key) const noexcept
@@ -653,27 +743,27 @@ namespace sk {
 
         auto insert_node(patricia_key const &key) -> node_pointer;
 
-        auto remove_node(node_pointer) noexcept(
+        auto remove_node(node_pointer node) noexcept(
             std::is_nothrow_destructible_v<node_type>) -> void;
 
         [[nodiscard]] auto root_node() noexcept -> node_pointer;
         [[nodiscard]] auto root_node() const noexcept -> const_node_pointer;
 
         // Iterator operations.
-        auto begin() noexcept -> iterator;
-        auto begin() const noexcept -> const_iterator;
-        auto cbegin() const noexcept -> const_iterator;
+        [[nodiscard]] auto begin() noexcept -> iterator;
+        [[nodiscard]] auto begin() const noexcept -> const_iterator;
+        [[nodiscard]] auto cbegin() const noexcept -> const_iterator;
 
-        auto end() noexcept -> iterator;
-        auto end() const noexcept -> const_iterator;
-        auto cend() const noexcept -> const_iterator;
+        [[nodiscard]] auto end() noexcept -> iterator;
+        [[nodiscard]] auto end() const noexcept -> const_iterator;
+        [[nodiscard]] auto cend() const noexcept -> const_iterator;
 
         [[nodiscard]] auto find(patricia_key const &key) const noexcept
             -> const_iterator;
 
         [[nodiscard]] auto find(patricia_key const &key) noexcept -> iterator;
 
-        auto erase(iterator const &) noexcept(
+        auto erase(iterator const &it) noexcept(
             std::is_nothrow_destructible_v<node_type>) -> size_type;
 
         // Value operations.
@@ -691,7 +781,7 @@ namespace sk {
 #ifdef SK_PATRICIA_INVARIANT
 
         template <typename... Args>
-        void bugcheck(std::string const &, Args &&...args) const noexcept;
+        void bugcheck(std::string const &format, Args &&...args) const noexcept;
 
 #endif
 
@@ -735,7 +825,9 @@ namespace sk {
         -> patricia_trie &
     {
         if (&other != this) {
-            delete root;
+            if (root)
+                root->delete_self();
+            root = nullptr;
             root = other.root->copy();
         }
 
@@ -761,7 +853,12 @@ namespace sk {
     patricia_trie<T, Alloc>::~patricia_trie() noexcept(
         std::is_nothrow_destructible_v<node_type>)
     {
-        delete root;
+        SK_PATRICIA_TRACE_MSG("~patricia_trie, deleting root");
+        if (!root)
+            return;
+
+        SK_PATRICIA_TRACE_MSG("trie state:{}\n", print(root));
+        root->delete_self();
     }
 
     /*************************************************************************
@@ -824,6 +921,7 @@ namespace sk {
     auto patricia_trie<T, Alloc>::clear() noexcept(
         std::is_nothrow_destructible_v<node_type>) -> void
     {
+        root->delete_children();
         delete std::exchange(root, nullptr);
     }
 
@@ -892,9 +990,9 @@ namespace sk {
         return const_iterator(node);
     }
 
-    template<typename T, typename Alloc> auto patricia_trie<T, Alloc>::erase(
-        iterator const &it) noexcept(std::is_nothrow_destructible_v<node_type>)
-        -> size_type
+    template <typename T, typename Alloc>
+    auto patricia_trie<T, Alloc>::erase(iterator const &it) noexcept(
+        std::is_nothrow_destructible_v<node_type>) -> size_type
     {
         SK_PATRICIA_TRACE_MSG("\n[REMOVE] call _get_node\n");
 
@@ -941,8 +1039,9 @@ namespace sk {
 #    else
     template <typename T, typename Allocator>
     template <typename... Args>
-    void patricia_trie<T, Allocator>::bugcheck(std::string const &format,
-                                               Args &&...) const noexcept
+    void
+    patricia_trie<T, Allocator>::bugcheck(std::string const &format,
+                                          Args &&.../*args*/) const noexcept
     {
         std::ignore = format;
         SK_PATRICIA_INVARIANT(!format.c_str());
@@ -1129,7 +1228,7 @@ namespace sk {
                 else
                     return;
 
-                delete node;
+                node->delete_self();
                 SK_PATRICIA_TRACE_MSG("            : new root={}\n",
                                       (void *)root);
                 return;
@@ -1146,7 +1245,7 @@ namespace sk {
                                       node->parent->rightedge() == node);
 
                 node->parent->edges[node->parent->which(node)] = nullptr;
-                delete std::exchange(node, node->parent);
+                std::exchange(node, node->parent)->delete_self();
             } else {
                 /*
                  * This node is not the root and has exactly one child. Reparent
@@ -1171,7 +1270,7 @@ namespace sk {
                                      node->detach(node->leftedge()
                                                       ? node_type::left
                                                       : node_type::right));
-                delete std::exchange(node, p);
+                std::exchange(node, p)->delete_self();
             }
         } while (!node->value && !(node->edges[0] && node->edges[1]));
     }
@@ -1322,7 +1421,7 @@ namespace sk {
             bool bit = node->key.test_bit(keylen);
 
             if (!node->parent)
-                delete std::exchange(root, new_node);
+                std::exchange(root, new_node)->delete_self();
             else
                 new_node->edges[bit] = std::exchange(
                     node->parent->edges[node->parent->which(node)], new_node);
@@ -1369,7 +1468,7 @@ namespace sk {
             using other = patricia_key_maker<U>;
         };
 
-        std::byte buf[sizeof(T)];
+        std::array<std::byte, sizeof(T)> buf{};
 
         patricia_key_maker() noexcept = default;
 
@@ -1448,22 +1547,22 @@ namespace sk {
         {
         }
 
-        auto operator*() noexcept -> reference
+        [[nodiscard]] auto operator*() noexcept -> reference
         {
             return *current;
         }
 
-        auto operator*() const noexcept -> const_reference
+        [[nodiscard]] auto operator*() const noexcept -> const_reference
         {
             return *current;
         }
 
-        auto operator->() noexcept -> pointer
+        [[nodiscard]] auto operator->() noexcept -> pointer
         {
             return std::addressof(*current);
         }
 
-        auto operator->() const noexcept -> const_pointer
+        [[nodiscard]] auto operator->() const noexcept -> const_pointer
         {
             return std::addressof(*current);
         }
@@ -1481,19 +1580,20 @@ namespace sk {
             return ret;
         }
 
-        template <typename T_, typename Alloc_, bool is_const_>
-        friend auto operator==(
-            patricia_set_iterator<T_, Alloc_, is_const_> const &a,
-            patricia_set_iterator<T_, Alloc_, is_const_> const &b) noexcept
-            -> bool;
+        [[nodiscard]] auto
+        equal_to(patricia_set_iterator const &other) const noexcept
+        {
+            return current == other.current;
+        }
     };
 
     template <typename T, typename Alloc, bool is_const>
-    auto operator==(patricia_set_iterator<T, Alloc, is_const> const &a,
-                    patricia_set_iterator<T, Alloc, is_const> const &b) noexcept
+    [[nodiscard]] auto
+    operator==(patricia_set_iterator<T, Alloc, is_const> const &a,
+               patricia_set_iterator<T, Alloc, is_const> const &b) noexcept
         -> bool
     {
-        return a.current == b.current;
+        return a.equal_to(b);
     }
 
     template <typename T,
@@ -1541,19 +1641,20 @@ namespace sk {
             return _insert_node(key);
         }
 
-        auto _find_node(patricia_key const &key) noexcept -> node_ptr
+        [[nodiscard]] auto _find_node(patricia_key const &key) noexcept
+            -> node_ptr
         {
             return _trie.find_node(key);
         }
 
-        auto _find_node(patricia_key const &key) const noexcept
+        [[nodiscard]] auto _find_node(patricia_key const &key) const noexcept
             -> const_node_ptr
         {
             return _trie.find_node(key);
         }
 
         template <typename V>
-        auto _find_node(V const &value) noexcept -> node_ptr
+        [[nodiscard]] auto _find_node(V const &value) noexcept -> node_ptr
         {
             typename KeyMaker::template rebind<V>::other key_maker;
             auto key = key_maker(value);
@@ -1561,7 +1662,8 @@ namespace sk {
         }
 
         template <typename V>
-        auto _find_node(V const &value) const noexcept -> const_node_ptr
+        [[nodiscard]] auto _find_node(V const &value) const noexcept
+            -> const_node_ptr
         {
             typename KeyMaker::template rebind<V>::other key_maker;
             auto key = key_maker(value);
@@ -1628,7 +1730,7 @@ namespace sk {
         }
 
         template <typename V>
-        auto find(V const &key) noexcept -> iterator
+        [[nodiscard]] auto find(V const &key) noexcept -> iterator
         {
             auto node = _find_node(key);
 
@@ -1639,7 +1741,7 @@ namespace sk {
         }
 
         template <typename V>
-        auto find(V const &key) const noexcept -> const_iterator
+        [[nodiscard]] auto find(V const &key) const noexcept -> const_iterator
         {
             auto node = _find_node(key);
 
@@ -1649,75 +1751,76 @@ namespace sk {
             return const_iterator();
         }
 
-        auto prefix_match(value_type const &value) noexcept -> iterator
+        [[nodiscard]] auto prefix_match(value_type const &value) noexcept
+            -> iterator
         {
             KeyMaker key_maker;
             auto key = key_maker(value);
             auto r = _trie.prefix_match(key);
             if (r)
                 return iterator(r);
-            else
-                return end();
+            return end();
         }
 
         template <typename V>
-        auto prefix_match(V const &value) noexcept -> iterator
+        [[nodiscard]] auto prefix_match(V const &value) noexcept -> iterator
         {
             typename KeyMaker::template rebind<V>::other key_maker;
             auto key = key_maker(value);
             auto r = _trie.prefix_match(key);
             if (r)
                 return iterator(r);
-            else
-                return end();
+            return end();
         }
 
         template <typename V>
-        auto prefix_match(V const &value) const noexcept -> const_iterator
+        [[nodiscard]] auto prefix_match(V const &value) const noexcept
+            -> const_iterator
         {
             typename KeyMaker::template rebind<V>::other key_maker;
             auto key = key_maker(value);
             auto r = _trie.prefix_match(key);
+
             if (r)
                 return const_iterator(r);
-            else
-                return end();
+
+            return end();
         }
 
         template <typename V>
-        auto contains(V const &key) const noexcept -> bool
+        [[nodiscard]] auto contains(V const &key) const noexcept -> bool
         {
             auto node = _find_node(key);
             return node && node->value.has_value();
         }
 
         // Iterator operations.
-        auto begin() noexcept -> iterator
+        [[nodiscard]] auto begin() noexcept -> iterator
         {
             return iterator(_trie.root_node());
         }
 
-        auto begin() const noexcept -> const_iterator
+        [[nodiscard]] auto begin() const noexcept -> const_iterator
         {
             return const_iterator(_trie.root_node());
         }
 
-        auto cbegin() const noexcept -> const_iterator
+        [[nodiscard]] auto cbegin() const noexcept -> const_iterator
         {
             return const_iterator(_trie.root_node());
         }
 
-        auto end() noexcept -> iterator
+        [[nodiscard]] auto end() noexcept -> iterator
         {
             return iterator();
         }
 
-        auto end() const noexcept -> const_iterator
+        [[nodiscard]] auto end() const noexcept -> const_iterator
         {
             return const_iterator();
         }
 
-        auto cend() const noexcept -> const_iterator
+        [[nodiscard]] auto cend() const noexcept -> const_iterator
         {
             return const_iterator();
         }
@@ -1773,22 +1876,22 @@ namespace sk {
         {
         }
 
-        auto operator*() noexcept -> reference
+        [[nodiscard]] auto operator*() noexcept -> reference
         {
             return *current;
         }
 
-        auto operator*() const noexcept -> const_reference
+        [[nodiscard]] auto operator*() const noexcept -> const_reference
         {
             return *current;
         }
 
-        auto operator->() noexcept -> pointer
+        [[nodiscard]] auto operator->() noexcept -> pointer
         {
             return std::addressof(*current);
         }
 
-        auto operator->() const noexcept -> const_pointer
+        [[nodiscard]] auto operator->() const noexcept -> const_pointer
         {
             return std::addressof(*current);
         }
@@ -1806,19 +1909,19 @@ namespace sk {
             return ret;
         }
 
-        template <typename T_, typename Alloc_, bool is_const_>
-        friend auto operator==(
-            patricia_map_iterator<T_, Alloc_, is_const_> const &a,
-            patricia_map_iterator<T_, Alloc_, is_const_> const &b) noexcept
-            -> bool;
+        [[nodiscard]] auto equal_to(patricia_map_iterator const &other) const noexcept
+        {
+            return current == other.current;
+        }
     };
 
     template <typename T, typename Alloc, bool is_const>
-    auto operator==(patricia_map_iterator<T, Alloc, is_const> const &a,
-                    patricia_map_iterator<T, Alloc, is_const> const &b) noexcept
+    [[nodiscard]] auto
+    operator==(patricia_map_iterator<T, Alloc, is_const> const &a,
+               patricia_map_iterator<T, Alloc, is_const> const &b) noexcept
         -> bool
     {
-        return a.current == b.current;
+        return a.equal_to(b);
     }
 
     template <typename K,
@@ -1867,19 +1970,20 @@ namespace sk {
             return _insert_node(key);
         }
 
-        auto _find_node(patricia_key const &key) noexcept -> node_ptr
+        [[nodiscard]] auto _find_node(patricia_key const &key) noexcept
+            -> node_ptr
         {
             return _trie.find_node(key);
         }
 
-        auto _find_node(patricia_key const &key) const noexcept
+        [[nodiscard]] auto _find_node(patricia_key const &key) const noexcept
             -> const_node_ptr
         {
             return _trie.find_node(key);
         }
 
         template <typename V>
-        auto _find_node(V const &value) noexcept -> node_ptr
+        [[nodiscard]] auto _find_node(V const &value) noexcept -> node_ptr
         {
             typename KeyMaker::template rebind<V>::other key_maker;
             auto key = key_maker(value);
@@ -1887,7 +1991,8 @@ namespace sk {
         }
 
         template <typename V>
-        auto _find_node(V const &value) const noexcept -> const_node_ptr
+        [[nodiscard]] auto _find_node(V const &value) const noexcept
+            -> const_node_ptr
         {
             typename KeyMaker::template rebind<V>::other key_maker;
             auto key = key_maker(value);
@@ -1954,7 +2059,7 @@ namespace sk {
         }
 
         template <typename V>
-        auto find(V const &key) noexcept -> iterator
+        [[nodiscard]] auto find(V const &key) noexcept -> iterator
         {
             auto node = _find_node(key);
 
@@ -1965,7 +2070,7 @@ namespace sk {
         }
 
         template <typename V>
-        auto find(V const &key) const noexcept -> const_iterator
+        [[nodiscard]] auto find(V const &key) const noexcept -> const_iterator
         {
             auto node = _find_node(key);
 
@@ -1976,13 +2081,13 @@ namespace sk {
         }
 
         template <typename V>
-        auto contains(V const &key) const noexcept -> bool
+        [[nodiscard]] auto contains(V const &key) const noexcept -> bool
         {
             auto node = _find_node(key);
             return node && node->value.has_value();
         }
 
-        auto operator[](key_type const &k) -> T &
+        [[nodiscard]] auto operator[](key_type const &k) -> T &
         {
             KeyMaker key_maker;
             auto key = key_maker(k);
@@ -1997,32 +2102,32 @@ namespace sk {
         }
 
         // Iterator operations.
-        auto begin() noexcept -> iterator
+        [[nodiscard]] auto begin() noexcept -> iterator
         {
             return iterator(_trie.root_node());
         }
 
-        auto begin() const noexcept -> const_iterator
+        [[nodiscard]] auto begin() const noexcept -> const_iterator
         {
             return const_iterator(_trie.root_node());
         }
 
-        auto cbegin() const noexcept -> const_iterator
+        [[nodiscard]] auto cbegin() const noexcept -> const_iterator
         {
             return const_iterator(_trie.root_node());
         }
 
-        auto end() noexcept -> iterator
+        [[nodiscard]] auto end() noexcept -> iterator
         {
             return iterator();
         }
 
-        auto end() const noexcept -> const_iterator
+        [[nodiscard]] auto end() const noexcept -> const_iterator
         {
             return const_iterator();
         }
 
-        auto cend() const noexcept -> const_iterator
+        [[nodiscard]] auto cend() const noexcept -> const_iterator
         {
             return const_iterator();
         }

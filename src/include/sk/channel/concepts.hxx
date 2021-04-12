@@ -31,6 +31,7 @@
 
 #include <concepts>
 #include <cstddef>
+#include <span>
 
 #include <sk/channel/types.hxx>
 #include <sk/expected.hxx>
@@ -107,16 +108,13 @@ namespace sk {
     template <typename Channel>
     concept oseqchannel =
         channel_base<Channel> &&
-        requires(Channel &channel,
-                 io_size_t nobjects,
-                 typename Channel::value_type const *buf) {
-
+        requires(Channel &channel, std::span<typename Channel::value_type const> buf) {
             // Write data to the channel synchronously.
-            { channel.write_some(buf, nobjects) }
+            { channel.write_some(buf) }
                 -> std::same_as<expected<io_size_t, std::error_code>>;
 
             // Write data to the channel asynchronously.
-            { channel.async_write_some(buf, nobjects) }
+            { channel.async_write_some(buf) }
                 -> std::same_as<task<expected<io_size_t, std::error_code>>>;
         };
 
@@ -126,16 +124,13 @@ namespace sk {
     template <typename Channel>
     concept iseqchannel =
         channel_base<Channel> &&
-        requires(Channel &channel,
-                 io_size_t nobjects,
-                 typename Channel::value_type *buf) {
-
+        requires(Channel &channel, std::span<typename Channel::value_type> const buf) {
             // Read from the channel synchronously.
-            { channel.read_some(buf, nobjects) }
+            { channel.read_some(buf) }
                 -> std::same_as<expected<io_size_t, std::error_code>>;
 
             // Read from the channel asynchronously.
-            { channel.async_read_some(buf, nobjects) }
+            { channel.async_read_some(buf) }
                 -> std::same_as<task<expected<io_size_t, std::error_code>>>;
         };
 
@@ -163,16 +158,15 @@ namespace sk {
     concept odachannel =
         channel_base<Channel> &&
         requires(Channel &channel,
-                 io_size_t nobjects,
                  io_offset_t offset,
-                 typename Channel::value_type const *buf) {
+                 std::span<typename Channel::value_type const> &buf) {
 
             // Write data to the channel synchronously.
-            { channel.write_some_at(offset, buf, nobjects) }
+            { channel.write_some_at(offset, buf) }
                 -> std::same_as<expected<io_size_t, std::error_code>>;
 
             // Write data to the channel asynchronously.
-            { channel.async_write_some_at(offset, buf, nobjects) }
+            { channel.async_write_some_at(offset, buf) }
                 -> std::same_as<task<expected<io_size_t, std::error_code>>>;
         };
 
@@ -183,15 +177,15 @@ namespace sk {
     concept idachannel =
         channel_base<Channel> &&
         requires(Channel &channel,
-                 io_size_t nobjects, io_offset_t offset,
-                 typename Channel::value_type *buf) {
+                 io_offset_t offset,
+                 std::span<typename Channel::value_type> &buf) {
 
             // Read from the channel synchronously.
-            { channel.read_some_at(offset, buf, nobjects) }
+            { channel.read_some_at(offset, buf) }
                 -> std::same_as<expected<io_size_t, std::error_code>>;
 
             // Read from the channel asynchronously.
-            { channel.async_read_some_at(offset, buf, nobjects) }
+            { channel.async_read_some_at(offset, buf) }
                 -> std::same_as<task<expected<io_size_t, std::error_code>>>;
         };
 

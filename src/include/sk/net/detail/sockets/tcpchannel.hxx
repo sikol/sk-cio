@@ -78,74 +78,92 @@ namespace sk::net {
             return _port;
         }
 
-        auto port(port_type p) noexcept -> port_type
+        [[nodiscard]] auto port(port_type p) noexcept -> port_type
         {
             return std::exchange(_port, p);
         }
 
-        auto as_sockaddr_storage() const noexcept -> sockaddr_storage
+        [[nodiscard]] auto as_sockaddr_storage() const noexcept
+            -> sockaddr_storage
         {
             sockaddr_storage ret{};
 
-            std::visit(
-                overload{[&](inet_family::address_type const &a) -> void {
-                             auto *sin = reinterpret_cast<sockaddr_in *>(&ret);
-                             sin->sin_family = AF_INET;
-                             sin->sin_port = htons(_port);
-                             std::memcpy(&sin->sin_addr,
-                                         &a.bytes[0],
-                                         sizeof(sin->sin_addr));
-                         },
-                         [&](inet6_family::address_type const &a) -> void {
-                             auto *sin = reinterpret_cast<sockaddr_in6 *>(&ret);
-                             sin->sin6_family = AF_INET6;
-                             sin->sin6_port = htons(_port);
-                             std::memcpy(&sin->sin6_addr,
-                                         &a.bytes[0],
-                                         sizeof(sin->sin6_addr));
-                         },
-                         [](auto const &) -> void {
-                             // Should never reach here.
-                             std::abort();
-                         }},
-                _address.value());
+            auto const &a = _address.value();
 
-            return ret;
+            switch (a.tag) {
+            case inet_family::tag: {
+                sockaddr_in sin{};
+                sin.sin_family = AF_INET;
+                sin.sin_port = htons(_port);
+                std::memcpy(
+                    &sin.sin_addr, &a.addr.inet.bytes[0], sizeof(sin.sin_addr));
+                std::memcpy(&ret, &sin, sizeof(sin));
+                return ret;
+            }
+
+            case inet6_family::tag: {
+                sockaddr_in6 sin6{};
+                sin6.sin6_family = AF_INET6;
+                sin6.sin6_port = htons(_port);
+                std::memcpy(&sin6.sin6_addr,
+                            &a.addr.inet6.bytes[0],
+                            sizeof(sin6.sin6_addr));
+                std::memcpy(&ret, &sin6, sizeof(sin6));
+                return ret;
+            }
+
+            default:
+                // Should never reach here.
+                std::abort();
+            }
         }
     };
 
-    inline bool operator==(tcp_endpoint const &a,
-                           tcp_endpoint const &b) noexcept
+    [[nodiscard]] inline auto operator==(tcp_endpoint const &a,
+                                         tcp_endpoint const &b) noexcept -> bool
     {
         return a.address() == b.address() && a.port() == b.port();
     }
 
-    inline bool operator<(tcp_endpoint const &a, tcp_endpoint const &b) noexcept
+    [[nodiscard]] inline auto operator<(tcp_endpoint const &a,
+                                        tcp_endpoint const &b) noexcept -> bool
     {
         if (a.address() < b.address())
             return true;
 
         if (a.address() == b.address())
             return a.port() < b.port();
-        else
-            return false;
+
+        return false;
     }
 
-    inline auto str(tcp_endpoint const &ep) -> std::string
+    [[nodiscard]] inline auto str(tcp_endpoint const &ep) noexcept
+        -> expected<std::string, std::error_code>
     {
-        switch (tag(ep.address())) {
-        case inet_family::tag:
-            return *str(ep.address()) + ":" + std::to_string(ep.port());
-        case inet6_family::tag:
-            return "[" + *str(ep.address()) + "]:" + std::to_string(ep.port());
-        default:
-            std::abort();
+        try {
+            auto s = str(ep.address());
+            if (!s)
+                return make_unexpected(s.error());
+
+            switch (tag(ep.address())) {
+            case inet_family::tag:
+                return *s + ":" + std::to_string(ep.port());
+
+            case inet6_family::tag:
+                return "[" + *s + "]:" + std::to_string(ep.port());
+
+            default:
+                std::abort();
+            }
+        } catch (std::bad_alloc const &) {
+            return make_unexpected(
+                std::make_error_code(std::errc::not_enough_memory));
         }
     }
 
     template <address_family af>
-    auto make_tcp_endpoint(address<af> const &,
-                           tcp_endpoint::port_type) noexcept
+    [[nodiscard]] auto make_tcp_endpoint(address<af> const &,
+                                         tcp_endpoint::port_type) noexcept
         -> expected<tcp_endpoint, std::error_code> = delete;
 
     template <>
@@ -185,8 +203,9 @@ namespace sk::net {
                                  port);
     }
 
-    inline auto make_tcp_endpoint(std::string_view str,
-                                  tcp_endpoint::port_type port) noexcept
+    [[nodiscard]] inline auto
+    make_tcp_endpoint(std::string_view str,
+                      tcp_endpoint::port_type port) noexcept
         -> expected<tcp_endpoint, std::error_code>
     {
         auto addr = make_address(str);
@@ -196,41 +215,47 @@ namespace sk::net {
         return make_tcp_endpoint(*addr, port);
     }
 
-    inline auto make_tcp_endpoint(sockaddr_in const *sin) noexcept
+    [[nodiscard]] inline auto make_tcp_endpoint(sockaddr_in const *sin) noexcept
         -> expected<tcp_endpoint, std::error_code>
     {
         return make_tcp_endpoint(make_inet_address(sin->sin_addr.s_addr),
                                  ntohs(sin->sin_port));
     }
 
-    inline auto make_tcp_endpoint(sockaddr_in6 const *sin) noexcept
+    [[nodiscard]] inline auto
+    make_tcp_endpoint(sockaddr_in6 const *sin) noexcept
         -> expected<tcp_endpoint, std::error_code>
     {
         return make_tcp_endpoint(make_inet6_address(sin->sin6_addr),
                                  ntohs(sin->sin6_port));
     }
 
-    inline auto make_tcp_endpoint(sockaddr const *sa,
-                                  socklen_t addrlen) noexcept
+    [[nodiscard]] inline auto make_tcp_endpoint(sockaddr const *sa,
+                                                socklen_t addrlen) noexcept
         -> expected<tcp_endpoint, std::error_code>
     {
         SK_CHECK(addrlen > 0, "invalid address length");
 
         switch (sa->sa_family) {
-        case AF_INET:
+        case AF_INET: {
             if (addrlen < static_cast<socklen_t>(sizeof(sockaddr_in)))
                 return make_unexpected(
                     std::make_error_code(std::errc::invalid_argument));
 
-            return make_tcp_endpoint(reinterpret_cast<sockaddr_in const *>(sa));
+            sockaddr_in sin{};
+            std::memcpy(&sin, sa, sizeof(sockaddr_in));
+            return make_tcp_endpoint(&sin);
+        }
 
-        case AF_INET6:
+        case AF_INET6: {
             if (addrlen < static_cast<socklen_t>(sizeof(sockaddr_in6)))
                 return make_unexpected(
                     std::make_error_code(std::errc::invalid_argument));
 
-            return make_tcp_endpoint(
-                reinterpret_cast<sockaddr_in6 const *>(sa));
+            sockaddr_in6 sin6{};
+            std::memcpy(&sin6, sa, sizeof(sockaddr_in6));
+            return make_tcp_endpoint(&sin6);
+        }
 
         default:
             return make_unexpected(
@@ -243,7 +268,7 @@ namespace sk::net {
         struct addrinfo_tcp_endpoint_transform {
             using result_type = tcp_endpoint;
 
-            auto operator()(addrinfo **ai) const noexcept
+            [[nodiscard]] auto operator()(addrinfo **ai) const noexcept
                 -> std::optional<result_type>
             {
                 while (*ai != nullptr) {
@@ -272,9 +297,9 @@ namespace sk::net {
         using socket_type = detail::streamsocket<SOCK_STREAM, IPPROTO_TCP>;
 
     public:
-        tcpchannel() = default;
+        tcpchannel() noexcept = default;
 
-        explicit tcpchannel(sk::net::detail::native_socket_type &&fd)
+        explicit tcpchannel(sk::net::detail::native_socket_type &&fd) noexcept
             : socket_type(std::move(fd))
         {
         }
@@ -293,74 +318,73 @@ namespace sk::net {
         ~tcpchannel() = default;
 
         tcpchannel(tcpchannel const &) = delete;
-
         auto operator=(tcpchannel const &) -> tcpchannel & = delete;
 
-        [[nodiscard]] auto connect(tcp_endpoint const &addr)
+        [[nodiscard]] auto connect(tcp_endpoint const &addr) noexcept
             -> expected<void, std::error_code>
         {
             auto ss = addr.as_sockaddr_storage();
-            socklen_t len;
 
             switch (ss.ss_family) {
             case AF_INET:
-                len = sizeof(sockaddr_in);
-                break;
+                return socket_type::_connect(
+                    AF_INET,
+                    detail::sockaddr_cast<sockaddr const *>(&ss),
+                    sizeof(sockaddr_in));
 
             case AF_INET6:
-                len = sizeof(sockaddr_in6);
-                break;
+                return socket_type::_connect(
+                    AF_INET6,
+                    detail::sockaddr_cast<sockaddr const *>(&ss),
+                    sizeof(sockaddr_in6));
 
             default:
                 return make_unexpected(std::make_error_code(
                     std::errc::address_family_not_supported));
             }
-
-            return socket_type::_connect(
-                ss.ss_family, reinterpret_cast<sockaddr *>(&ss), len);
         }
 
-        [[nodiscard]] auto async_connect(tcp_endpoint &addr)
+        [[nodiscard]] auto async_connect(tcp_endpoint &addr) noexcept
             -> task<expected<void, std::error_code>>
         {
             auto ss = addr.as_sockaddr_storage();
-            socklen_t len;
 
             switch (ss.ss_family) {
             case AF_INET:
-                len = sizeof(sockaddr_in);
-                break;
+                co_return co_await socket_type::_async_connect(
+                    ss.ss_family,
+                    detail::sockaddr_cast<sockaddr const *>(&ss),
+                    sizeof(sockaddr_in));
 
             case AF_INET6:
-                len = sizeof(sockaddr_in6);
-                break;
+                co_return co_await socket_type::_async_connect(
+                    ss.ss_family,
+                    detail::sockaddr_cast<sockaddr const *>(&ss),
+                    sizeof(sockaddr_in6));
 
             default:
                 co_return make_unexpected(std::make_error_code(
                     std::errc::address_family_not_supported));
             }
-
-            co_return co_await socket_type::_async_connect(
-                ss.ss_family, reinterpret_cast<sockaddr *>(&ss), len);
         }
     };
 
     static_assert(seqchannel<tcpchannel>);
 
     class tcpserverchannel : public detail::streamsocketserver<tcpserverchannel,
-        tcpchannel,
-        SOCK_STREAM,
-        IPPROTO_TCP> {
+                                                               tcpchannel,
+                                                               SOCK_STREAM,
+                                                               IPPROTO_TCP> {
         using socket_type = detail::streamsocketserver<tcpserverchannel,
-            tcpchannel,
-            SOCK_STREAM,
-            IPPROTO_TCP>;
+                                                       tcpchannel,
+                                                       SOCK_STREAM,
+                                                       IPPROTO_TCP>;
 
     public:
         using value_type = std::byte;
 
         explicit tcpserverchannel(sk::net::detail::native_socket_type &&fd,
-                                  int af)
+                                  int af) noexcept
             : socket_type(std::move(fd), af)
         {
         }
@@ -383,23 +407,26 @@ namespace sk::net {
 
         ~tcpserverchannel() = default;
 
-        static auto listen(tcp_endpoint const &addr) -> expected<tcpserverchannel, std::error_code> {
+        [[nodiscard]] static auto listen(tcp_endpoint const &addr) noexcept
+            -> expected<tcpserverchannel, std::error_code>
+        {
             auto ss = addr.as_sockaddr_storage();
-            socklen_t len = 0;
+
             switch (ss.ss_family) {
             case AF_INET:
-                len = sizeof(sockaddr_in);
-                break;
-            case AF_INET6:
-                len = sizeof(sockaddr_in6);
-                break;
-            default:
-                return make_unexpected(std::make_error_code(std::errc::address_family_not_supported));
-            }
+                return _listen(AF_INET,
+                               detail::sockaddr_cast<sockaddr const *>(&ss),
+                               sizeof(sockaddr_in));
 
-            return _listen(socket_address_family(addr.address()),
-                           reinterpret_cast<sockaddr *>(&ss),
-                           len);
+            case AF_INET6:
+                return _listen(AF_INET6,
+                               detail::sockaddr_cast<sockaddr const *>(&ss),
+                               sizeof(sockaddr_in6));
+
+            default:
+                return make_unexpected(std::make_error_code(
+                    std::errc::address_family_not_supported));
+            }
         }
     };
 

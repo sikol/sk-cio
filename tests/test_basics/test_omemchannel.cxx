@@ -30,7 +30,7 @@
 
 #include <cstring>
 
-#include <sk/channel/memchannel/omemchannel.hxx>
+#include <sk/channel/memchannel.hxx>
 #include <sk/channel/read.hxx>
 #include <sk/channel/write.hxx>
 #include <sk/wait.hxx>
@@ -78,19 +78,19 @@ TEST_CASE("omemchannel::write_some() single byte")
 
     auto chnl = sk::make_omemchannel(std::span(out).subspan(0, 3));
 
-    auto nbytes = chnl.write_some(&buf[0], 1);
+    auto nbytes = sk::write_some(chnl, buf, 1);
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.write_some(&buf[1], 1);
+    nbytes = sk::write_some(chnl, std::span(buf).subspan(1, 1));
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.write_some(&buf[2], 1);
+    nbytes = sk::write_some(chnl, std::span(buf).subspan(2, 1));
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.write_some(&buf[2], 1);
+    nbytes = sk::write_some(chnl, std::span(buf).subspan(2, 1));
     REQUIRE(!nbytes);
     REQUIRE(nbytes.error() == sk::error::end_of_file);
 
@@ -139,19 +139,19 @@ TEST_CASE("omemchannel::write_some_at() single byte")
 
     auto chnl = sk::make_omemchannel(std::span(out).subspan(0, 3));
 
-    auto nbytes = chnl.write_some_at(0, &buf[0], 1);
+    auto nbytes = sk::write_some_at(chnl, 0, std::span(buf).subspan(0, 1));
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.write_some_at(1, &buf[1], 1);
+    nbytes = sk::write_some_at(chnl, 1, std::span(buf).subspan(1, 1));
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.write_some_at(2, &buf[2], 1);
+    nbytes = sk::write_some_at(chnl, 2, std::span(buf).subspan(2, 1));
     REQUIRE(nbytes);
     REQUIRE(*nbytes == 1);
 
-    nbytes = chnl.write_some_at(3, &buf[2], 1);
+    nbytes = sk::write_some_at(chnl, 3, std::span(buf).subspan(2, 1));
     REQUIRE(!nbytes);
     REQUIRE(nbytes.error() == sk::error::end_of_file);
 

@@ -33,7 +33,7 @@
 
 namespace sk::detail {
 
-    inline auto unexpected(char const *what) noexcept -> void
+    [[noreturn]] inline auto unexpected(char const *what) noexcept -> void
     {
         std::cerr << "sk-cio: fatal internal error: " << what << std::endl;
         std::abort();

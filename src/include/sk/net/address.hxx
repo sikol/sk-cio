@@ -51,6 +51,7 @@
 #include <sk/task.hxx>
 
 #if defined(SK_CIO_PLATFORM_WINDOWS)
+#    include <sk/win32/error.hxx>
 #    include <sk/win32/windows.hxx>
 #    ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
 #        include <afunix.h>
@@ -79,6 +80,79 @@ namespace sk::net {
         // 108 is the largest value typically supported on most platforms.
         static constexpr std::size_t max_unix_path_len = 108;
 #endif
+
+        // Safe casting between sockaddrs.
+        template <typename To, typename From>
+        auto sockaddr_cast(From /*from*/) -> To = delete;
+
+        template <>
+        [[nodiscard]] inline auto
+        sockaddr_cast<sockaddr const *>(sockaddr_in const *from)
+            -> sockaddr const *
+        {
+            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+            return reinterpret_cast<sockaddr const *>(from);
+        }
+
+        template <>
+        [[nodiscard]] inline auto
+        sockaddr_cast<sockaddr const *>(sockaddr_in *from) -> sockaddr const *
+        {
+            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+            return reinterpret_cast<sockaddr const *>(from);
+        }
+
+        template <>
+        [[nodiscard]] inline auto
+        sockaddr_cast<sockaddr const *>(sockaddr_in6 const *from)
+            -> sockaddr const *
+        {
+            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+            return reinterpret_cast<sockaddr const *>(from);
+        }
+
+        template <>
+        [[nodiscard]] inline auto
+        sockaddr_cast<sockaddr const *>(sockaddr_in6 *from) -> sockaddr const *
+        {
+            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+            return reinterpret_cast<sockaddr const *>(from);
+        }
+
+        template <>
+        [[nodiscard]] inline auto
+        sockaddr_cast<sockaddr const *>(sockaddr_un const *from)
+            -> sockaddr const *
+        {
+            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+            return reinterpret_cast<sockaddr const *>(from);
+        }
+
+        template <>
+        [[nodiscard]] inline auto
+        sockaddr_cast<sockaddr const *>(sockaddr_un *from) -> sockaddr const *
+        {
+            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+            return reinterpret_cast<sockaddr const *>(from);
+        }
+
+        template <>
+        [[nodiscard]] inline auto
+        sockaddr_cast<sockaddr const *>(sockaddr_storage const *from)
+            -> sockaddr const *
+        {
+            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+            return reinterpret_cast<sockaddr const *>(from);
+        }
+
+        template <>
+        [[nodiscard]] inline auto
+        sockaddr_cast<sockaddr const *>(sockaddr_storage *from)
+            -> sockaddr const *
+        {
+            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+            return reinterpret_cast<sockaddr const *>(from);
+        }
 
     } // namespace detail
 
@@ -126,8 +200,8 @@ namespace sk::net {
         [[nodiscard]] static auto to_string(address_type const &addr) noexcept
             -> expected<std::string, std::error_code>
         {
-            char ret[max_string_length];
-            auto bytes = &addr.bytes[0];
+            std::array<char, max_string_length> ret{};
+            auto const *bytes = &addr.bytes[0];
             std::to_chars_result p{&ret[0], std::errc()};
 
             for (unsigned i = 0; i < 4; ++i) {
@@ -212,13 +286,14 @@ namespace sk::net {
         static auto to_string(address_type const &addr) noexcept
             -> expected<std::string, std::error_code>
         {
-            char buf[INET6_ADDRSTRLEN];
-            auto ret = inet_ntop(AF_INET6, &addr.bytes[0], buf, sizeof(buf));
+            std::array<char, INET6_ADDRSTRLEN> buf{};
+            auto const *ret =
+                inet_ntop(AF_INET6, &addr.bytes[0], &buf[0], sizeof(buf));
             SK_CHECK(ret != nullptr, "inet_ntop failure");
             std::ignore = ret;
 
             try {
-                return std::string(buf);
+                return std::string(&buf[0]);
             } catch (std::bad_alloc const &) {
                 return make_unexpected(
                     std::make_error_code(std::errc::not_enough_memory));
@@ -373,6 +448,7 @@ namespace sk::net {
 #endif
         }
 
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays)
         static auto from_array(char const (&arr)[address_size]) noexcept
             -> address_type
         {
@@ -388,74 +464,86 @@ namespace sk::net {
     struct unspecified_family {
         static constexpr address_family_tag tag = AF_UNSPEC;
 
-        using address_type = std::variant<inet_family::address_type,
-                                          inet6_family::address_type,
-                                          unix_family::address_type>;
+        struct address_type {
+            address_family_tag tag = inet_family::tag;
+            union {
+                inet_family::address_type inet;
+                inet6_family::address_type inet6;
+                unix_family::address_type unix_;
+            } addr{};
+        };
 
-        static auto as_bytes(address_type const &address) noexcept
+        [[nodiscard]] static auto as_bytes(address_type const &address) noexcept
             -> std::span<std::byte const>
         {
-            return std::visit(overload{[](inet_family::address_type const &a)
-                                           -> std::span<std::byte const> {
-                                           return std::span<std::byte const>(
-                                               inet_family::as_bytes(a));
-                                       },
-                                       [](inet6_family::address_type const &a)
-                                           -> std::span<std::byte const> {
-                                           return inet6_family::as_bytes(a);
-                                       },
-                                       [](unix_family::address_type const &a)
-                                           -> std::span<std::byte const> {
-                                           return unix_family::as_bytes(a);
-                                       }},
-                              address);
+            switch (address.tag) {
+            case inet_family::tag:
+                return std::span<std::byte const>(
+                    inet_family::as_bytes(address.addr.inet));
+
+            case inet6_family::tag:
+                return std::span<std::byte const>(
+                    inet6_family::as_bytes(address.addr.inet6));
+
+            case unix_family::tag:
+                return unix_family::as_bytes(address.addr.unix_);
+
+            default:
+                sk::detail::unexpected("invalid tag in unspecified_address");
+            }
         }
 
-        static auto to_string(address_type const &address) noexcept
+        [[nodiscard]] static auto
+        to_string(address_type const &address) noexcept
             -> expected<std::string, std::error_code>
         {
-            return std::visit(overload{[](inet_family::address_type const &a) {
-                                           return inet_family::to_string(a);
-                                       },
-                                       [](inet6_family::address_type const &a) {
-                                           return inet6_family::to_string(a);
-                                       },
-                                       [](unix_family::address_type const &a) {
-                                           return unix_family::to_string(a);
-                                       }},
-                              address);
+            switch (address.tag) {
+            case inet_family::tag:
+                return inet_family::to_string(address.addr.inet);
+
+            case inet6_family::tag:
+                return inet6_family::to_string(address.addr.inet6);
+
+            case unix_family::tag:
+                return unix_family::to_string(address.addr.unix_);
+
+            default:
+                sk::detail::unexpected("invalid tag in unspecified_address");
+            }
         }
 
-        static auto from_string(std::string_view s) noexcept
+        [[nodiscard]] static auto from_string(std::string_view s) noexcept
             -> expected<address_type, std::error_code>
         {
             // unspecified from_string() supports inet and inet6, but not unix,
-            // because almost any valid is a valid unix address and that would
+            // because almost any string is a valid unix address and that would
             // be surprising to the user.
+
             auto inet = inet_family::from_string(s);
-            if (inet)
-                return address_type(*inet);
+            if (inet) {
+                address_type ret;
+                ret.tag = inet_family::tag;
+                ret.addr.inet = *inet;
+                return ret;
+            }
 
             auto inet6 = inet6_family::from_string(s);
-            if (inet6)
-                return address_type(*inet6);
+            if (inet6) {
+                address_type ret;
+                ret.tag = inet6_family::tag;
+                ret.addr.inet6 = *inet6;
+                return ret;
+            }
 
             return make_unexpected(
                 std::make_error_code(std::errc::invalid_argument));
         }
 
-        static auto contained_tag(address_type const &address) noexcept
+        [[nodiscard]] static auto
+        contained_tag(address_type const &address) noexcept
             -> address_family_tag
         {
-            return std::visit(
-                overload{
-                    [](inet_family::address_type const &)
-                        -> address_family_tag { return inet_family::tag; },
-                    [](inet6_family::address_type const &)
-                        -> address_family_tag { return inet6_family::tag; },
-                    [](unix_family::address_type const &)
-                        -> address_family_tag { return unix_family::tag; }},
-                address);
+            return address.tag;
         }
     };
 
@@ -494,7 +582,8 @@ namespace sk::net {
     socket_address_family(address<family> const &) noexcept = delete;
 
     template <address_family af>
-    [[nodiscard]] auto tag(address<af> const &) noexcept -> address_family_tag
+    [[nodiscard]] constexpr auto tag(address<af> const & /*addr*/) noexcept
+        -> address_family_tag
     {
         return af::tag;
     }
@@ -528,7 +617,8 @@ namespace sk::net {
     }
 
     template <address_family af1, address_family af2>
-    bool operator==(address<af1> const &a, address<af2> const &b) noexcept
+    auto operator==(address<af1> const &a, address<af2> const &b) noexcept
+        -> bool
     {
         address_family_tag af_a = tag(a);
         address_family_tag af_b = tag(b);
@@ -550,7 +640,8 @@ namespace sk::net {
     }
 
     template <address_family af1, address_family af2>
-    bool operator<(address<af1> const &a, address<af2> const &b) noexcept
+    auto operator<(address<af1> const &a, address<af2> const &b) noexcept
+        -> bool
     {
         address_family_tag af_a = tag(a);
         address_family_tag af_b = tag(b);
@@ -585,8 +676,13 @@ namespace sk::net {
     public:
         address() noexcept = default;
         explicit address(address_type const &a) noexcept : _address(a) {}
+        ~address() = default;
+
         address(address const &other) noexcept = default;
+        address(address &&other) noexcept = default;
+
         auto operator=(address const &other) noexcept -> address & = default;
+        auto operator=(address &&other) noexcept -> address & = default;
 
         static const address<inet_family> zero_address;
 
@@ -623,13 +719,15 @@ namespace sk::net {
             return make_unexpected(
                 std::make_error_code(std::errc::address_family_not_supported));
 
-        auto sin = reinterpret_cast<sockaddr_in const *>(sa);
-        if (static_cast<std::size_t>(len) < sizeof(*sin))
+        if (static_cast<std::size_t>(len) < sizeof(sockaddr_in))
             return make_unexpected(
                 std::make_error_code(std::errc::invalid_argument));
 
+        sockaddr_in sin{};
+        std::memcpy(&sin, sa, sizeof(sin));
+
         return address<inet_family>(
-            inet_family::from_in_addr_t(sin->sin_addr.s_addr));
+            inet_family::from_in_addr_t(sin.sin_addr.s_addr));
     }
 
     template <>
@@ -662,7 +760,7 @@ namespace sk::net {
 
     template <>
     [[nodiscard]] inline auto
-    socket_address_family(address<inet_family> const &) noexcept
+    socket_address_family(address<inet_family> const & /*addr*/) noexcept
     {
         return AF_INET;
     }
@@ -684,9 +782,15 @@ namespace sk::net {
 
     public:
         address() noexcept = default;
+        ~address() = default;
+
         explicit address(address_type const &a) noexcept : _address(a) {}
+
         address(address const &other) noexcept = default;
         auto operator=(address const &other) noexcept -> address & = default;
+
+        address(address &&other) noexcept = default;
+        auto operator=(address &&other) noexcept -> address & = default;
 
         static const address<inet6_family> zero_address;
 
@@ -723,13 +827,15 @@ namespace sk::net {
             return make_unexpected(
                 std::make_error_code(std::errc::address_family_not_supported));
 
-        auto sin = reinterpret_cast<sockaddr_in6 const *>(sa);
-        if (static_cast<std::size_t>(len) < sizeof(*sin))
+        if (static_cast<std::size_t>(len) < sizeof(sockaddr_in6))
             return make_unexpected(
                 std::make_error_code(std::errc::invalid_argument));
 
+        sockaddr_in6 sin6{};
+        std::memcpy(&sin6, sa, sizeof(sin6));
+
         return address<inet6_family>(
-            inet6_family::from_in6_addr(sin->sin6_addr));
+            inet6_family::from_in6_addr(sin6.sin6_addr));
     }
 
     template <>
@@ -760,8 +866,8 @@ namespace sk::net {
     }
 
     template <>
-    [[nodiscard]] inline auto
-    socket_address_family(address<inet6_family> const &) noexcept
+    [[nodiscard]] inline auto constexpr socket_address_family(
+        address<inet6_family> const & /*addr*/) noexcept
     {
         return AF_INET6;
     }
@@ -784,8 +890,13 @@ namespace sk::net {
     public:
         address() noexcept = default;
         explicit address(address_type const &a) noexcept : _address(a) {}
+        ~address() = default;
+
         address(address const &other) noexcept = default;
         auto operator=(address const &other) noexcept -> address & = default;
+
+        address(address &&other) noexcept = default;
+        auto operator=(address &&other) noexcept -> address & = default;
 
         [[nodiscard]] auto value() noexcept -> address_type &
         {
@@ -837,8 +948,8 @@ namespace sk::net {
     }
 
     template <>
-    [[nodiscard]] inline auto
-    socket_address_family(address<unix_family> const &) noexcept
+    [[nodiscard]] constexpr inline auto
+    socket_address_family(address<unix_family> const & /*addr*/) noexcept
     {
         return AF_UNIX;
     }
@@ -860,9 +971,36 @@ namespace sk::net {
 
     public:
         address() noexcept = default;
+        ~address() = default;
+
         explicit address(address_type const &a) noexcept : _address(a) {}
+
         address(address const &other) noexcept = default;
         auto operator=(address const &other) noexcept -> address & = default;
+
+        address(address &&other) noexcept = default;
+        auto operator=(address &&other) noexcept -> address & = default;
+
+        explicit address(inet_family::address_type const &inet) noexcept
+        {
+            _address.tag = inet_family::tag;
+            static_assert(sizeof(_address.addr.inet) == sizeof(inet));
+            std::memcpy(&_address.addr.inet, &inet, sizeof(inet));
+        }
+
+        explicit address(inet6_family::address_type const &inet6) noexcept
+        {
+            _address.tag = inet6_family::tag;
+            static_assert(sizeof(_address.addr.inet6) == sizeof(inet6));
+            std::memcpy(&_address.addr.inet6, &inet6, sizeof(inet6));
+        }
+
+        explicit address(unix_family::address_type const &unix_) noexcept
+        {
+            _address.tag = unix_family::tag;
+            static_assert(sizeof(_address.addr.unix_) == sizeof(unix_));
+            std::memcpy(&_address.addr.unix_, &unix_, sizeof(unix_));
+        }
 
         [[nodiscard]] auto value() noexcept -> address_type &
         {
@@ -884,7 +1022,7 @@ namespace sk::net {
     using unspecified_address = address<unspecified_family>;
 
     template <>
-    inline auto make_address<unspecified_family>(std::string_view str) noexcept
+    [[nodiscard]] inline auto make_address<unspecified_family>(std::string_view str) noexcept
         -> expected<unspecified_address, std::error_code>
     {
         auto a = unspecified_family::from_string(str);
@@ -901,30 +1039,38 @@ namespace sk::net {
         SK_CHECK(len > 0, "invalid address len");
 
         switch (sa->sa_family) {
-        case AF_INET:
+        case AF_INET: {
             if (static_cast<std::size_t>(len) < sizeof(sockaddr_in))
                 return make_unexpected(
                     std::make_error_code(std::errc::invalid_argument));
 
-            return unspecified_address(inet_family::from_in_addr_t(
-                reinterpret_cast<sockaddr_in const *>(sa)->sin_addr.s_addr));
+            sockaddr_in sin{};
+            std::memcpy(&sin, sa, sizeof(sin));
+            return unspecified_address(
+                inet_family::from_in_addr_t(sin.sin_addr.s_addr));
+        }
 
-        case AF_INET6:
+        case AF_INET6: {
             if (static_cast<std::size_t>(len) < sizeof(sockaddr_in6))
                 return make_unexpected(
                     std::make_error_code(std::errc::invalid_argument));
 
-            return unspecified_address(inet6_family::from_in6_addr(
-                reinterpret_cast<sockaddr_in6 const *>(sa)->sin6_addr));
+            sockaddr_in6 sin6{};
+            std::memcpy(&sin6, sa, sizeof(sin6));
+            return unspecified_address(
+                inet6_family::from_in6_addr(sin6.sin6_addr));
+        }
 
 #ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
-        case AF_UNIX:
+        case AF_UNIX: {
             if (static_cast<std::size_t>(len) < sizeof(sockaddr_un))
                 return make_unexpected(
                     std::make_error_code(std::errc::invalid_argument));
 
-            return unspecified_address(unix_family::from_array(
-                reinterpret_cast<sockaddr_un const *>(sa)->sun_path));
+            sockaddr_un sun{};
+            std::memcpy(&sun, sa, sizeof(sun));
+            return unspecified_address(unix_family::from_array(sun.sun_path));
+        }
 #endif
 
         default:
@@ -953,10 +1099,13 @@ namespace sk::net {
         switch (tag(addr)) {
         case inet_family::tag:
             return AF_INET;
+
         case inet6_family::tag:
             return AF_INET6;
+
         case unix_family::tag:
             return AF_UNIX;
+
         default:
             return AF_UNSPEC;
         }
@@ -977,17 +1126,16 @@ namespace sk::net {
         [[nodiscard]] auto cast(unspecified_address const &addr) noexcept
             -> expected<inet_address, std::error_code>
         {
-            return std::visit(
-                overload{[](inet_family::address_type const &a)
-                             -> expected<inet_address, std::error_code> {
-                             return inet_address(a);
-                         },
-                         [](auto const &)
-                             -> expected<inet_address, std::error_code> {
-                             return make_unexpected(std::make_error_code(
-                                 std::errc::address_family_not_supported));
-                         }},
-                addr.value());
+            auto const &a = addr.value();
+
+            switch (a.tag) {
+            case inet_family::tag:
+                return inet_address(a.addr.inet);
+
+            default:
+                return make_unexpected(std::make_error_code(
+                    std::errc::address_family_not_supported));
+            }
         }
     };
 
@@ -1006,17 +1154,16 @@ namespace sk::net {
         [[nodiscard]] auto cast(unspecified_address const &addr) noexcept
             -> expected<inet6_address, std::error_code>
         {
-            return std::visit(
-                overload{[](inet6_family::address_type const &a)
-                             -> expected<inet6_address, std::error_code> {
-                             return inet6_address(a);
-                         },
-                         [](auto const &)
-                             -> expected<inet6_address, std::error_code> {
-                             return make_unexpected(std::make_error_code(
-                                 std::errc::address_family_not_supported));
-                         }},
-                addr.value());
+            auto const &a = addr.value();
+
+            switch (a.tag) {
+            case inet6_family::tag:
+                return inet6_address(a.addr.inet6);
+
+            default:
+                return make_unexpected(std::make_error_code(
+                    std::errc::address_family_not_supported));
+            }
         }
     };
 
@@ -1035,17 +1182,16 @@ namespace sk::net {
         [[nodiscard]] auto cast(unspecified_address const &addr) noexcept
             -> expected<unix_address, std::error_code>
         {
-            return std::visit(
-                overload{[](unix_family::address_type const &a)
-                             -> expected<unix_address, std::error_code> {
-                             return unix_address(a);
-                         },
-                         [](auto const &)
-                             -> expected<unix_address, std::error_code> {
-                             return make_unexpected(std::make_error_code(
-                                 std::errc::address_family_not_supported));
-                         }},
-                addr.value());
+            auto const &a = addr.value();
+
+            switch (a.tag) {
+            case unix_family::tag:
+                return unix_address(a.addr.unix_);
+
+            default:
+                return make_unexpected(std::make_error_code(
+                    std::errc::address_family_not_supported));
+            }
         }
     };
 
@@ -1143,9 +1289,26 @@ namespace sk::net {
 
     namespace detail {
 
+#ifdef _WIN32
+        [[nodiscard]] inline auto make_gai_error(int err) noexcept
+            -> std::error_code
+        {
+            return win32::make_win32_error(err);
+        }
+#else
+        [[nodiscard]] inline auto make_gai_error(int err) noexcept
+            -> std::error_code
+        {
+            if (err == EAI_SYSTEM)
+                return std::make_error_code(static_cast<std::errc>(err));
+
+            return make_error_code(static_cast<resolver_error>(err));
+        }
+#endif
+
         // A container that stores the result of a getaddrinfo() operation.
-        // It behaves like a normal container, and is also a range, so it can
-        // be iterated, copied to another container, etc.
+        // It behaves like a normal container, and is also a range, so it
+        // can be iterated, copied to another container, etc.
         // addrinfo_container does no allocations itself, but getaddrinfo()
         // uses heap allocation.
 
@@ -1203,6 +1366,8 @@ namespace sk::net {
             using const_reference = const_value_type &;
 
             addrinfo_iterator() noexcept = default;
+            ~addrinfo_iterator() = default;
+
             explicit addrinfo_iterator(addrinfo *ai_) noexcept : _ai(ai_)
             {
                 _next_address();
@@ -1312,9 +1477,8 @@ namespace sk::net {
                                      &gai_result);
             });
 
-            if (ret)
-                co_return make_unexpected(
-                    make_error_code(static_cast<resolver_error>(ret)));
+            if (ret != 0)
+                co_return make_unexpected(make_gai_error(ret));
 
             co_return async_getaddrinfo_result(gai_result);
         }
@@ -1329,7 +1493,7 @@ namespace sk::net {
         public:
             using result_type = typename transform::result_type;
 
-            auto async_resolve(
+            [[nodiscard]] auto async_resolve(
                 std::optional<std::string> const &name = {},
                 std::optional<std::string> const &service = {}) const noexcept
                 -> task<expected<container_type, std::error_code>>
@@ -1349,10 +1513,11 @@ namespace sk::net {
             }
 
             template <std::output_iterator<result_type> Iterator>
-            auto async_resolve(Iterator &&it,
-                               std::optional<std::string> const &name = {},
-                               std::optional<std::string> const &service = {})
-                const noexcept -> task<expected<void, std::error_code>>
+            [[nodiscard]] auto async_resolve(
+                Iterator &&it,
+                std::optional<std::string> const &name = {},
+                std::optional<std::string> const &service = {}) const noexcept
+                -> task<expected<void, std::error_code>>
             {
                 auto c = co_await async_resolve(name, service);
                 if (!c)

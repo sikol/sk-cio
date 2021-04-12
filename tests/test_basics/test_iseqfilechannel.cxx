@@ -64,10 +64,8 @@ TEST_CASE("iseqfilechannel::read()")
         }
 
         REQUIRE(*nbytes == 15);
-        std::vector<std::byte> data_(
-            reinterpret_cast<std::byte *>(test_string.data()),
-            reinterpret_cast<std::byte *>(test_string.data() +
-                                          test_string.size()));
+        std::vector<std::byte> data_(test_string.size());
+        std::memcpy(&data_[0], test_string.data(), test_string.size());
         REQUIRE(buf == data_);
     }
 
@@ -106,10 +104,8 @@ TEST_CASE("iseqfilechannel::async_read()")
         }
 
         REQUIRE(*nbytes == 15);
-        std::vector<std::byte> data_(
-            reinterpret_cast<std::byte *>(test_string.data()),
-            reinterpret_cast<std::byte *>(test_string.data() +
-                                          test_string.size()));
+        std::vector<std::byte> data_(test_string.size());
+        std::memcpy(&data_[0], test_string.data(), test_string.size());
         REQUIRE(buf == data_);
     }
 

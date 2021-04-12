@@ -59,7 +59,7 @@ namespace sk::posix::detail {
      * used for polling i/o.
      */
     struct linux_reactor final {
-        linux_reactor();
+        linux_reactor() noexcept;
         linux_reactor(linux_reactor &&) noexcept = delete;
         auto operator=(linux_reactor &&) noexcept -> linux_reactor & = delete;
         virtual ~linux_reactor() = default;
@@ -69,17 +69,18 @@ namespace sk::posix::detail {
         auto operator=(linux_reactor const &) -> linux_reactor & = delete;
 
         // Associate a new fd with our epoll.
-        [[nodiscard]] auto associate_fd(int) -> expected<void, std::error_code>;
-        auto deassociate_fd(int) -> void;
+        [[nodiscard]] auto associate_fd(int fd) noexcept -> expected<void, std::error_code>;
+        auto deassociate_fd(int fd) noexcept -> void;
 
         // Start this reactor.
-        [[nodiscard]] auto start() -> expected<void, std::error_code>;
+        [[nodiscard]] auto start() noexcept -> expected<void, std::error_code>;
 
         // Stop this reactor.
-        auto stop() -> void;
+        auto stop() noexcept -> void;
 
-        auto get_system_executor() -> mt_executor *;
+        auto get_system_executor() noexcept -> mt_executor *;
 
+        //NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers)
         auto async_fd_open(char const *path, int flags, int mode = 0777) noexcept
             -> task<expected<int, std::error_code>>;
 
@@ -103,10 +104,10 @@ namespace sk::posix::detail {
         auto async_fd_pwrite(int fd, void const *buf, std::size_t n, off_t offs) noexcept
             -> task<expected<ssize_t, std::error_code>>;
 
-        auto async_fd_connect(int, sockaddr const *, socklen_t) noexcept
+        auto async_fd_connect(int fd, sockaddr const *addr, socklen_t addrlen) noexcept
             -> task<expected<void, std::error_code>>;
 
-        auto async_fd_accept(int, sockaddr *addr, socklen_t *) noexcept
+        auto async_fd_accept(int fd, sockaddr *addr, socklen_t *addrlen) noexcept
             -> task<expected<int, std::error_code>>;
 
     private:
@@ -116,27 +117,25 @@ namespace sk::posix::detail {
 #endif
     };
 
-    inline linux_reactor::linux_reactor()
-    {
-    }
+    inline linux_reactor::linux_reactor() noexcept = default;
 
-    inline auto linux_reactor::get_system_executor() -> mt_executor *
+    inline auto linux_reactor::get_system_executor() noexcept -> mt_executor *
     {
         static mt_executor xer;
         return &xer;
     }
 
-    inline auto linux_reactor::associate_fd(int fd) -> expected<void, std::error_code>
+    inline auto linux_reactor::associate_fd(int fd) noexcept -> expected<void, std::error_code>
     {
         return _epoll->associate_fd(fd);
     }
 
-    inline auto linux_reactor::deassociate_fd(int fd) -> void
+    inline auto linux_reactor::deassociate_fd(int fd) noexcept -> void
     {
         _epoll->deassociate_fd(fd);
     }
 
-    inline auto linux_reactor::start() -> expected<void, std::error_code>
+    inline auto linux_reactor::start() noexcept -> expected<void, std::error_code>
     {
         _epoll = std::make_unique<epoll_reactor>();
 
@@ -169,7 +168,7 @@ namespace sk::posix::detail {
         return {};
     }
 
-    inline auto linux_reactor::stop() -> void
+    inline auto linux_reactor::stop() noexcept -> void
     {
         _epoll->stop();
 #ifdef SK_CIO_HAVE_IO_URING
