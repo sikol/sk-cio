@@ -48,7 +48,7 @@ std::string_view const tcp_listen_address = "127.0.0.1";
 std::uint16_t const tcp_listen_port = 5357;
 std::optional<net::tcp_endpoint> tcp_listen_addr;
 
-task<int> tcp_stress_task()
+auto tcp_stress_task() -> task<int>
 {
     std::random_device r;
     std::default_random_engine eng(r());
@@ -58,7 +58,6 @@ task<int> tcp_stress_task()
     auto start = std::chrono::steady_clock::now();
 
     for (;;) {
-
         // Connect to the test host.
         net::tcpchannel chnl;
         auto ret = co_await chnl.async_connect(*tcp_listen_addr);
@@ -109,6 +108,8 @@ task<int> tcp_stress_task()
             }
         }
 
+        co_await chnl.async_close();
+
         auto now = std::chrono::steady_clock::now();
         if ((now - start) >= run_for)
             break;
@@ -117,7 +118,7 @@ task<int> tcp_stress_task()
     co_return 0;
 }
 
-task<void> tcp_handle_client(net::tcpchannel client)
+auto tcp_handle_client(net::tcpchannel client) -> task<void>
 {
     for (;;) {
         sk::fixed_buffer<std::byte, 1024> buf;
@@ -137,9 +138,11 @@ task<void> tcp_handle_client(net::tcpchannel client)
             co_return;
         }
     }
+
+    co_await client.async_close();
 }
 
-task<void> tcp_server_task(net::tcpserverchannel &chnl)
+auto tcp_server_task(net::tcpserverchannel &chnl) -> task<void>
 {
     for (;;) {
         auto client = co_await chnl.async_accept();
@@ -193,4 +196,5 @@ TEST_CASE("tcpchannel stress test")
     }
 
     REQUIRE(errors == 0);
+    wait(server->async_close());
 }

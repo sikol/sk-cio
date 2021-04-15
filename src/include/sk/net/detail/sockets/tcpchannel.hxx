@@ -299,8 +299,8 @@ namespace sk::net {
     public:
         tcpchannel() noexcept = default;
 
-        explicit tcpchannel(sk::net::detail::native_socket_type &&fd) noexcept
-            : socket_type(std::move(fd))
+        explicit tcpchannel(iocore::iocb_handle &&cb) noexcept
+            : socket_type(std::move(cb))
         {
         }
 
@@ -383,9 +383,9 @@ namespace sk::net {
     public:
         using value_type = std::byte;
 
-        explicit tcpserverchannel(sk::net::detail::native_socket_type &&fd,
+        explicit tcpserverchannel(iocore::iocb_handle &&cb,
                                   int af) noexcept
-            : socket_type(std::move(fd), af)
+            : socket_type(std::move(cb), af)
         {
         }
 

@@ -33,7 +33,7 @@
 #include <concepts>
 #include <limits>
 
-#include <sk/check.hxx>
+#include <sk/detail/trace.hxx>
 
 namespace sk::detail {
 
@@ -95,7 +95,7 @@ namespace sk::detail {
         static_assert(sizeof(To) < sizeof(From));
 
         if (v > widen<From>(std::numeric_limits<To>::max()))
-            sk::detail::unexpected("narrow() would truncate");
+            SK_UNEXPECTED("narrow() would truncate");
 
         return static_cast<To>(v);
     }
@@ -107,7 +107,7 @@ namespace sk::detail {
 
         if (v > widen<From>(std::numeric_limits<To>::max()) ||
             v < widen<From>(std::numeric_limits<To>::min()))
-            sk::detail::unexpected("narrow() would truncate");
+            SK_UNEXPECTED("narrow() would truncate");
 
         return static_cast<To>(v);
     }

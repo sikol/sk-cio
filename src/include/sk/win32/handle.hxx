@@ -31,7 +31,7 @@
 
 #include <system_error>
 
-#include <sk/check.hxx>
+#include <sk/detail/trace.hxx>
 #include <sk/expected.hxx>
 #include <sk/win32/error.hxx>
 #include <sk/win32/windows.hxx>
@@ -46,9 +46,8 @@ namespace sk::win32 {
      * copyable, but it can be moved.
      */
 
-    // NOLINTNEXTLINE
 #define SK_INVALID_HANDLE_VALUE                                                \
-    (reinterpret_cast<void *>(static_cast<uintptr_t>(-1)))
+    (reinterpret_cast<void *>(static_cast<uintptr_t>(-1))) // NOLINT
     // Would be nicer to do it like this, but casts to void* cannot be
     // constexpr.
     // static constexpr HANDLE invalid_handle_value = std::bit_cast<void
@@ -220,6 +219,12 @@ namespace sk::win32 {
             return _native_socket;
         }
 
+        auto release() -> SOCKET {
+            auto tmp = _native_socket;
+            _native_socket = INVALID_SOCKET;
+            return tmp;
+        }
+
     private:
         SOCKET _native_socket;
     };
@@ -230,15 +235,15 @@ namespace sk::win32 {
     template <>
     inline auto handle_cast<HANDLE>(SOCKET from) -> HANDLE
     {
-        return reinterpret_cast<HANDLE>(
-            from); // NOLINT(performance-no-int-to-ptr)
+        // NOLINTNEXTLINE(performance-no-int-to-ptr,cppcoreguidelines-pro-type-reinterpret-cast)
+        return reinterpret_cast<HANDLE>(from);
     }
 
     template <>
     inline auto handle_cast<SOCKET>(HANDLE from) -> SOCKET
     {
-        return reinterpret_cast<SOCKET>(
-            from); // NOLINT(performance-no-int-to-ptr)
+        // NOLINTNEXTLINE(performance-no-int-to-ptr,cppcoreguidelines-pro-type-reinterpret-cast)
+        return reinterpret_cast<SOCKET>(from);
     }
 
 } // namespace sk::win32

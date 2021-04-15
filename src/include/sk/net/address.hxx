@@ -40,10 +40,10 @@
 
 #include <sk/async_invoke.hxx>
 #include <sk/channel/error.hxx>
-#include <sk/check.hxx>
 #include <sk/detail/platform.hxx>
 #include <sk/detail/safeint.hxx>
 #include <sk/detail/strparse.hxx>
+#include <sk/detail/trace.hxx>
 #include <sk/expected.hxx>
 #include <sk/overload.hxx>
 #include <sk/patricia.hxx>
@@ -489,7 +489,7 @@ namespace sk::net {
                 return unix_family::as_bytes(address.addr.unix_);
 
             default:
-                sk::detail::unexpected("invalid tag in unspecified_address");
+                SK_UNEXPECTED("invalid tag in unspecified_address");
             }
         }
 
@@ -508,7 +508,7 @@ namespace sk::net {
                 return unix_family::to_string(address.addr.unix_);
 
             default:
-                sk::detail::unexpected("invalid tag in unspecified_address");
+                SK_UNEXPECTED("invalid tag in unspecified_address");
             }
         }
 
@@ -1022,7 +1022,8 @@ namespace sk::net {
     using unspecified_address = address<unspecified_family>;
 
     template <>
-    [[nodiscard]] inline auto make_address<unspecified_family>(std::string_view str) noexcept
+    [[nodiscard]] inline auto
+    make_address<unspecified_family>(std::string_view str) noexcept
         -> expected<unspecified_address, std::error_code>
     {
         auto a = unspecified_family::from_string(str);

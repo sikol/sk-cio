@@ -47,6 +47,8 @@ TEST_CASE("iseqfilechannel::open() existing file") {
         auto ret = chnl.open("test.txt");
         REQUIRE(ret);
     }
+
+    std::ignore = std::remove("test.txt");
 }
 
 TEST_CASE("iseqfilechannel::open() with write flags is an error") {
@@ -70,11 +72,11 @@ TEST_CASE("iseqfilechannel::open() with write flags is an error") {
 }
 
 TEST_CASE("iseqfilechannel::open() non-existing file") {
-    std::ignore = std::remove("test.txt");
+    std::ignore = std::remove("__sk_cio_nonexisting_file.txt");
 
     {
         sk::iseqfilechannel chnl;
-        auto ret = chnl.open("test.txt");
+        auto ret = chnl.open("__sk_cio_nonexisting_file.txt");
         REQUIRE(!ret);
         REQUIRE(ret.error() == std::errc::no_such_file_or_directory);
     }

@@ -30,15 +30,18 @@
 #define SK_WIN32_DETAIL_FILECHANNEL_BASE_HXX_INCLUDED
 
 #include <filesystem>
+#include <stop_token>
 #include <system_error>
 
 #include <sk/async_invoke.hxx>
 #include <sk/channel/error.hxx>
 #include <sk/channel/filechannel.hxx>
 #include <sk/channel/types.hxx>
+#include <sk/co_detach.hxx>
 #include <sk/detail/safeint.hxx>
 #include <sk/reactor.hxx>
 #include <sk/task.hxx>
+#include <sk/wait.hxx>
 #include <sk/win32/async_api.hxx>
 #include <sk/win32/error.hxx>
 #include <sk/win32/handle.hxx>
@@ -60,7 +63,7 @@ namespace sk::win32::detail {
         using native_handle_type = win32::unique_handle;
 
         filechannel_base() noexcept = default;
-        ~filechannel_base() = default;
+        ~filechannel_base();
 
         filechannel_base(filechannel_base &&) noexcept = default;
         auto operator=(filechannel_base &&) noexcept
@@ -97,7 +100,8 @@ namespace sk::win32::detail {
         template <std::size_t extent>
         [[nodiscard]] auto
         async_read_some_at(io_offset_t loc,
-                           std::span<value_type, extent> buf) noexcept
+                           std::span<value_type, extent> buf,
+                           std::stop_token token = {}) noexcept
             -> task<expected<io_size_t, std::error_code>>;
 
         template <std::size_t extent>
@@ -112,7 +116,8 @@ namespace sk::win32::detail {
         template <std::size_t extent>
         [[nodiscard]] auto
         async_write_some_at(io_offset_t loc,
-                            std::span<value_type const, extent> buf) noexcept
+                            std::span<value_type const, extent> buf,
+                            std::stop_token token = {}) noexcept
             -> task<expected<io_size_t, std::error_code>>;
 
         template <std::size_t extent>
@@ -121,7 +126,7 @@ namespace sk::win32::detail {
                       std::span<value_type const, extent> buf) noexcept
             -> expected<io_size_t, std::error_code>;
 
-        native_handle_type _native_handle;
+        iocb_handle cb;
     };
 
     /*************************************************************************
@@ -195,6 +200,25 @@ namespace sk::win32::detail {
     }
 
     /*************************************************************************
+     * filechannel_base::~filechannel_base()
+     */
+    inline filechannel_base::~filechannel_base()
+    {
+        if (is_open()) {
+            SK_TRACE("filechannel_base[{}]: destructing but iocb is still open",
+                     static_cast<void *>(this));
+
+            auto reactor = weak_reactor_handle::get();
+            auto *xer = reactor->get_system_executor();
+            wait(co_detach(
+                [cb = this->cb]() mutable -> task<void> {
+                    co_await iocore::async_iocb_close(cb);
+                }(),
+                xer));
+        }
+    }
+
+    /*************************************************************************
      * filechannel_base::async_open()
      */
     inline auto
@@ -209,73 +233,65 @@ namespace sk::win32::detail {
         DWORD dwShareMode = 0;
         DWORD dwCreationDisposition = 0;
 
+        SK_TRACE("filechannel_base::async_da_open[{}]: path={}, flags={:08b}",
+                 static_cast<void *>(this),
+                 path.string(),
+                 flags.value);
+
         if (!_make_flags(
                 flags, dwDesiredAccess, dwCreationDisposition, dwShareMode))
             co_return make_unexpected(sk::error::filechannel_invalid_flags);
 
         auto const &wpath(path.native());
 
-        auto handle = co_await win32::AsyncCreateFileW(wpath.c_str(),
-                                                       dwDesiredAccess,
-                                                       dwShareMode,
-                                                       nullptr,
-                                                       dwCreationDisposition,
-                                                       FILE_ATTRIBUTE_NORMAL |
-                                                           FILE_FLAG_OVERLAPPED,
-                                                       nullptr);
+        auto handle =
+            co_await async_invoke([=]() -> expected<HANDLE, std::error_code> {
+                auto hdl =
+                    ::CreateFileW(wpath.c_str(),
+                                  dwDesiredAccess,
+                                  dwShareMode,
+                                  nullptr,
+                                  dwCreationDisposition,
+                                  FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED,
+                                  nullptr);
+
+                SK_TRACE("filechannel_base::async_da_open[{}]: CreateFileW() "
+                         "returns {}, GetLastError={}",
+                         static_cast<void *>(this),
+                         hdl,
+                         ::GetLastError());
+
+                if (hdl == SK_INVALID_HANDLE_VALUE)
+                    return make_unexpected(win32::get_last_error());
+
+                return hdl;
+            });
 
         if (!handle)
-            co_return make_unexpected(
-                win32::win32_to_generic_error(handle.error()));
+            co_return make_unexpected(handle.error());
 
-        _native_handle = unique_handle(*handle);
+        auto ioh = iocore::create_iocb(*handle);
+        if (!ioh)
+            co_return make_unexpected(ioh.error());
+        cb = std::move(*ioh);
+
+        SK_TRACE(
+            "filechannel_base::async_da_open[{}]: handle is {}, iocb at {}",
+            static_cast<void *>(this),
+            cb->hdl,
+            static_cast<void *>(cb.get()));
+
         co_return {};
     }
 
     /*************************************************************************
-     * filechannel_base::open()
+     * filechannel_base::da_open()
      */
     inline auto filechannel_base::da_open(std::filesystem::path const &path,
                                           fileflag::flagset flags) noexcept
         -> expected<void, std::error_code>
     {
-        if (is_open())
-            return make_unexpected(sk::error::channel_already_open);
-
-        DWORD dwDesiredAccess = 0;
-        DWORD dwShareMode = 0;
-        DWORD dwCreationDisposition = 0;
-
-        if (!_make_flags(
-                flags, dwDesiredAccess, dwCreationDisposition, dwShareMode))
-            return make_unexpected(sk::error::filechannel_invalid_flags);
-
-        auto const &wpath(path.native());
-
-        HANDLE handle =
-            ::CreateFileW(wpath.c_str(),
-                          dwDesiredAccess,
-                          dwShareMode,
-                          nullptr,
-                          dwCreationDisposition,
-                          FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED,
-                          nullptr);
-
-        // Return error if any.
-        if (handle == SK_INVALID_HANDLE_VALUE)
-            return make_unexpected(
-                win32::win32_to_generic_error(win32::get_last_error()));
-
-        // Because we didn't use AsyncCreateFileW(), we have to manually
-        // associate the handle with the completion port.
-        auto reactor = weak_reactor_handle::get();
-        auto aret = reactor->associate_handle(handle);
-
-        if (!aret)
-            return make_unexpected(aret.error());
-
-        _native_handle = unique_handle(handle);
-        return {};
+        return wait(async_da_open(path, flags));
     }
 
     /*************************************************************************
@@ -284,7 +300,7 @@ namespace sk::win32::detail {
     inline auto filechannel_base::is_open() const noexcept -> bool
     {
 
-        return static_cast<bool>(_native_handle);
+        return static_cast<bool>(cb);
     }
 
     /*************************************************************************
@@ -293,13 +309,7 @@ namespace sk::win32::detail {
     inline auto filechannel_base::close() noexcept
         -> expected<void, std::error_code>
     {
-        if (!is_open())
-            return make_unexpected(sk::error::channel_not_open);
-
-        auto ret = _native_handle.close();
-        if (!ret)
-            return make_unexpected(ret.error());
-        return {};
+        return wait(async_close());
     }
 
     /*************************************************************************
@@ -308,9 +318,17 @@ namespace sk::win32::detail {
     inline auto filechannel_base::async_close() noexcept
         -> task<expected<void, std::error_code>>
     {
-        auto ret =
-            co_await async_invoke([&] { return _native_handle.close(); });
+        SK_CHECK(is_open(), "attempting to close a stream which is not open");
 
+        unique_handle handle(cb->hdl);
+
+        // Destroy the iocb.
+        co_await iocore::async_iocb_close(cb);
+
+        cb.reset();
+
+        // Close the handle.
+        auto ret = handle.close();
         if (!ret)
             co_return make_unexpected(ret.error());
 
@@ -321,26 +339,34 @@ namespace sk::win32::detail {
      * filechannel_base::_async_read_some_at()
      */
     template <std::size_t extent>
-    auto filechannel_base::async_read_some_at(
-        io_offset_t loc, std::span<value_type, extent> buf) noexcept
+    auto filechannel_base::async_read_some_at(io_offset_t loc,
+                                              std::span<value_type, extent> buf,
+                                              std::stop_token token) noexcept
         -> task<expected<io_size_t, std::error_code>>
     {
         SK_CHECK(is_open(), "attempt to read on a closed channel");
 
-        auto dwbytes = sk::detail::truncate<DWORD>(buf.size());
+        auto bufsize = sk::detail::truncate<DWORD>(buf.size());
+        auto nbytes = co_await iocore::async_iocb_invoke_overlapped(
+            cb,
+            std::move(token),
+            [&](HANDLE hdl, iocore::iocb::io *io) -> DWORD {
+                io->Offset = static_cast<DWORD>(loc & 0xFFFFFFFFUL);
+                io->OffsetHigh = static_cast<DWORD>(loc >> 32);
 
-        DWORD bytes_read = 0;
-        auto ret = co_await win32::AsyncReadFile(_native_handle.native_handle(),
-                                                 buf.data(),
-                                                 dwbytes,
-                                                 &bytes_read,
-                                                 loc);
+                auto ret = ::ReadFile(
+                    hdl, buf.data(), bufsize, &io->bytes_transferred, io);
 
-        if (!ret)
-            co_return make_unexpected(
-                win32::win32_to_generic_error(ret.error()));
+                if (ret == TRUE)
+                    return NO_ERROR;
 
-        co_return bytes_read;
+                return ::GetLastError();
+            });
+
+        if (!nbytes)
+            co_return make_unexpected(nbytes.error());
+
+        co_return *nbytes;
     }
 
     /*************************************************************************
@@ -352,46 +378,7 @@ namespace sk::win32::detail {
                                    std::span<value_type, extent> buf) noexcept
         -> expected<io_size_t, std::error_code>
     {
-        SK_CHECK(is_open(), "attempt to read on a closed channel");
-
-        auto dwbytes = sk::detail::truncate<DWORD>(buf.size());
-
-        OVERLAPPED overlapped;
-        std::memset(&overlapped, 0, sizeof(overlapped));
-        overlapped.Offset = static_cast<DWORD>(loc & 0xFFFFFFFFUL);
-        overlapped.OffsetHigh = static_cast<DWORD>(loc >> 32);
-
-        // Create an event for the OVERLAPPED.  We don't actually use the event
-        // but it has to be present.
-        auto event_handle = ::CreateEventW(nullptr, FALSE, FALSE, nullptr);
-        if (event_handle == nullptr)
-            return make_unexpected(
-                win32::win32_to_generic_error(win32::get_last_error()));
-
-        unique_handle evt(event_handle);
-
-        // Set the low bit on the event handle to prevent the completion packet
-        // being queued to the iocp_reactor, which won't know what to do with
-        // it.
-        overlapped.hEvent = reinterpret_cast<HANDLE>(
-            reinterpret_cast<std::uintptr_t>(event_handle) | 0x1);
-
-        DWORD bytes_read = 0;
-        auto ret = ::ReadFile(_native_handle.native_handle(),
-                              buf.data(),
-                              dwbytes,
-                              &bytes_read,
-                              &overlapped);
-
-        if (!ret && (::GetLastError() == ERROR_IO_PENDING))
-            ret = ::GetOverlappedResult(
-                _native_handle.native_handle(), &overlapped, &bytes_read, TRUE);
-
-        if (!ret)
-            return make_unexpected(
-                win32::win32_to_generic_error(win32::get_last_error()));
-
-        return bytes_read;
+        return wait(async_read_some_at(loc, buf));
     }
 
     /*************************************************************************
@@ -399,26 +386,34 @@ namespace sk::win32::detail {
      */
     template <std::size_t extent>
     auto filechannel_base::async_write_some_at(
-        io_offset_t loc, std::span<value_type const, extent> buf) noexcept
+        io_offset_t loc,
+        std::span<value_type const, extent> buf,
+        std::stop_token token) noexcept
         -> task<expected<io_size_t, std::error_code>>
     {
         SK_CHECK(is_open(), "attempt to write on a closed channel");
 
-        auto dwbytes = sk::detail::truncate<DWORD>(buf.size());
-        DWORD bytes_written = 0;
+        auto bufsize = sk::detail::truncate<DWORD>(buf.size());
+        auto nbytes = co_await iocore::async_iocb_invoke_overlapped(
+            cb,
+            std::move(token),
+            [&](HANDLE hdl, iocore::iocb::io *io) -> DWORD {
+                io->Offset = static_cast<DWORD>(loc & 0xFFFFFFFFUL);
+                io->OffsetHigh = static_cast<DWORD>(loc >> 32);
 
-        auto ret =
-            co_await win32::AsyncWriteFile(_native_handle.native_handle(),
-                                           buf.data(),
-                                           dwbytes,
-                                           &bytes_written,
-                                           loc);
+                auto ret = ::WriteFile(
+                    hdl, buf.data(), bufsize, &io->bytes_transferred, io);
 
-        if (ret)
-            co_return make_unexpected(
-                win32::win32_to_generic_error(ret.error()));
+                if (ret == TRUE)
+                    return NO_ERROR;
 
-        co_return bytes_written;
+                return ::GetLastError();
+            });
+
+        if (nbytes)
+            co_return make_unexpected(nbytes.error());
+
+        co_return nbytes;
     }
 
     /*************************************************************************
@@ -430,48 +425,7 @@ namespace sk::win32::detail {
         io_offset_t loc, std::span<value_type const, extent> buf) noexcept
         -> expected<io_size_t, std::error_code>
     {
-        SK_CHECK(is_open(), "attempt to write on a closed channel");
-
-        auto dwbytes = sk::detail::truncate<DWORD>(buf.size());
-
-        OVERLAPPED overlapped;
-        std::memset(&overlapped, 0, sizeof(overlapped));
-        overlapped.Offset = static_cast<DWORD>(loc & 0xFFFFFFFFUL);
-        overlapped.OffsetHigh = static_cast<DWORD>(loc >> 32);
-
-        // Create an event for the OVERLAPPED.  We don't actually use the event
-        // but it has to be present.
-        auto event_handle = ::CreateEventW(nullptr, FALSE, FALSE, nullptr);
-        if (event_handle == nullptr)
-            return make_unexpected(
-                win32::win32_to_generic_error(win32::get_last_error()));
-
-        unique_handle evt(event_handle);
-
-        // Set the low bit on the event handle to prevent the completion packet
-        // being queued to the iocp_reactor, which won't know what to do with
-        // it.
-        overlapped.hEvent = reinterpret_cast<HANDLE>(
-            reinterpret_cast<std::uintptr_t>(event_handle) | 0x1);
-
-        DWORD bytes_written = 0;
-        auto ret = ::WriteFile(_native_handle.native_handle(),
-                               buf.data(),
-                               dwbytes,
-                               &bytes_written,
-                               &overlapped);
-
-        if (!ret && (::GetLastError() == ERROR_IO_PENDING))
-            ret = ::GetOverlappedResult(_native_handle.native_handle(),
-                                        &overlapped,
-                                        &bytes_written,
-                                        TRUE);
-
-        if (!ret)
-            return make_unexpected(
-                win32::win32_to_generic_error(win32::get_last_error()));
-
-        return bytes_written;
+        return wait(async_write_some_at(loc, buf));
     }
 
     /*************************************************************************

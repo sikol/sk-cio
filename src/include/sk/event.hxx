@@ -26,39 +26,35 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef SK_CHECK_HXX
-#define SK_CHECK_HXX
+#ifndef SK_EVENT_HXX
+#define SK_EVENT_HXX
 
-#include <iostream>
+#include <mutex>
+#include <condition_variable>
 
-namespace sk::detail {
+namespace sk {
 
-    [[noreturn]] inline auto unexpected(char const *what) noexcept -> void
-    {
-        std::cerr << "sk-cio: fatal internal error: " << what << std::endl;
-        std::abort();
-    }
+    // A lightweight event object.
+    struct event {
+        std::mutex mtx;
+        std::condition_variable cv;
+        bool triggered{};
 
-} // namespace sk::detail
+        auto signal() noexcept -> void {
+            std::lock_guard lock(mtx);
+            triggered = true;
+            cv.notify_all();
+        }
 
-/*************************************************************************
- * SK_CHECK: conditional assert for debug builds.
- */
+        auto wait() noexcept -> void {
+            std::unique_lock lock(mtx);
+            cv.wait(lock, [&] { return triggered; });
+        }
 
-#ifndef NDEBUG
+        auto reset() noexcept -> void {
+            triggered = false;
+        }
+    };
 
-#    define SK_CHECK(cond, msg)                                                \
-        do {                                                                   \
-            if (!(cond)) {                                                     \
-                std::cerr << "sk-cio invariant failure: " << (msg) << '\n';    \
-                std::abort();                                                  \
-            }                                                                  \
-        } while (0)
-
-#else
-
-#    define SK_CHECK(cond, msg) ((void)0)
-
-#endif
-
-#endif // SK_CHECK_HXX
+}
+#endif // SK_EVENT_HXX

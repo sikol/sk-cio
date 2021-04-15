@@ -37,7 +37,7 @@
 
 #include <sk/channel/error.hxx>
 #include <sk/channel/types.hxx>
-#include <sk/check.hxx>
+#include <sk/detail/trace.hxx>
 #include <sk/expected.hxx>
 #include <sk/task.hxx>
 

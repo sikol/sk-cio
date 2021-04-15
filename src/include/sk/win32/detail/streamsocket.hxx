@@ -30,11 +30,11 @@
 #define SK_WIN32_DETAIL_STREAMSOCKET_HXX_INCLUDED
 
 #include <cstddef>
-
-#include <afunix.h>
+#include <stop_token>
 
 #include <sk/async_invoke.hxx>
 #include <sk/channel/concepts.hxx>
+#include <sk/co_detach.hxx>
 #include <sk/detail/safeint.hxx>
 #include <sk/expected.hxx>
 #include <sk/net/address.hxx>
@@ -42,23 +42,29 @@
 #include <sk/win32/async_api.hxx>
 #include <sk/win32/handle.hxx>
 
+#ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
+#    include <afunix.h>
+#endif
+
 namespace sk::win32::detail {
 
     template <int type, int protocol>
     struct streamsocket {
     protected:
-        unique_socket _native_handle;
+        iocb_handle cb;
 
         streamsocket() noexcept = default;
 
-        explicit streamsocket(unique_socket &&sock) noexcept;
+        explicit streamsocket(iocb_handle &&sock) noexcept;
 
         streamsocket(streamsocket &&) noexcept = default;
         auto operator=(streamsocket &&) noexcept -> streamsocket & = default;
-        ~streamsocket() = default;
+        ~streamsocket();
 
-        [[nodiscard]] auto
-        _async_connect(int af, sockaddr const *addr, socklen_t addrlen) noexcept
+        [[nodiscard]] auto _async_connect(int af,
+                                          sockaddr const *addr,
+                                          socklen_t addrlen,
+                                          std::stop_token token = {}) noexcept
             -> task<expected<void, std::error_code>>;
 
         [[nodiscard]] auto
@@ -74,14 +80,15 @@ namespace sk::win32::detail {
 
         [[nodiscard]] auto is_open() const noexcept -> bool;
 
-        [[nodiscard]] auto async_read_some(std::span<value_type> buf) noexcept
+        [[nodiscard]] auto async_read_some(std::span<value_type> buf,
+                                           std::stop_token token = {}) noexcept
             -> task<expected<io_size_t, std::error_code>>;
 
         [[nodiscard]] auto read_some(std::span<value_type> buf) noexcept
             -> expected<io_size_t, std::error_code>;
 
-        [[nodiscard]] auto
-        async_write_some(std::span<value_type const> buf) noexcept
+        [[nodiscard]] auto async_write_some(std::span<value_type const> buf,
+                                            std::stop_token token = {}) noexcept
             -> task<expected<io_size_t, std::error_code>>;
 
         [[nodiscard]] auto write_some(std::span<value_type const> buf) noexcept
@@ -98,9 +105,30 @@ namespace sk::win32::detail {
      */
 
     template <int type, int protocol>
-    streamsocket<type, protocol>::streamsocket(unique_socket &&sock) noexcept
-        : _native_handle(std::move(sock))
+    streamsocket<type, protocol>::streamsocket(iocb_handle &&sock) noexcept
+        : cb(std::move(sock))
     {
+    }
+
+    /*************************************************************************
+     * streamsocket::~streamsocket()
+     */
+
+    template <int type, int protocol>
+    streamsocket<type, protocol>::~streamsocket()
+    {
+        if (is_open()) {
+            SK_TRACE("streamsocket[{}]: destructing but iocb is still open",
+                     static_cast<void *>(this));
+
+            auto reactor = weak_reactor_handle::get();
+            auto *xer = reactor->get_system_executor();
+            wait(co_detach(
+                [cb = this->cb]() mutable -> task<void> {
+                    co_await iocore::async_iocb_close(cb);
+                }(),
+                xer));
+        }
     }
 
     /*************************************************************************
@@ -110,7 +138,7 @@ namespace sk::win32::detail {
     template <int type, int protocol>
     auto streamsocket<type, protocol>::is_open() const noexcept -> bool
     {
-        return _native_handle;
+        return static_cast<bool>(cb);
     }
 
     /*************************************************************************
@@ -120,13 +148,7 @@ namespace sk::win32::detail {
     auto streamsocket<type, protocol>::close() noexcept
         -> expected<void, std::error_code>
     {
-        if (!is_open())
-            return make_unexpected(sk::error::channel_not_open);
-
-        auto err = _native_handle.close();
-        if (err)
-            return make_unexpected(err);
-        return {};
+        return wait(async_close());
     }
 
     /*************************************************************************
@@ -136,11 +158,19 @@ namespace sk::win32::detail {
     auto streamsocket<type, protocol>::async_close() noexcept
         -> task<expected<void, std::error_code>>
     {
-        auto err =
-            co_await async_invoke([&]() { return _native_handle.close(); });
+        SK_CHECK(is_open(), "attempting to close a stream which is not open");
 
-        if (err)
-            co_return make_unexpected(err);
+        unique_handle handle(cb->hdl);
+
+        // Destroy the iocb.
+        co_await iocore::async_iocb_close(cb);
+
+        cb.reset();
+
+        // Close the handle.
+        auto ret = handle.close();
+        if (!ret)
+            co_return make_unexpected(ret.error());
 
         co_return {};
     }
@@ -149,8 +179,11 @@ namespace sk::win32::detail {
      * streamsocket::async_connect()
      */
     template <int type, int protocol>
-    auto streamsocket<type, protocol>::_async_connect(
-        int af, sockaddr const *addr, socklen_t addrlen) noexcept
+    auto
+    streamsocket<type, protocol>::_async_connect(int af,
+                                                 sockaddr const *addr,
+                                                 socklen_t addrlen,
+                                                 std::stop_token token) noexcept
         -> task<expected<void, std::error_code>>
     {
         SK_CHECK(!is_open(), "attempt to re-connect an open channel");
@@ -161,7 +194,31 @@ namespace sk::win32::detail {
         if (sock == INVALID_SOCKET)
             co_return make_unexpected(win32::get_last_winsock_error());
 
-        unique_socket sock_(sock);
+        struct socket_deleter {
+            auto operator()(void *s)
+            {
+                ::closesocket(handle_cast<SOCKET>(s));
+            }
+        };
+
+        std::unique_ptr<void, socket_deleter> sock_(handle_cast<HANDLE>(sock));
+
+        static GUID connectex_guid = WSAID_CONNECTEX;
+        LPFN_CONNECTEX ConnectEx{};
+        DWORD n{};
+
+        auto ret = ::WSAIoctl(sock,
+                              SIO_GET_EXTENSION_FUNCTION_POINTER,
+                              (void *)&connectex_guid,
+                              sizeof(connectex_guid),
+                              (void *)&ConnectEx,
+                              sizeof(ConnectEx),
+                              &n,
+                              nullptr,
+                              nullptr);
+
+        if (ret != 0)
+            co_return make_unexpected(sk::error::winsock_no_connectex);
 
         // Winsock requires binding the socket before we can use ConnectEx().
         // Bind it to the all-zeroes address.
@@ -169,23 +226,37 @@ namespace sk::win32::detail {
         zero_address.ss_family = static_cast<ADDRESS_FAMILY>(af);
 
         if (::bind(sock,
-                   reinterpret_cast<sockaddr *>(&zero_address),
+                   net::detail::sockaddr_cast<sockaddr const *>(&zero_address),
                    sizeof(zero_address)) != 0)
             co_return make_unexpected(win32::get_last_winsock_error());
 
-        auto reactor = weak_reactor_handle::get();
-        auto aret = reactor->associate_handle(handle_cast<HANDLE>(sock));
+        auto ioh = iocore::create_iocb(handle_cast<HANDLE>(sock));
+        if (!ioh)
+            co_return make_unexpected(ioh.error());
 
-        if (!aret)
-            co_return make_unexpected(aret.error());
+        auto connstatus = co_await iocore::async_iocb_invoke_overlapped(
+            *ioh,
+            std::move(token),
+            [&](HANDLE hdl, iocore::iocb::io *io) -> DWORD {
+                auto ret = ConnectEx(handle_cast<SOCKET>(hdl),
+                                     addr,
+                                     addrlen,
+                                     nullptr,
+                                     0,
+                                     &io->bytes_transferred,
+                                     io);
 
-        auto ret = co_await win32::AsyncConnectEx(
-            sock, addr, addrlen, nullptr, 0, nullptr);
+                if (ret == TRUE)
+                    return NO_ERROR;
 
-        if (!ret)
-            co_return make_unexpected(ret.error());
+                return ::WSAGetLastError();
+            });
 
-        _native_handle = std::move(sock_);
+        if (!connstatus)
+            co_return make_unexpected(connstatus.error());
+
+        cb = std::move(*ioh);
+        sock_.release();
         co_return {};
     }
 
@@ -198,40 +269,7 @@ namespace sk::win32::detail {
                                                 socklen_t addrlen) noexcept
         -> expected<void, std::error_code>
     {
-        SK_CHECK(is_open(), "attempt to connect on a closed channel");
-
-        auto sock = ::WSASocketW(
-            af, SOCK_STREAM, protocol, nullptr, 0, WSA_FLAG_OVERLAPPED);
-
-        if (sock == INVALID_SOCKET)
-            return make_unexpected(win32::get_last_winsock_error());
-
-        unique_socket sock_(sock);
-
-        // Winsock requires binding the socket before we can use ConnectEx().
-        // Bind it to the all-zeroes address.
-        sockaddr_storage zero_address{};
-        zero_address.ss_family = static_cast<ADDRESS_FAMILY>(af);
-
-        if (::bind(sock,
-                   reinterpret_cast<sockaddr *>(&zero_address),
-                   sizeof(zero_address)) != 0)
-            return make_unexpected(win32::get_last_winsock_error());
-
-        auto reactor = weak_reactor_handle::get();
-        auto aret = reactor->associate_handle(handle_cast<HANDLE>(sock));
-
-        if (!aret)
-            return make_unexpected(aret.error());
-
-        auto ret = ::WSAConnect(
-            sock, addr, addrlen, nullptr, nullptr, nullptr, nullptr);
-
-        if (ret)
-            return make_unexpected(win32::get_last_winsock_error());
-
-        _native_handle = std::move(sock_);
-        return {};
+        return wait(_async_connect(af, addr, addrlen));
     }
 
     /*************************************************************************
@@ -240,30 +278,33 @@ namespace sk::win32::detail {
 
     template <int type, int protocol>
     auto streamsocket<type, protocol>::async_read_some(
-        std::span<value_type> buf) noexcept
+        std::span<value_type> buf, std::stop_token token) noexcept
         -> task<expected<io_size_t, std::error_code>>
     {
         SK_CHECK(is_open(), "attempt to read on a closed channel");
 
-        auto dwbytes = sk::detail::truncate<DWORD>(buf.size());
+        auto bufsize = sk::detail::truncate<DWORD>(buf.size());
+        auto nbytes = co_await iocore::async_iocb_invoke_overlapped(
+            cb,
+            std::move(token),
+            [&](HANDLE hdl, iocore::iocb::io *io) -> DWORD {
+                auto ret = ::ReadFile(
+                    hdl, buf.data(), bufsize, &io->bytes_transferred, io);
 
-        DWORD bytes_read = 0;
-        auto ret = co_await win32::AsyncReadFile(
-            reinterpret_cast<HANDLE>(_native_handle.native_socket()),
-            buf.data(),
-            dwbytes,
-            &bytes_read,
-            0);
+                if (ret == TRUE)
+                    return NO_ERROR;
 
-        if (!ret)
-            co_return make_unexpected(
-                win32::win32_to_generic_error(ret.error()));
+                return ::GetLastError();
+            });
+
+        if (!nbytes)
+            co_return make_unexpected(nbytes.error());
 
         // 0 bytes = client went away
-        if (bytes_read == 0)
+        if (*nbytes == 0)
             co_return make_unexpected(sk::error::end_of_file);
 
-        co_return bytes_read;
+        co_return *nbytes;
     }
 
     /*************************************************************************
@@ -275,52 +316,7 @@ namespace sk::win32::detail {
     streamsocket<type, protocol>::read_some(std::span<value_type> buf) noexcept
         -> expected<io_size_t, std::error_code>
     {
-        SK_CHECK(is_open(), "attempt to read on a closed channel");
-
-        DWORD bytes_read = 0;
-        auto dwbytes = sk::detail::truncate<DWORD>(buf.size());
-
-        OVERLAPPED overlapped;
-        std::memset(&overlapped, 0, sizeof(overlapped));
-
-        // Create an event for the OVERLAPPED.  We don't actually use the event
-        // but it has to be present.
-        HANDLE event_handle = ::CreateEventW(nullptr, FALSE, FALSE, nullptr);
-        if (event_handle == nullptr)
-            return make_unexpected(
-                win32::win32_to_generic_error(win32::get_last_error()));
-
-        unique_handle evt(event_handle);
-
-        // Set the low bit on the event handle to prevent the completion packet
-        // being queued to the iocp_reactor, which won't know what to do with
-        // it.
-        overlapped.hEvent = reinterpret_cast<HANDLE>(
-            reinterpret_cast<std::uintptr_t>(event_handle) | 0x1);
-
-        auto ret =
-            ::ReadFile(reinterpret_cast<HANDLE>(_native_handle.native_socket()),
-                       buf.data(),
-                       dwbytes,
-                       &bytes_read,
-                       &overlapped);
-
-        if ((ret == FALSE) && (::GetLastError() == ERROR_IO_PENDING))
-            ret = ::GetOverlappedResult(
-                reinterpret_cast<HANDLE>(_native_handle.native_socket()),
-                &overlapped,
-                &bytes_read,
-                TRUE);
-
-        if (ret == FALSE)
-            return make_unexpected(
-                win32::win32_to_generic_error(win32::get_last_error()));
-
-        // 0 bytes = client went away
-        if (bytes_read == 0)
-            return make_unexpected(sk::error::end_of_file);
-
-        return bytes_read;
+        return wait(async_read_some(buf));
     }
 
     /*************************************************************************
@@ -329,26 +325,29 @@ namespace sk::win32::detail {
 
     template <int type, int protocol>
     auto streamsocket<type, protocol>::async_write_some(
-        std::span<value_type const> buf) noexcept
+        std::span<value_type const> buf, std::stop_token token) noexcept
         -> task<expected<io_size_t, std::error_code>>
     {
         SK_CHECK(is_open(), "attempt to write on a closed channel");
 
-        DWORD bytes_written = 0;
-        auto dwbytes = sk::detail::truncate<DWORD>(buf.size());
+        auto bufsize = sk::detail::truncate<DWORD>(buf.size());
+        auto nbytes = co_await iocore::async_iocb_invoke_overlapped(
+            cb,
+            std::move(token),
+            [&](HANDLE hdl, iocore::iocb::io *io) -> DWORD {
+                auto ret = ::WriteFile(
+                    hdl, buf.data(), bufsize, &io->bytes_transferred, io);
 
-        auto ret = co_await win32::AsyncWriteFile(
-            reinterpret_cast<HANDLE>(_native_handle.native_socket()),
-            buf.data(),
-            dwbytes,
-            &bytes_written,
-            0);
+                if (ret == TRUE)
+                    return NO_ERROR;
 
-        if (!ret)
-            co_return make_unexpected(
-                win32::win32_to_generic_error(ret.error()));
+                return ::GetLastError();
+            });
 
-        co_return bytes_written;
+        if (!nbytes)
+            co_return make_unexpected(nbytes.error());
+
+        co_return *nbytes;
     }
 
     /*************************************************************************
@@ -360,48 +359,7 @@ namespace sk::win32::detail {
         std::span<value_type const> buf) noexcept
         -> expected<io_size_t, std::error_code>
     {
-        SK_CHECK(is_open(), "attempt to write on a closed channel");
-
-        auto dwbytes = sk::detail::truncate<DWORD>(buf.size());
-
-        OVERLAPPED overlapped;
-        std::memset(&overlapped, 0, sizeof(overlapped));
-
-        // Create an event for the OVERLAPPED.  We don't actually use the event
-        // but it has to be present.
-        HANDLE event_handle = ::CreateEventW(nullptr, FALSE, FALSE, nullptr);
-        if (event_handle == nullptr)
-            return make_unexpected(
-                win32::win32_to_generic_error(win32::get_last_error()));
-
-        unique_handle evt(event_handle);
-
-        // Set the low bit on the event handle to prevent the completion packet
-        // being queued to the iocp_reactor, which won't know what to do with
-        // it.
-        overlapped.hEvent = reinterpret_cast<HANDLE>(
-            reinterpret_cast<std::uintptr_t>(event_handle) | 0x1);
-
-        DWORD bytes_written = 0;
-        auto ret = ::WriteFile(
-            reinterpret_cast<HANDLE>(_native_handle.native_socket()),
-            buf.data(),
-            dwbytes,
-            &bytes_written,
-            &overlapped);
-
-        if ((ret == FALSE) && (::GetLastError() == ERROR_IO_PENDING))
-            ret = ::GetOverlappedResult(
-                reinterpret_cast<HANDLE>(_native_handle.native_socket()),
-                &overlapped,
-                &bytes_written,
-                TRUE);
-
-        if (ret == FALSE)
-            return make_unexpected(
-                win32::win32_to_generic_error(win32::get_last_error()));
-
-        return bytes_written;
+        return wait(async_write_some(buf));
     }
 
     template <typename server_type,
@@ -409,18 +367,18 @@ namespace sk::win32::detail {
               int type,
               int protocol>
     class streamsocketserver {
-        unique_socket _native_handle;
+        iocb_handle cb;
 
         // On Windows, we need to create a new socket to accept into, which
         // means we need to know the address family we're accepting for.
         int _address_family{AF_UNSPEC};
 
     protected:
-        streamsocketserver(unique_socket &&sock, int address_family) noexcept;
+        streamsocketserver(iocb_handle &&ioh, int address_family) noexcept;
         streamsocketserver(streamsocketserver &&) noexcept = default;
         auto operator=(streamsocketserver &&) noexcept
             -> streamsocketserver & = default;
-        ~streamsocketserver() = default;
+        ~streamsocketserver();
 
         [[nodiscard]] static auto
         _listen(int af, sockaddr const *addr, socklen_t addrlen) noexcept
@@ -436,7 +394,7 @@ namespace sk::win32::detail {
 
         [[nodiscard]] auto is_open() const noexcept -> bool;
 
-        [[nodiscard]] auto async_accept() noexcept
+        [[nodiscard]] auto async_accept(std::stop_token token = {}) noexcept
             -> task<expected<channel_type, std::error_code>>;
 
         [[nodiscard]] auto accept() noexcept
@@ -457,9 +415,35 @@ namespace sk::win32::detail {
               int type,
               int protocol>
     streamsocketserver<server_type, channel_type, type, protocol>::
-        streamsocketserver(unique_socket &&sock, int address_family) noexcept
-        : _native_handle(std::move(sock)), _address_family(address_family)
+        streamsocketserver(iocb_handle &&ioh, int address_family) noexcept
+        : cb(std::move(ioh)), _address_family(address_family)
     {
+    }
+
+    /*************************************************************************
+     * streamsocketserver::~streamsocketserver()
+     */
+
+    template <typename server_type,
+              seqchannel channel_type,
+              int type,
+              int protocol>
+    streamsocketserver<server_type, channel_type, type, protocol>::
+        ~streamsocketserver()
+    {
+        if (is_open()) {
+            SK_TRACE(
+                "streamsocketserver[{}]: destructing but iocb is still open",
+                static_cast<void *>(this));
+
+            auto reactor = weak_reactor_handle::get();
+            auto *xer = reactor->get_system_executor();
+            wait(co_detach(
+                [cb = this->cb]() mutable -> task<void> {
+                    co_await iocore::async_iocb_close(cb);
+                }(),
+                xer));
+        }
     }
 
     /*************************************************************************
@@ -474,11 +458,11 @@ namespace sk::win32::detail {
     streamsocketserver<server_type, channel_type, type, protocol>::is_open()
         const noexcept -> bool
     {
-        return _native_handle;
+        return static_cast<bool>(cb);
     }
 
     /*************************************************************************
-     * streamsocketserver::bind()
+     * streamsocketserver::listen}()
      */
 
     template <typename server_type,
@@ -502,11 +486,13 @@ namespace sk::win32::detail {
         if (af != AF_UNIX) {
 #endif
             DWORD one = 1;
-            int sret = ::setsockopt(listener,
-                                   SOL_SOCKET,
-                                   SO_REUSEADDR,
-                                   reinterpret_cast<char const *>(&one),
-                                   sizeof(one));
+            int sret = ::setsockopt(
+                listener,
+                SOL_SOCKET,
+                SO_REUSEADDR,
+                // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+                reinterpret_cast<char const *>(&one),
+                sizeof(one));
             if (sret == SOCKET_ERROR)
                 return make_unexpected(win32::get_last_winsock_error());
 #ifdef SK_CIO_PLATFORM_HAS_AF_UNIX
@@ -515,19 +501,18 @@ namespace sk::win32::detail {
 
         int ret = ::bind(listener, addr, addrlen);
         if (ret == SOCKET_ERROR)
-            return make_unexpected(win32::get_last_winsock_error());
+            return make_unexpected(win32::get_last_error());
 
         ret = ::listen(listener, SOMAXCONN);
         if (ret == SOCKET_ERROR)
-            return make_unexpected(win32::get_last_winsock_error());
+            return make_unexpected(win32::get_last_error());
 
-        auto reactor = weak_reactor_handle::get();
-        auto aret = reactor->associate_handle(handle_cast<HANDLE>(listener));
+        auto ioh = iocore::create_iocb(handle_cast<HANDLE>(listener));
+        if (!ioh)
+            return make_unexpected(win32::get_last_error());
 
-        if (!aret)
-            return make_unexpected(aret.error());
-
-        return server_type{std::move(listener_), af};
+        listener_.release();
+        return server_type(std::move(*ioh), af);
     }
 
     /*************************************************************************
@@ -540,13 +525,7 @@ namespace sk::win32::detail {
     auto streamsocketserver<server_type, channel_type, type, protocol>::
         close() noexcept -> expected<void, std::error_code>
     {
-        if (!is_open())
-            return make_unexpected(sk::error::channel_not_open);
-
-        auto err = _native_handle.close();
-        if (err)
-            return make_unexpected(err);
-        return {};
+        return wait(async_close());
     }
 
     /*************************************************************************
@@ -559,11 +538,35 @@ namespace sk::win32::detail {
     auto streamsocketserver<server_type, channel_type, type, protocol>::
         async_close() noexcept -> task<expected<void, std::error_code>>
     {
-        auto err =
-            co_await async_invoke([&] { return _native_handle.close(); });
+        SK_CHECK(is_open(), "attempting to close a stream which is not open");
 
-        if (err)
-            co_return make_unexpected(err);
+        SK_TRACE("streamsocketserver[{}]: async_close: enter",
+                 static_cast<void *>(this));
+
+        unique_handle handle(cb->hdl);
+
+        // Destroy the iocb.
+        co_await iocore::async_iocb_close(cb);
+
+        SK_TRACE(
+            "streamsocketserver[{}]: async_close: async_iocb_close complete",
+            static_cast<void *>(this));
+
+        cb.reset();
+
+        SK_TRACE("streamsocketserver[{}]: async_close: closing the handle",
+                 static_cast<void *>(this));
+
+        // Close the handle.
+        auto ret = handle.close();
+        if (!ret) {
+            SK_TRACE("streamsocketserver[{}]: async_close: return with error",
+                     static_cast<void *>(this));
+            co_return make_unexpected(ret.error());
+        }
+
+        SK_TRACE("streamsocketserver[{}]: async_close: return success",
+                 static_cast<void *>(this));
 
         co_return {};
     }
@@ -575,8 +578,10 @@ namespace sk::win32::detail {
               seqchannel channel_type,
               int type,
               int protocol>
-    auto streamsocketserver<server_type, channel_type, type, protocol>::
-        async_accept() noexcept -> task<expected<channel_type, std::error_code>>
+    auto
+    streamsocketserver<server_type, channel_type, type, protocol>::async_accept(
+        std::stop_token token) noexcept
+        -> task<expected<channel_type, std::error_code>>
     {
         auto client_socket = ::socket(_address_family, type, protocol);
 
@@ -585,31 +590,56 @@ namespace sk::win32::detail {
 
         unique_socket client_socket_(client_socket);
 
+        LPFN_ACCEPTEX AcceptEx{};
+        static GUID accpectex_guid = WSAID_ACCEPTEX;
+        DWORD n = 0;
+
+        auto ret = ::WSAIoctl(client_socket,
+                              SIO_GET_EXTENSION_FUNCTION_POINTER,
+                              (void *)&accpectex_guid,
+                              sizeof(accpectex_guid),
+                              (void *)&AcceptEx,
+                              sizeof(AcceptEx),
+                              &n,
+                              nullptr,
+                              nullptr);
+
+        if (ret == SOCKET_ERROR)
+            co_return make_unexpected(sk::error::winsock_no_acceptex);
+
+        auto ioh = iocore::create_iocb(handle_cast<HANDLE>(client_socket));
+        if (!ioh)
+            co_return make_unexpected(ioh.error());
+
         // This has to be provided even though we don't use it.
         // Windows requires 16 bytes + the address size for local and remote.
         static constexpr std::size_t junkpad = 16;
         std::array<char, (junkpad + sizeof(sockaddr_storage)) * 2> junk{};
 
-        auto ret =
-            co_await win32::AsyncAcceptEx(_native_handle.native_socket(),
-                                          client_socket,
-                                          junk.data(),
-                                          0,
-                                          sizeof(sockaddr_storage) + junkpad,
-                                          sizeof(sockaddr_storage) + junkpad,
-                                          nullptr);
+        auto acceptstatus = co_await iocore::async_iocb_invoke_overlapped(
+            cb,
+            std::move(token),
+            [&](HANDLE hdl, iocore::iocb::io *io) -> DWORD {
+                auto ret = AcceptEx(handle_cast<SOCKET>(hdl),
+                                    handle_cast<SOCKET>((*ioh)->hdl),
+                                    junk.data(),
+                                    0,
+                                    sizeof(sockaddr_storage) + junkpad,
+                                    sizeof(sockaddr_storage) + junkpad,
+                                    &io->bytes_transferred,
+                                    io);
 
-        if (!ret)
-            co_return make_unexpected(ret.error());
+                if (ret == TRUE)
+                    return NO_ERROR;
 
-        auto reactor = weak_reactor_handle::get();
-        auto aret =
-            reactor->associate_handle(handle_cast<HANDLE>(client_socket));
+                return ::WSAGetLastError();
+            });
 
-        if (!aret)
-            co_return make_unexpected(aret.error());
+        if (!acceptstatus)
+            co_return make_unexpected(acceptstatus.error());
 
-        co_return channel_type{std::move(client_socket_)};
+        client_socket_.release();
+        co_return channel_type{std::move(*ioh)};
     }
 
     /*************************************************************************
@@ -622,26 +652,7 @@ namespace sk::win32::detail {
     auto streamsocketserver<server_type, channel_type, type, protocol>::
         accept() noexcept -> expected<channel_type, std::error_code>
     {
-        auto client_socket = ::socket(_address_family, type, protocol);
-
-        if (client_socket == INVALID_SOCKET)
-            return make_unexpected(win32::get_last_winsock_error());
-
-        unique_socket client_socket_(client_socket);
-
-        auto ret = ::accept(_native_handle.native_socket(), nullptr, nullptr);
-
-        if (ret == INVALID_SOCKET)
-            return make_unexpected(get_last_winsock_error());
-
-        auto reactor = weak_reactor_handle::get();
-        auto aret =
-            reactor->associate_handle(handle_cast<HANDLE>(client_socket));
-
-        if (!aret)
-            return make_unexpected(aret.error());
-
-        return channel_type{std::move(client_socket_)};
+        return wait(async_accept());
     }
 
 } // namespace sk::win32::detail

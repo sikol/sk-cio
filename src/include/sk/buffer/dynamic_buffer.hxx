@@ -35,7 +35,7 @@
 #include <type_traits>
 
 #include <sk/buffer/buffer.hxx>
-#include <sk/check.hxx>
+#include <sk/detail/trace.hxx>
 #include <sk/static_vector.hxx>
 
 namespace sk {
@@ -106,7 +106,8 @@ namespace sk {
     // How large the extents will be by default (in bytes).
     static constexpr std::size_t dynamic_buffer_default_extent_bytes = 4096;
 
-    // How many ranges we can return in a single call to readable/writable_ranges.
+    // How many ranges we can return in a single call to
+    // readable/writable_ranges.
     static constexpr std::size_t dynamic_buffer_default_max_ranges = 5;
 
     template <typename Char,
@@ -140,7 +141,8 @@ namespace sk {
             {
             }
 
-            ~extent_type() {
+            ~extent_type()
+            {
                 delete next;
             }
 
@@ -209,7 +211,8 @@ namespace sk {
 
         // dynamic_buffer is not copyable, but can be moved.
         dynamic_buffer(dynamic_buffer const &other) = delete;
-        auto operator=(dynamic_buffer const &other) -> dynamic_buffer & = delete;
+        auto operator=(dynamic_buffer const &other)
+            -> dynamic_buffer & = delete;
         dynamic_buffer(dynamic_buffer &&other) noexcept;
         auto operator=(dynamic_buffer &&other) noexcept -> dynamic_buffer &;
 
@@ -233,7 +236,7 @@ namespace sk {
 
     template <typename Char, std::size_t extent_size, std::size_t max_ranges>
     dynamic_buffer<Char, extent_size, max_ranges>::dynamic_buffer()
-    : _head(new extent_type), _tail(_head)
+        : _head(new extent_type), _tail(_head)
     {
     }
 

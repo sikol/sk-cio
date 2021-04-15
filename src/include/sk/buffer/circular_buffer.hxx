@@ -36,7 +36,7 @@
 #include <span>
 
 #include <sk/buffer.hxx>
-#include <sk/check.hxx>
+#include <sk/detail/trace.hxx>
 #include <sk/static_vector.hxx>
 
 namespace sk {

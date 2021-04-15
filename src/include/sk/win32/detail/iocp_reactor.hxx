@@ -30,9 +30,17 @@
 #define SK_CIO_WIN32_IOCP_REACTOR_HXX_INCLUDED
 
 #include <iostream>
+#include <mutex>
+#include <shared_mutex>
+#include <span>
+#include <stop_token>
 #include <system_error>
 #include <thread>
 
+#include <sk/channel/types.hxx>
+#include <sk/detail/safeint.hxx>
+#include <sk/detail/trace.hxx>
+#include <sk/event.hxx>
 #include <sk/executor.hxx>
 #include <sk/task.hxx>
 #include <sk/win32/error.hxx>
@@ -41,16 +49,68 @@
 
 namespace sk::win32::detail {
 
-    struct iocp_coro_state : OVERLAPPED {
-        iocp_coro_state() noexcept : OVERLAPPED({}) {}
-        bool was_pending = false;
-        BOOL success = 0;
-        DWORD error = 0;
-        DWORD bytes_transferred = 0;
-        executor *executor = nullptr;
-        coroutine_handle<> coro_handle;
-        std::mutex mutex;
+    /*************************************************************************
+     *
+     * iocb: the I/O control block.  Each handle given to the reactor has an
+     * iocb, which is used to coordinate I/O in flight on the handle.
+     *
+     */
+
+    struct iocb {
+        iocb(HANDLE h) : hdl(h) {}
+        iocb(iocb const &) = delete;
+        iocb(iocb &&) = delete;
+        auto operator=(iocb const &) -> iocb & = delete;
+        auto operator=(iocb &&) -> iocb & = delete;
+        ~iocb()
+        {
+            SK_CHECK(nactive == 0, "attempting to destroy an active iocb");
+        }
+
+        HANDLE hdl = SK_INVALID_HANDLE_VALUE;
+
+        // True if FILE_SKIP_COMPLETION_PORT_ON_SUCCESS is set on the handle.
+        bool immed_complete = false;
+
+        // Number of in-flight requests on this iocb.
+        std::atomic<unsigned> nactive = 0;
+
+        // Mutex for access to the iocb itself.  This is taken in shared mode
+        // by i/o operations running on the iocb, to allow multiple requests
+        // to process at once.  It's taken in exclusive mode by the close
+        // waiter so that access to the close waiter handle can be synchronised.
+        //
+        // Because the I/O requests only take a shared lock, updates to the iocb
+        // must be done atomically even if the lock is held.
+        std::shared_mutex mutex;
+
+        // If this iocb is being closed, a pointer to the coro frame of the
+        // close waiter.
+        std::atomic<void *> close_waiter{};
+        std::atomic<executor *> close_wait_xer{};
+
+        // A single outstanding I/O.
+        struct io : OVERLAPPED {
+            io() noexcept : OVERLAPPED({}) {}
+
+#ifdef SK_CHECKED
+            // To validate that GetQueuedCompletionStatus() actually gave us
+            // an io object.
+            static constexpr std::uint32_t io_magic_value = 0xFE5A4B2C;
+            std::uint32_t io_magic = io_magic_value;
+#endif
+
+            // The executor that we should schedule the resume on.
+            executor *xer = nullptr;
+
+            DWORD error = 0;
+            DWORD bytes_transferred = 0;
+            coroutine_handle<> coro_handle;
+            std::mutex mutex;
+        };
     };
+
+    using iocb_handle = std::shared_ptr<iocb>;
 
     struct iocp_reactor {
         iocp_reactor() noexcept;
@@ -68,8 +128,8 @@ namespace sk::win32::detail {
         std::optional<unique_handle> completion_port;
 
         // Associate a new handle with our i/o port.
-        [[nodiscard]] auto associate_handle(HANDLE) noexcept
-            -> expected<void, std::error_code>;
+        [[nodiscard]] auto create_iocb(HANDLE h) noexcept
+            -> expected<iocb_handle, std::error_code>;
 
         // Start this reactor.
         [[nodiscard]] auto start() noexcept -> expected<void, std::error_code>;
@@ -84,7 +144,7 @@ namespace sk::win32::detail {
         std::jthread completion_thread;
     };
 
-    inline iocp_reactor::iocp_reactor() noexcept {}
+    inline iocp_reactor::iocp_reactor() noexcept = default;
 
     inline iocp_reactor::~iocp_reactor()
     {
@@ -105,39 +165,57 @@ namespace sk::win32::detail {
         auto port_handle = completion_port->native_handle();
 
         for (;;) {
-            DWORD bytes_transferred;
-            ULONG_PTR completion_key;
-            iocp_coro_state *overlapped = nullptr;
+            DWORD bytes_transferred{};
+            ULONG_PTR completion_key{};
+            OVERLAPPED *overlapped{};
 
-            auto ret = ::GetQueuedCompletionStatus(
-                port_handle,
-                &bytes_transferred,
-                &completion_key,
-                reinterpret_cast<OVERLAPPED **>(&overlapped),
-                INFINITE);
+            auto ret = ::GetQueuedCompletionStatus(port_handle,
+                                                   &bytes_transferred,
+                                                   &completion_key,
+                                                   &overlapped,
+                                                   INFINITE);
 
             if (overlapped == nullptr)
                 // Happens when our completion port is closed.
                 return;
 
-            {
-                std::lock_guard lock(overlapped->mutex);
+            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-static-cast-downcast)
+            auto io = static_cast<iocb::io *>(overlapped);
 
-                if (overlapped->was_pending) {
-                    overlapped->success = ret;
-                    if (!overlapped->success)
-                        overlapped->error = ::GetLastError();
-                    else
-                        overlapped->error = 0;
-                    overlapped->bytes_transferred = bytes_transferred;
-                }
+            SK_TRACE(
+                "iocp_reactor[{}]: got completion event for this io, cb {}",
+                static_cast<void *>(io),
+                static_cast<void *>(cb));
+
+            SK_CHECK(io->io_magic == iocb::io::io_magic_value,
+                     "iocp_reactor: wrong io magic");
+
+            {
+                SK_TRACE("iocp_reactor[{}]: waiting for the io lock",
+                         static_cast<void *>(io));
+
+                std::lock_guard lock(io->mutex);
+
+                SK_TRACE("iocp_reactor[{}]: got lock", static_cast<void *>(io));
+
+                if (ret == FALSE)
+                    io->error = ::GetLastError();
+                else
+                    io->error = 0;
+
+                io->bytes_transferred = bytes_transferred;
             }
 
-            auto &h = overlapped->coro_handle;
-            SK_CHECK(overlapped->executor != nullptr,
+            auto &h = io->coro_handle;
+            SK_CHECK(io->xer != nullptr,
                      "iocp_reactor: trying to resume without executor");
 
-            overlapped->executor->post([&] { h.resume(); });
+            SK_TRACE("iocp_reactor: resuming coro frame at {}",
+                     static_cast<void *>(h.address()));
+            SK_CHECK(io->coro_handle,
+                     "iocp_reactor: trying to resume a null coro frame");
+
+            io->xer->post([&] { h.resume(); });
         }
     }
 
@@ -147,8 +225,10 @@ namespace sk::win32::detail {
         SK_CHECK(!completion_port.has_value(),
                  "iocp_reactor::start: already started");
 
+        SK_TRACE("iocp_reactor: starting");
+
         auto hdl =
-            ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0);
+            ::CreateIoCompletionPort(SK_INVALID_HANDLE_VALUE, nullptr, 0, 0);
         if (hdl == nullptr)
             return make_unexpected(get_last_error());
 
@@ -172,9 +252,11 @@ namespace sk::win32::detail {
 
     inline auto iocp_reactor::stop() noexcept -> void
     {
+        SK_TRACE("iocp_reactor: stopping");
+
         if (completion_port) {
             if (auto ret = completion_port->close(); !ret) {
-                sk::detail::unexpected(ret.error().message().c_str());
+                SK_UNEXPECTED(ret.error().message().c_str());
             }
         }
 
@@ -182,21 +264,313 @@ namespace sk::win32::detail {
             completion_thread.join();
     }
 
-    inline auto iocp_reactor::associate_handle(HANDLE h) noexcept
-        -> expected<void, std::error_code>
+    inline auto iocp_reactor::create_iocb(HANDLE h) noexcept
+        -> expected<iocb_handle, std::error_code>
     {
         SK_CHECK(completion_port.has_value(),
                  "iocp_reactor::associate_handle: no port");
 
-        auto ret =
-            ::CreateIoCompletionPort(h, completion_port->native_handle(), 0, 0);
+        auto *iop = new (std::nothrow) iocb(h);
+        if (iop == nullptr)
+            return make_unexpected(
+                std::make_error_code(std::errc::not_enough_memory));
 
-        if (ret == nullptr)
+        auto ioh = iocb_handle(iop);
+
+        // Disable completion events for I/Os which are immediately successful,
+        // so that we don't need a round-trip to the completion port handler
+        // if there's no wait.  This may fail on a socket if the LSP in use
+        // doesn't support it, so we need to track whether it's enabled.
+        BOOL ret = ::SetFileCompletionNotificationModes(
+            h, FILE_SKIP_COMPLETION_PORT_ON_SUCCESS);
+        if (ret == TRUE)
+            iop->immed_complete = true;
+
+        HANDLE port = ::CreateIoCompletionPort(
+            h,
+            completion_port->native_handle(),
+            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+            reinterpret_cast<ULONG_PTR>(iop),
+            0);
+
+        if (port == nullptr)
             return make_unexpected(get_last_error());
 
-        return {};
+        SK_TRACE("create_iocb: new iocb for handle {} at {}, immed_complete={}",
+                 h,
+                 static_cast<void *>(ioh.get()),
+                 ioh->immed_complete);
+        return ioh;
     }
 
 } // namespace sk::win32::detail
+
+namespace sk::iocore {
+
+    using native_handle_type = HANDLE;
+
+    using io_reactor = sk::win32::detail::iocp_reactor;
+    using iocb = sk::win32::detail::iocb;
+    using iocb_handle = sk::win32::detail::iocb_handle;
+
+    inline auto get_global_reactor() noexcept -> io_reactor &
+    {
+        static io_reactor global_reactor;
+        return global_reactor;
+    }
+
+    inline auto create_iocb(native_handle_type handle)
+        -> expected<iocb_handle, std::error_code>
+    {
+        auto &reactor = get_global_reactor();
+        return reactor.create_iocb(handle);
+    }
+
+    struct async_iocb_close {
+        iocb_handle &ioh;
+
+        async_iocb_close(iocb_handle &ioh_) : ioh(ioh_) {}
+
+        auto await_ready() noexcept -> bool
+        {
+            return false;
+        }
+
+        template <typename P>
+        auto await_suspend(coroutine_handle<P> cframe) noexcept -> bool
+        {
+            SK_TRACE("async_iocb_close[{}]: close iocb, handle {}",
+                     static_cast<void *>(ioh.get()),
+                     ioh->hdl);
+
+            // Take an exclusive lock on the iocb.
+            std::lock_guard lock(ioh->mutex);
+            // At this point, either no i/o requests are in progress, or all
+            // in-progress requests are suspended.
+
+            if (ioh->nactive == 0) {
+                // No I/O requests are in progress, so we can safely close the
+                // iocb and do not have to suspend.
+
+                SK_TRACE("async_iocb_close[{}]: iocb is idle, immediate close",
+                         static_cast<void *>(ioh.get()));
+                return false;
+            }
+
+            SK_TRACE("async_iocb_close[{}]: {} pending, will suspend",
+                     static_cast<void *>(ioh.get()),
+                     ioh->nactive);
+
+            // The iocb has outstanding requests, so register ourselves as the
+            // close waiter, and wait for the last i/o operation to resume us.
+            ioh->close_waiter = cframe.address();
+            ioh->close_wait_xer = cframe.promise().task_executor;
+
+            // Cancel any outstanding I/O.  This might not actually do anything
+            // if the I/O is about to complete, or if the I/O has already
+            // completed and the resumption is waiting on the iocb lock.
+            ::CancelIoEx(ioh->hdl, nullptr);
+
+            return true;
+        }
+
+        auto await_resume() noexcept -> void
+        {
+            // Now we know there are no pending I/Os on the iocb and it can be
+            // safely destroyed.
+            SK_CHECK(ioh->nactive == 0, "unexpected pending i/o during close");
+
+            SK_TRACE("async_iocb_close[{}]: resumed",
+                     static_cast<void *>(ioh.get()));
+
+            // Nothing to do here, caller will deallocate the iocb handle.
+        }
+    };
+
+    template <typename Invocable>
+    struct async_iocb_invoke_overlapped {
+        using result_type = expected<sk::io_size_t, std::error_code>;
+
+        iocb_handle ioh;
+        std::stop_token token;
+        Invocable func;
+        iocb::io io;
+        std::atomic_flag stop_requested = ATOMIC_FLAG_INIT;
+        sk::event stop_event;
+
+        async_iocb_invoke_overlapped(iocb_handle ioh_,
+                                     std::stop_token token_,
+                                     Invocable func_)
+            : ioh(std::move(ioh_)), token(std::move(token_)), func(func_)
+        {
+            SK_TRACE(
+                "async_iocb_invoke_overlapped[{}]: new i/o, ioh {}, handle {}",
+                static_cast<void *>(this),
+                static_cast<void *>(ioh.get()),
+                ioh->hdl);
+        }
+
+        auto await_ready() noexcept -> bool
+        {
+            SK_TRACE("async_iocb_invoke_overlapped[{}]: indicate not ready",
+                     static_cast<void *>(this));
+            return false;
+        }
+
+        // Called if a stop is requested by the stop token.  This can be called
+        // from within await_suspend() with io.mutex locked.
+        struct stop_handler {
+            async_iocb_invoke_overlapped *ol;
+
+            stop_handler(async_iocb_invoke_overlapped *ol_) : ol(ol_) {}
+
+            auto operator()() noexcept -> void
+            {
+                SK_TRACE(
+                    "async_iocb_invoke_overlapped[{}]: stop callback invoked",
+                    static_cast<void *>(ol));
+
+                // Set stop_requested immediately, then dispatch an async task
+                // to actually cancel the I/O.  This ensures that the
+                // cancellation doesn't happen until await_suspend() is finished
+                // (and the I/O is in flight).
+
+                ol->stop_requested.test_and_set();
+
+                ol->io.xer->post([&]() -> void {
+                    SK_TRACE("async_iocb_invoke_overlapped[{}]: cancel the i/o",
+                             static_cast<void *>(ol));
+
+                    // Take the io lock to ensure await_suspend has finished.
+                    std::lock_guard _(ol->io.mutex);
+
+                    ::CancelIoEx(ol->ioh->hdl, &ol->io);
+                    ol->stop_event.signal();
+                });
+            }
+        };
+
+        std::optional<std::stop_callback<stop_handler>> stop_cb;
+
+        template <typename P>
+        auto await_suspend(coroutine_handle<P> cframe) noexcept -> bool
+        {
+            // Take a shared lock on the iocb to avoid racing with the close
+            // awaiter.
+            std::shared_lock iocb_lock(ioh->mutex);
+
+            // Take an exclusive lock on our i/o request to avoid racing with
+            // the completion port handler.
+            std::lock_guard io_lock(io.mutex);
+
+            SK_TRACE("async_iocb_invoke_overlapped[{}]: suspending, our parent "
+                     "frame={}",
+                     static_cast<void *>(this),
+                     cframe.address());
+
+            io.xer = cframe.promise().task_executor;
+            io.coro_handle = cframe;
+            ++ioh->nactive;
+
+            // Register our stop callback.  This could be called immediately
+            // if the stop has already been requested.
+            stop_cb.emplace(std::move(token), stop_handler(this));
+
+            // If we already got cancelled, don't bother submitting the I/O.
+            if (stop_requested.test()) {
+                SK_TRACE("async_iocb_invoke_overlapped[{}]: already "
+                         "cancelled",
+                         static_cast<void *>(this));
+
+                io.error = ERROR_OPERATION_ABORTED;
+                return false;
+            }
+
+            io.error = func(ioh->hdl, &io);
+            // Now the I/O is in flight and the completion handler could be
+            // waiting on the iocb lock.
+
+            SK_TRACE(
+                "async_iocb_invoke_overlapped[{}]: the request is in flight, "
+                "ret={}, GetLastError={}",
+                static_cast<void *>(this),
+                io.error,
+                ::GetLastError());
+
+            if (ioh->immed_complete && (io.error == NO_ERROR)) {
+                // If immed_complete is enabled and the overlapped call was
+                // successful, a completion event will not be queued to our I/O
+                // port, and we should resume immediately instead of waiting.
+                SK_TRACE(
+                    "async_iocb_invoke_overlapped[{}]: immediate completion",
+                    static_cast<void *>(this));
+
+                return false;
+            }
+
+            SK_TRACE("async_iocb_invoke_overlapped[{}]: request is pending, "
+                     "will suspend",
+                     static_cast<void *>(this));
+
+            return true;
+        }
+
+        auto await_resume() noexcept -> result_type
+        {
+            DWORD io_error{};
+            DWORD io_bytes{};
+
+            {
+                // Ensure we don't run until await_suspend() is finished.
+                std::lock_guard lock(io.mutex);
+
+                SK_TRACE("async_iocb_invoke_overlapped[{}]: resuming, "
+                         "error={}, bytes={}, nactive={}",
+                         static_cast<void *>(this),
+                         io.error,
+                         io.bytes_transferred,
+                         ioh->nactive);
+
+                io_error = io.error;
+                io_bytes = io.bytes_transferred;
+            }
+
+            // Deregister the stop callback and see if we need to wait for it.
+            stop_cb.reset();
+
+            if (stop_requested.test()) {
+                SK_TRACE("async_iocb_invoke_overlapped[{}]: stop requested, "
+                         "waiting for stop handler",
+                         static_cast<void *>(this));
+                stop_event.wait();
+            }
+
+            if (--ioh->nactive == 0) {
+                // Check if something is waiting to destroy this iocb.
+                std::shared_lock lock(ioh->mutex);
+
+                if (ioh->close_waiter != nullptr) {
+                    SK_TRACE("async_iocb_invoke_overlapped[{}]: calling "
+                             "close_waiter",
+                             static_cast<void *>(this));
+
+                    (*ioh->close_wait_xer)
+                        .post([&handle = ioh->close_waiter]() {
+                            coroutine_handle<>::from_address(handle).resume();
+                        });
+                }
+            }
+
+            SK_TRACE("async_iocb_invoke_overlapped[{}]: returning from resume",
+                     static_cast<void *>(this));
+
+            if (io_error != 0)
+                return make_unexpected(win32::make_win32_error(io_error));
+
+            return io_bytes;
+        }
+    };
+
+} // namespace sk::iocore
 
 #endif // SK_CIO_WIN32_IOCP_REACTOR_HXX_INCLUDED

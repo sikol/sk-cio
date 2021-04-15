@@ -145,8 +145,8 @@ namespace sk::net {
     public:
         unixchannel() noexcept = default;
 
-        explicit unixchannel(sk::net::detail::native_socket_type &&fd) noexcept
-            : socket_type(std::move(fd))
+        explicit unixchannel(iocore::iocb_handle &&cb) noexcept
+            : socket_type(std::move(cb))
         {
         }
 
@@ -197,9 +197,9 @@ namespace sk::net {
     public:
         using value_type = std::byte;
 
-        explicit unixserverchannel(sk::net::detail::native_socket_type &&fd,
+        explicit unixserverchannel(iocore::iocb_handle &&cb,
                                    int af = AF_UNIX) noexcept
-            : socket_type(std::move(fd), af)
+            : socket_type(std::move(cb), af)
         {
         }
 

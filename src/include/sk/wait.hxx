@@ -39,7 +39,7 @@ namespace sk {
      * wait_executor: execute work on the current thread until the given task
      * is finished.
      */
-    template<typename T>
+    template <typename T>
     struct wait_executor final : executor {
         using work_type = std::function<void()>;
 
@@ -56,21 +56,38 @@ namespace sk {
     };
 
     // Called from the reactor thread.
-    template<typename T>
+    template <typename T>
     inline void wait_executor<T>::post(work_type &&work)
     {
+        SK_TRACE("wait_executor[{}]: posting new work",
+                 static_cast<void *>(this));
         std::lock_guard<std::mutex> lock(_mtx);
         _work.push_back(std::move(work));
         _cv.notify_one();
     }
 
     // Called from the main thread.
-    template<typename T>
+    template <typename T>
     inline auto wait_executor<T>::run() -> void
     {
         for (;;) {
+            SK_TRACE("wait_executor[{}]: waiting for work",
+                     static_cast<void *>(this));
+
             std::unique_lock<std::mutex> lock(_mtx);
-            _cv.wait(lock, [&] { return !_work.empty() || _task.coro_handle.done(); });
+            _cv.wait(lock, [&] {
+              SK_TRACE("wait_executor[{}]: polling, work={}, done={}",
+                       static_cast<void *>(this),
+                       _work.size(),
+                       _task.coro_handle.done());
+
+                return !_work.empty() || _task.coro_handle.done();
+            });
+
+            SK_TRACE("wait_executor[{}]: unblocked, work={}, done={}",
+                     static_cast<void *>(this),
+                     _work.size(),
+                     _task.coro_handle.done());
 
             if (_task.coro_handle.done())
                 return;
@@ -79,12 +96,15 @@ namespace sk {
             _work.pop_front();
             lock.unlock();
 
+            SK_TRACE("wait_executor[{}]: running work",
+                     static_cast<void *>(this));
             work();
         }
     }
 
-    template<typename T>
-    auto wait(task<T> &&taskp) -> T {
+    template <typename T>
+    auto wait(task<T> &&taskp) -> T
+    {
         wait_executor<T> xer(taskp);
         taskp.coro_handle.promise().task_executor = &xer;
         taskp.start();
@@ -92,8 +112,9 @@ namespace sk {
         return taskp.await_resume();
     }
 
-    template<>
-    inline auto wait(task<void> &&taskp) -> void {
+    template <>
+    inline auto wait(task<void> &&taskp) -> void
+    {
         wait_executor<void> xer(taskp);
         taskp.coro_handle.promise().task_executor = &xer;
         taskp.start();

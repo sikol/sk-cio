@@ -35,7 +35,7 @@
 #include <iterator>
 #include <array>
 
-#include <sk/check.hxx>
+#include <sk/detail/trace.hxx>
 
 namespace sk {
 

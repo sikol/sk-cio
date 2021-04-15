@@ -60,25 +60,27 @@ namespace sk::win32 {
 
     namespace detail {
 
-        struct win32_errc_category : std::error_category {
-            auto name() const noexcept -> char const *
+        struct win32_errc_category final : std::error_category {
+            [[nodiscard]] auto name() const noexcept -> char const * final
             {
                 return "win32";
             }
 
-            auto message(int c) const -> std::string
+            [[nodiscard]] auto message(int c) const -> std::string final
             {
-                LPSTR msgbuf;
+                LPSTR msgbuf{};
 
-                auto len = ::FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER |
-                                            FORMAT_MESSAGE_FROM_SYSTEM |
-                                            FORMAT_MESSAGE_IGNORE_INSERTS,
-                                            nullptr,
-                                            c,
-                                            0,
-                                            reinterpret_cast<LPSTR>(&msgbuf),
-                                            0,
-                                            nullptr);
+                auto len = ::FormatMessageA(
+                    FORMAT_MESSAGE_ALLOCATE_BUFFER |
+                        FORMAT_MESSAGE_FROM_SYSTEM |
+                        FORMAT_MESSAGE_IGNORE_INSERTS,
+                    nullptr,
+                    c,
+                    0,
+                    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+                    reinterpret_cast<LPSTR>(&msgbuf),
+                    0,
+                    nullptr);
 
                 if (len == 0)
                     return "[FormatMessageA() failed]";
@@ -105,9 +107,30 @@ namespace sk::win32 {
 
     inline auto make_error_code(error e) -> std::error_code
     {
+        // Convert a Win32 error into a std::generic_category error if
+        // there's an appropriate conversion.
         switch (static_cast<DWORD>(e)) {
         case ERROR_HANDLE_EOF:
             return sk::error::end_of_file;
+
+        case ERROR_FILE_NOT_FOUND:
+        case ERROR_PATH_NOT_FOUND:
+            return std::make_error_code(std::errc::no_such_file_or_directory);
+
+        case ERROR_TOO_MANY_OPEN_FILES:
+            return std::make_error_code(
+                std::errc::too_many_files_open_in_system);
+
+        case ERROR_ACCESS_DENIED:
+            return std::make_error_code(std::errc::permission_denied);
+
+        case ERROR_NOT_ENOUGH_MEMORY:
+        case ERROR_OUTOFMEMORY:
+            return std::make_error_code(std::errc::not_enough_memory);
+
+        case ERROR_OPERATION_ABORTED:
+            return sk::error::cancelled;
+
         default:
             return {static_cast<int>(e), win32_errc_category()};
         }
@@ -138,40 +161,6 @@ namespace sk::win32 {
     inline auto get_last_winsock_error() -> std::error_code
     {
         return make_win32_error(::WSAGetLastError());
-    }
-
-    // Convert a Win32 error into a std::generic_category error if
-    // there's an appropriate conversion.  This is used by the portable
-    // I/O parts of the library so that the user only has to test for
-    // a single error code.
-    inline auto win32_to_generic_error(std::error_code ec) -> std::error_code
-    {
-        // If it's not a Win32 error to begin with, return it as-is.
-        if (&ec.category() != &win32_errc_category())
-            return ec;
-
-        switch (ec.value()) {
-        case ERROR_HANDLE_EOF:
-            return sk::error::end_of_file;
-
-        case ERROR_FILE_NOT_FOUND:
-        case ERROR_PATH_NOT_FOUND:
-            return std::make_error_code(std::errc::no_such_file_or_directory);
-
-        case ERROR_TOO_MANY_OPEN_FILES:
-            return std::make_error_code(
-                std::errc::too_many_files_open_in_system);
-
-        case ERROR_ACCESS_DENIED:
-            return std::make_error_code(std::errc::permission_denied);
-
-        case ERROR_NOT_ENOUGH_MEMORY:
-        case ERROR_OUTOFMEMORY:
-            return std::make_error_code(std::errc::not_enough_memory);
-
-        default:
-            return ec;
-        }
     }
 
 } // namespace sk::win32

@@ -29,6 +29,7 @@ cmake_minimum_required(VERSION 3.12)
 include(CheckIncludeFileCXX)
 
 option(SK_CIO_DISABLE_IO_URING "Disable io_uring backend on Linux")
+option(SK_CIO_ENABLE_TRACING "Enable runtime trace logging (slow)")
 
 enable_testing()
 
@@ -68,5 +69,9 @@ if (WIN32)
 endif ()
 
 target_compile_features(sk-cio INTERFACE cxx_std_20)
+
+if (SK_CIO_ENABLE_TRACING)
+    target_compile_definitions(sk-cio INTERFACE SK_ENABLE_TRACING)
+endif ()
 
 install(DIRECTORY "include/sk" TYPE INCLUDE)

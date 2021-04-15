@@ -35,6 +35,7 @@
 #include <sk/task.hxx>
 #include <sk/win32/windows.hxx>
 
+#if 0
 namespace sk::win32 {
 
     /*************************************************************************
@@ -475,5 +476,7 @@ namespace sk::win32 {
     }
 
 } // namespace sk::win32
+
+#endif
 
 #endif // SK_WIN32_ASYNC_API_HXX_INCLUDED

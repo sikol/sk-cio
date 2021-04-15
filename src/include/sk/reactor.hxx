@@ -64,12 +64,6 @@ namespace sk {
 
         friend class weak_reactor_handle;
 
-        static auto get_global_reactor() noexcept -> system_reactor_type &
-        {
-            static system_reactor_type global_reactor;
-            return global_reactor;
-        }
-
         static inline std::atomic<int> reactor_refs;
         static inline std::mutex reactor_mutex;
 
@@ -97,7 +91,7 @@ namespace sk {
 
             if (shared_reactor_handle::reactor_refs == 0) {
                 // We are the first handle.
-                auto &global_reactor = shared_reactor_handle::get_global_reactor();
+                auto &global_reactor = iocore::get_global_reactor();
                 if (auto ret = global_reactor.start(); !ret)
                     return make_unexpected(ret.error());
             }
@@ -118,14 +112,14 @@ namespace sk {
         -> system_reactor_type &
     {
         SK_CHECK(_valid, "attempt to dereference invalid reactor_handle");
-        return shared_reactor_handle::get_global_reactor();
+        return iocore::get_global_reactor();
     }
 
     inline auto shared_reactor_handle::operator->() noexcept
         -> system_reactor_type *
     {
         SK_CHECK(_valid, "attempt to dereference invalid reactor_handle");
-        return &shared_reactor_handle::get_global_reactor();
+        return &iocore::get_global_reactor();
     }
 
     inline shared_reactor_handle::~shared_reactor_handle()
@@ -136,7 +130,7 @@ namespace sk {
         if (--shared_reactor_handle::reactor_refs > 0)
             return;
 
-        shared_reactor_handle::get_global_reactor().stop();
+        iocore::get_global_reactor().stop();
     }
 
     class weak_reactor_handle {
@@ -179,14 +173,14 @@ namespace sk {
         -> system_reactor_type &
     {
         SK_CHECK(_valid, "attempt to dereference invalid reactor_handle");
-        return shared_reactor_handle::get_global_reactor();
+        return iocore::get_global_reactor();
     }
 
     inline auto weak_reactor_handle::operator->() noexcept
         -> system_reactor_type *
     {
         SK_CHECK(_valid, "attempt to dereference invalid reactor_handle");
-        return &shared_reactor_handle::get_global_reactor();
+        return &iocore::get_global_reactor();
     }
 
     inline weak_reactor_handle::~weak_reactor_handle()

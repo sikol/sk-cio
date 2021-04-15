@@ -75,6 +75,9 @@ namespace sk {
 
         // The network address format is invalid.
         invalid_address_format = 10,
+
+        // The I/O operation was cancelled.
+        cancelled = 11,
     };
 
     namespace detail {
@@ -121,7 +124,7 @@ namespace sk {
                     return "invalid address format";
 
                 default:
-                    return "unknown error";
+                    return "I/O operation was cancelled";
                 }
             }
         };

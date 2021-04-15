@@ -26,13 +26,17 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include <stop_token>
+
 #include <catch.hpp>
 
-#include "sk/wait.hxx"
-#include "sk/net/address.hxx"
-#include "sk/net/tcpchannel.hxx"
+#include <sk/net/address.hxx>
+#include <sk/net/tcpchannel.hxx>
+#include <sk/reactor.hxx>
+#include <sk/wait.hxx>
 
-TEST_CASE("tcp_endpoint_resolver") {
+TEST_CASE("tcp_endpoint_resolver", "[resolver][tcpchannel]")
+{
     sk::net::tcp_endpoint_system_resolver res;
 
     auto eps = wait(res.async_resolve("localhost", "http"));
@@ -49,4 +53,69 @@ TEST_CASE("tcp_endpoint_resolver") {
         REQUIRE(*str(second) == "[::1]:80");
     else if (str(first) == "[::1]:80")
         REQUIRE(*str(second) == "127.0.0.1:80");
+}
+
+namespace {
+
+    auto cancel_task(sk::net::tcpserverchannel &chnl,
+                     std::stop_token token,
+                     bool &ok,
+                     sk::event &evt) -> sk::task<void>
+    {
+        auto ret = co_await chnl.async_accept(token);
+        REQUIRE(!ret);
+        REQUIRE(ret.error() == sk::error::cancelled);
+
+        ok = true;
+        evt.signal();
+    }
+
+} // anonymous namespace
+
+TEST_CASE("tcpserverchannel cancellation", "[tcpchannel]")
+{
+    std::stop_source ss;
+    bool ok = false;
+    sk::event evt;
+
+    auto ep = sk::net::make_tcp_endpoint("::1", 5358);
+    REQUIRE(ep);
+
+    auto server = sk::net::tcpserverchannel::listen(*ep);
+    REQUIRE(server);
+
+    auto reactor = sk::weak_reactor_handle::get();
+    auto *xer = reactor->get_system_executor();
+    wait(co_detach(cancel_task(*server, ss.get_token(), ok, evt), xer));
+
+    ss.request_stop();
+
+    evt.wait();
+    REQUIRE(ok);
+
+    wait(server->async_close());
+}
+
+TEST_CASE("tcpserverchannel immediate cancellation", "[tcpchannel]")
+{
+    std::stop_source ss;
+    bool ok = false;
+    sk::event evt;
+
+    ss.request_stop();
+
+    auto ep = sk::net::make_tcp_endpoint("::1", 5358);
+    REQUIRE(ep);
+
+    auto server = sk::net::tcpserverchannel::listen(*ep);
+    REQUIRE(server);
+
+    auto reactor = sk::weak_reactor_handle::get();
+    auto *xer = reactor->get_system_executor();
+    wait(co_detach(cancel_task(*server, ss.get_token(), ok, evt), xer));
+
+    evt.wait();
+    REQUIRE(ok);
+
+    wait(server->async_close());
 }

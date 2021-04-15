@@ -51,7 +51,7 @@ template <class P> struct hash<coroutine_handle<P>>;
 #include <new>
 #include <type_traits>
 
-#include <sk/check.hxx>
+#include <sk/detail/trace.hxx>
 
 namespace std::experimental { // NOLINT
 
