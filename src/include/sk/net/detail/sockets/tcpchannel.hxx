@@ -299,8 +299,8 @@ namespace sk::net {
     public:
         tcpchannel() noexcept = default;
 
-        explicit tcpchannel(iocore::iocb_handle &&cb) noexcept
-            : socket_type(std::move(cb))
+        explicit tcpchannel(iocore::iocb_handle &&cb_) noexcept
+            : socket_type(std::move(cb_))
         {
         }
 

@@ -76,6 +76,7 @@ namespace sk::detail {
 
 #ifdef SK_ENABLE_TRACING
 #    include <array>
+#    include <atomic>
 #    include <cstdio>
 #    include <cstdlib>
 #    include <iostream>

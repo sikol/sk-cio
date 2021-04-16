@@ -34,6 +34,8 @@
 #include <sk/net/tcpchannel.hxx>
 #include <sk/reactor.hxx>
 #include <sk/wait.hxx>
+#include <sk/event.hxx>
+#include <sk/co_detach.hxx>
 
 TEST_CASE("tcp_endpoint_resolver", "[resolver][tcpchannel]")
 {
@@ -68,6 +70,7 @@ namespace {
 
         ok = true;
         evt.signal();
+        SK_TRACE("cancel_task: returning");
     }
 
 } // anonymous namespace

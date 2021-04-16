@@ -44,11 +44,11 @@ constexpr int nthreads = 30;
 constexpr int nops = 500;
 constexpr auto run_for = 20s;
 
-auto const unix_listen_address =
+static auto const unix_listen_address =
     std::filesystem::current_path() / "__sk_test.sock";
-std::optional<net::unix_endpoint> unix_listen_addr;
+static std::optional<net::unix_endpoint> unix_listen_addr;
 
-task<int> unix_stress_task()
+static task<int> unix_stress_task()
 {
     std::random_device r;
     std::default_random_engine eng(r());
@@ -141,10 +141,11 @@ task<void> unix_handle_client(net::unixchannel client)
     fmt::print(stderr, "handle_client() : return\n");
 }
 
-task<void> unix_server_task(net::unixserverchannel &chnl)
+auto unix_server_task(net::unixserverchannel &chnl, std::stop_token token)
+    -> task<void>
 {
     for (;;) {
-        auto client = co_await chnl.async_accept();
+        auto client = co_await chnl.async_accept(token);
 
         if (!client) {
             fmt::print(
@@ -156,13 +157,16 @@ task<void> unix_server_task(net::unixserverchannel &chnl)
     }
 }
 
-auto run_unix_stress_task(std::promise<int> &promise) -> task<void> {
+auto run_unix_stress_task(std::promise<int> &promise) -> task<void>
+{
     auto ret = co_await unix_stress_task();
     promise.set_value(ret);
 }
 
 TEST_CASE("unixchannel stress test")
 {
+    std::stop_source source;
+
     // Create the server channel.
     auto ep = sk::net::make_unix_endpoint(unix_listen_address);
     if (!ep) {
@@ -185,7 +189,7 @@ TEST_CASE("unixchannel stress test")
 
     auto reactor = weak_reactor_handle::get();
     auto *xer = reactor->get_system_executor();
-    wait(co_detach(unix_server_task(*server), xer));
+    wait(co_detach(unix_server_task(*server, source.get_token()), xer));
 
     std::this_thread::sleep_for(1s);
 
@@ -203,4 +207,6 @@ TEST_CASE("unixchannel stress test")
     }
 
     REQUIRE(errors == 0);
+    source.request_stop();
+    wait(server->async_close());
 }

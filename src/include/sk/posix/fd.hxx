@@ -34,7 +34,7 @@
 
 #include <system_error>
 
-#include <sk/check.hxx>
+#include <sk/detail/trace.hxx>
 #include <sk/expected.hxx>
 
 namespace sk::posix {

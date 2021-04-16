@@ -310,8 +310,8 @@ namespace sk::iocore {
     using native_handle_type = HANDLE;
 
     using io_reactor = sk::win32::detail::iocp_reactor;
-    using iocb = sk::win32::detail::iocb;
-    using iocb_handle = sk::win32::detail::iocb_handle;
+    using sk::win32::detail::iocb;
+    using sk::win32::detail::iocb_handle;
 
     inline auto get_global_reactor() noexcept -> io_reactor &
     {

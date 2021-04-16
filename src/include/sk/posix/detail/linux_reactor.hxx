@@ -33,31 +33,820 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 
+#ifdef SK_CIO_HAVE_IO_URING
+#    include <liburing.h>
+#endif
+
+#include <shared_mutex>
+#include <stop_token>
+
+#include <sk/channel/error.hxx>
+#include <sk/detail/platform.hxx>
+#include <sk/event.hxx>
 #include <sk/expected.hxx>
 #include <sk/posix/detail/epoll_reactor.hxx>
 
-#include <sk/detail/platform.hxx>
+namespace sk::posix::detail {
+    /*
+     * On Linux, we want to support runtime selection of either epoll+aio or
+     * io_uring as the I/O mechanism, since io_uring is very new and isn't
+     * supported on many installed Linux versions.  linux_reactor will create
+     * either an epoll_reactor or an io_uring reactor and dispatch iocore
+     * requests via virtual functions.
+     *
+     * It might be useful to support a compile-time switch to force a particular
+     * mode and remove the virtual call overhead.
+     */
 
-#ifdef SK_CIO_HAVE_IO_URING
-#    include <sk/posix/detail/io_uring_reactor.hxx>
+    /*************************************************************************
+     *
+     * iocb: the I/O control block.  Each handle given to the reactor has an
+     * iocb, which is used to coordinate I/O in flight on the handle.
+     *
+     * The iocb is shared between uring and epoll modes.
+     */
+
+    struct iocb {
+        iocb() noexcept = default;
+        iocb(int fd_) : fd(fd_) {}
+        iocb(iocb const &) = delete;
+        iocb(iocb &&) = delete;
+        auto operator=(iocb const &) -> iocb & = delete;
+        auto operator=(iocb &&) -> iocb & = delete;
+        ~iocb()
+        {
+            SK_CHECK(nactive == 0, "attempting to destroy an active iocb");
+        }
+
+        int fd = -1;
+
+        // Number of in-flight requests on this iocb.
+        std::atomic<unsigned> nactive = 0;
+
+        // Mutex for access to the iocb itself.  This is taken in shared mode
+        // by i/o operations running on the iocb, to allow multiple requests
+        // to process at once.  It's taken in exclusive mode by the close
+        // waiter so that access to the close waiter handle can be synchronised.
+        //
+        // Because the I/O requests only take a shared lock, updates to the iocb
+        // must be done atomically even if the lock is held.
+        std::shared_mutex mutex;
+
+        // If this iocb is being closed, a pointer to the coro frame of the
+        // close waiter.
+        std::atomic<void *> close_waiter{};
+        std::atomic<executor *> close_wait_xer{};
+
+        // A single outstanding I/O.
+        struct io {
+#ifdef SK_CHECKED
+            // To validate that GetQueuedCompletionStatus() actually gave us
+            // an io object.
+            static constexpr std::uint32_t io_magic_value = 0xFE5A4B2C;
+            std::uint32_t io_magic = io_magic_value;
 #endif
 
-namespace sk::posix::detail {
+            // The executor that we should schedule the resume on.
+            executor *xer = nullptr;
 
-    /*
-     * A Linux reactor that splits I/O requests between epoll and io_uring.
-     * Socket I/O (connect, accept, send, recv) always goes to the epoll
-     * reactor; file I/O (open, close, read, write) goes to the io_uring
-     * reactor if it's available, otherwise it goes to the epoll reactor for
-     * thread dispatch.
+            std::int32_t ret = 0;
+            std::uint32_t flags = 0;
+            coroutine_handle<> coro_handle;
+            std::mutex mutex;
+        };
+    };
+
+    using iocb_handle = std::shared_ptr<iocb>;
+
+    // This is the generic interface supported by both epoll and uring.
+    class linux_iocb_interface {
+    public:
+        virtual ~linux_iocb_interface() = default;
+
+        [[nodiscard]] virtual auto start() noexcept
+            -> expected<void, std::error_code> = 0;
+        virtual auto stop() noexcept -> void = 0;
+
+        [[nodiscard]] virtual auto async_iocb_open(iocb_handle &cb,
+                                                   std::stop_token &token,
+                                                   const char *path,
+                                                   int flags,
+                                                   int mode) noexcept
+            -> task<expected<void, std::error_code>> = 0;
+
+        [[nodiscard]] virtual auto
+        async_iocb_close(iocb_handle &cb, std::stop_token &token) noexcept
+            -> task<expected<int, std::error_code>> = 0;
+
+        [[nodiscard]] virtual auto async_iocb_read(iocb_handle &cb,
+                                                   std::stop_token &token,
+                                                   void *buf,
+                                                   std::size_t n) noexcept
+            -> task<expected<ssize_t, std::error_code>> = 0;
+
+        [[nodiscard]] virtual auto async_iocb_pread(iocb_handle &cb,
+                                                    std::stop_token &token,
+                                                    void *buf,
+                                                    std::size_t n,
+                                                    off_t offs) noexcept
+            -> task<expected<ssize_t, std::error_code>> = 0;
+
+        [[nodiscard]] virtual auto async_iocb_write(iocb_handle &cb,
+                                                    std::stop_token &token,
+                                                    const void *buf,
+                                                    std::size_t n) noexcept
+            -> task<expected<ssize_t, std::error_code>> = 0;
+
+        [[nodiscard]] virtual auto async_iocb_pwrite(iocb_handle &cb,
+                                                     std::stop_token &token,
+                                                     const void *buf,
+                                                     std::size_t n,
+                                                     off_t offs) noexcept
+            -> task<expected<ssize_t, std::error_code>> = 0;
+
+        [[nodiscard]] virtual auto async_iocb_recv(iocb_handle &cb,
+                                                   std::stop_token &token,
+                                                   void *buf,
+                                                   std::size_t n,
+                                                   int flags) noexcept
+            -> task<expected<ssize_t, std::error_code>> = 0;
+
+        [[nodiscard]] virtual auto async_iocb_send(iocb_handle &cb,
+                                                   std::stop_token &token,
+                                                   const void *buf,
+                                                   std::size_t n,
+                                                   int flags) noexcept
+            -> task<expected<ssize_t, std::error_code>> = 0;
+
+        [[nodiscard]] virtual auto
+        async_iocb_connect(iocb_handle &cb,
+                           std::stop_token &token,
+                           const sockaddr *addr,
+                           socklen_t addrlen) noexcept
+            -> task<expected<void, std::error_code>> = 0;
+
+        [[nodiscard]] virtual auto
+        async_iocb_accept(iocb_handle &cb,
+                          std::stop_token &token,
+                          sockaddr *addr,
+                          socklen_t *addrlen) noexcept
+            -> task<expected<int, std::error_code>> = 0;
+    };
+
+    /*************************************************************************
      *
-     * The reason we do this is that io_uring has a relatively low limit
-     * on in-flight requests (about 512) meaning we can't queue blocking
-     * i/os like socket reads, or else the queue will fill up and i/o will
-     * deadlock.  The intent seems to be that io_uring will be used for
-     * requests we expect to complete quickly, while epoll should still be
-     * used for polling i/o.
+     * The io_uring reactor.
+     *
      */
+#ifdef SK_CIO_HAVE_IO_URING
+    struct io_uring_reactor final : linux_iocb_interface {
+
+        // Try to create a new io_uring_reactor; returns NULL if we can't
+        // use io_uring on this system.
+        static auto make() noexcept
+            -> expected<std::unique_ptr<io_uring_reactor>, std::error_code>
+        {
+            // Create the ring.
+
+            auto reactor = std::unique_ptr<io_uring_reactor>(
+                new (std::nothrow) io_uring_reactor());
+            if (!reactor)
+                return make_unexpected(
+                    std::make_error_code(std::errc::not_enough_memory));
+
+            auto ret = io_uring_queue_init(
+                _max_queue_size, &reactor->ring, IORING_SETUP_CLAMP);
+            if (ret < 0)
+                return nullptr;
+
+            // Check the ring supports the features we need.
+            unsigned required_features =
+                IORING_FEAT_NODROP | IORING_FEAT_RW_CUR_POS;
+            if ((reactor->ring.features & required_features) !=
+                required_features)
+                return nullptr;
+
+            std::unique_ptr<io_uring_probe, void (*)(io_uring_probe *)> probe(
+                io_uring_get_probe_ring(&reactor->ring), io_uring_free_probe);
+            if (!probe)
+                return nullptr;
+
+            // Check the ring supports the opcodes we need.
+            if (io_uring_opcode_supported(probe.get(), IORING_OP_NOP) == 0)
+                return nullptr;
+            if (io_uring_opcode_supported(probe.get(), IORING_OP_OPENAT) == 0)
+                return nullptr;
+            if (io_uring_opcode_supported(probe.get(), IORING_OP_CLOSE) == 0)
+                return nullptr;
+            if (io_uring_opcode_supported(probe.get(), IORING_OP_READ) == 0)
+                return nullptr;
+            if (io_uring_opcode_supported(probe.get(), IORING_OP_WRITE) == 0)
+                return nullptr;
+
+            // Reactor is okay.
+            return reactor;
+        }
+
+        io_uring_reactor(io_uring_reactor const &) = delete;
+        auto operator=(io_uring_reactor const &) -> io_uring_reactor & = delete;
+        io_uring_reactor(io_uring_reactor &&) noexcept = delete;
+        auto operator=(io_uring_reactor &&) noexcept
+            -> io_uring_reactor & = delete;
+        ~io_uring_reactor() = default;
+
+        // Start this reactor.
+        [[nodiscard]] auto start() noexcept
+            -> expected<void, std::error_code> final
+        {
+            SK_TRACE("io_uring_reactor[{}]: starting",
+                     static_cast<void *>(this));
+
+            try {
+                io_uring_thread =
+                    std::thread(&io_uring_reactor::io_uring_thread_fn, this);
+            } catch (std::system_error const &e) {
+                SK_TRACE("io_uring_reactor[{}]: start failed",
+                         static_cast<void *>(this));
+                return make_unexpected(e.code());
+            }
+
+            return {};
+        }
+
+        // Stop this reactor.
+        auto stop() noexcept -> void final
+        {
+            SK_TRACE("io_uring_reactor[{}]: stopping",
+                     static_cast<void *>(this));
+
+            io_uring_sqe shutdown_sqe{};
+            io_uring_prep_nop(&shutdown_sqe);
+            shutdown_sqe.fd = -1;
+            shutdown_sqe.user_data = 1;
+
+            // XXX - decide what to do here (shutdown flag?)
+            std::ignore = _put_sq(&shutdown_sqe);
+
+            if (io_uring_thread.joinable())
+                io_uring_thread.join();
+        }
+
+        // Possibly shouldn't be public.
+        [[nodiscard]] auto _put_sq(io_uring_sqe *newsqe) noexcept
+            -> expected<void, std::error_code>
+        {
+            SK_TRACE("io_uring_reactor[{}]: _put_sq({}): enter",
+                     static_cast<void *>(this),
+                     static_cast<void *>(newsqe));
+
+            // Lock here to avoid a race between multiple threads calling
+            // io_uring_submit().
+            std::lock_guard _(_sq_mutex);
+
+            if (_try_put_sq(newsqe)) {
+                auto r = io_uring_submit(&ring);
+
+                if (r >= 0 || r == -EBUSY) {
+                    SK_TRACE("io_uring_reactor[{}]: _put_sq({}): ok r={}",
+                             static_cast<void *>(this),
+                             static_cast<void *>(newsqe),
+                             r);
+                    return {};
+                }
+
+                SK_TRACE("io_uring_reactor[{}]: _put_sq({}): ok r={}",
+                         static_cast<void *>(this),
+                         static_cast<void *>(newsqe),
+                         r);
+
+                return make_unexpected(
+                    sk::make_error_code(static_cast<sk::error>(-r)));
+            }
+
+            try {
+                SK_TRACE("io_uring_reactor[{}]: _put_sq({}): _try_put_sq "
+                         "failed, add to pending",
+                         static_cast<void *>(this),
+                         static_cast<void *>(newsqe));
+                _pending.push_back(newsqe);
+                return {};
+            } catch (std::bad_alloc const &) {
+                return make_unexpected(
+                    std::make_error_code(std::errc::not_enough_memory));
+            }
+        }
+
+        struct async_sqe_submit final {
+            io_uring_reactor *reactor;
+            iocb::io io;
+            iocb_handle ioh;
+            io_uring_sqe *sqe;
+            // libstdc++ doesn't support C++20 atomic_flag
+            std::atomic<bool> stop_requested{};
+            sk::event stop_event;
+            std::stop_token &token;
+
+            async_sqe_submit(io_uring_reactor *reactor_,
+                             iocb_handle ioh_,
+                             io_uring_sqe *sqe_,
+                             std::stop_token &token_) noexcept
+                : reactor(reactor_), ioh(std::move(ioh_)), sqe(sqe_),
+                  token(token_)
+            {
+                SK_TRACE("async_sqe_submit[{}]: new i/o",
+                         static_cast<void *>(this));
+                io_uring_sqe_set_data(sqe, &io);
+            }
+
+            ~async_sqe_submit()
+            {
+                SK_TRACE("async_sqe_submit[{}]: destructing",
+                         static_cast<void *>(this));
+            }
+
+            async_sqe_submit(async_sqe_submit const &) = delete;
+            async_sqe_submit(async_sqe_submit &&) = delete;
+            auto operator=(async_sqe_submit const &) = delete;
+            auto operator=(async_sqe_submit &&) = delete;
+
+            // Called if a stop is requested by the stop token.  This can be
+            // called from within await_suspend() with io.mutex locked.
+            struct stop_handler {
+                async_sqe_submit *s;
+
+                stop_handler(async_sqe_submit *s_) : s(s_) {}
+
+                auto operator()() noexcept -> void
+                {
+                    SK_TRACE("async_sqe_submit[{}]: stop callback invoked",
+                             static_cast<void *>(s));
+
+                    // Set stop_requested immediately, then dispatch an async
+                    // task to actually cancel the I/O.  This ensures that the
+                    // cancellation doesn't happen until await_suspend() is
+                    // finished (and the I/O is in flight).
+
+                    s->stop_requested = true;
+
+                    s->io.xer->post([&]() -> void {
+                        SK_TRACE("async_sqe_submit[{}]: cancel the i/o",
+                                 static_cast<void *>(s));
+
+                        // Take the io lock to ensure await_suspend has
+                        // finished.
+                        std::lock_guard _(s->io.mutex);
+
+                        io_uring_sqe cancel_sqe{};
+                        io_uring_prep_cancel(&cancel_sqe, &s->io, 0);
+                        // io_uring_sqe_set_data(&cancel_sqe, &s->io);
+
+                        auto ret = s->reactor->_put_sq(&cancel_sqe);
+                        if (!ret)
+                            SK_UNEXPECTED("failed to cancel i/o");
+
+                        s->stop_event.signal();
+                    });
+                }
+            };
+
+            // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
+            auto await_ready() noexcept -> bool
+            {
+                SK_TRACE("async_sqe_submit[{}]: indicate not ready",
+                         static_cast<void *>(this));
+                return false;
+            }
+
+            std::optional<std::stop_callback<stop_handler>> stop_cb;
+
+            template <typename P>
+            auto await_suspend(coroutine_handle<P> coro_handle_) noexcept
+                -> bool
+            {
+                SK_TRACE("async_sqe_submit[{}]: submit, fd={}",
+                         static_cast<void *>(this),
+                         ioh->fd);
+
+                io.coro_handle = coro_handle_;
+
+                io.xer = coro_handle_.promise().task_executor;
+                SK_CHECK(io.xer != nullptr,
+                         "suspending a task with no executor");
+
+                ++ioh->nactive;
+
+                // Register our stop callback.  This could be called immediately
+                // if the stop has already been requested.
+                stop_cb.emplace(std::move(token), stop_handler(this));
+
+                // If we already got cancelled, don't bother submitting the I/O.
+                if (stop_requested) {
+                    SK_TRACE("async_iocb_invoke_overlapped[{}]: already "
+                             "cancelled",
+                             static_cast<void *>(this));
+
+                    io.ret = -EALREADY;
+                    return false;
+                }
+
+                std::lock_guard lock(io.mutex);
+
+                if (auto pret = reactor->_put_sq(sqe); !pret) {
+                    SK_TRACE(
+                        "async_sqe_submit[{}]: submit failed, bypass suspend",
+                        static_cast<void *>(this));
+
+                    errno = pret.error().value();
+                    io.ret = -1;
+                    return false;
+                }
+
+                SK_TRACE("async_sqe_submit[{}]: submit done, will suspend",
+                         static_cast<void *>(this));
+
+                return true;
+            }
+
+            auto await_resume() noexcept -> int
+            {
+                SK_TRACE("async_sqe_submit[{}]: resuming, ret={}",
+                         static_cast<void *>(this),
+                         io.ret);
+
+                // Don't allow the wait object to be destroyed until the reactor
+                // has released the lock.
+                {
+                    std::lock_guard lock(io.mutex);
+                }
+
+                // Deregister the stop callback and see if we need to wait for
+                // it.
+                stop_cb.reset();
+
+                if (stop_requested) {
+                    SK_TRACE("async_sqe_submit[{}]: stop requested, "
+                             "waiting for stop handler",
+                             static_cast<void *>(this));
+                    stop_event.wait();
+                }
+
+                if (--ioh->nactive == 0) {
+                    // Check if something is waiting to destroy this iocb.
+                    std::shared_lock lock(ioh->mutex);
+
+                    if (ioh->close_waiter != nullptr) {
+                        SK_TRACE("async_sqe_submit[{}]: calling "
+                                 "close_waiter",
+                                 static_cast<void *>(this));
+
+                        (*ioh->close_wait_xer)
+                            .post([&handle = ioh->close_waiter]() {
+                                coroutine_handle<>::from_address(handle)
+                                    .resume();
+                            });
+                    }
+                }
+
+                SK_TRACE("async_sqe_submit[{}]: returning from resume",
+                         static_cast<void *>(this));
+
+                return io.ret;
+            }
+        };
+
+        auto async_iocb_open(iocb_handle &cb,
+                             std::stop_token &token,
+                             const char *path,
+                             int flags,
+                             int mode) noexcept
+            -> task<expected<void, std::error_code>> final
+        {
+            SK_CHECK(cb->fd == -1, "re-opening an open iocb");
+
+            io_uring_sqe sqe{};
+            io_uring_prep_openat(&sqe, AT_FDCWD, path, flags, mode);
+            auto ret = co_await async_sqe_submit(this, cb, &sqe, token);
+
+            if (ret == -ECANCELED)
+                co_return make_unexpected(sk::error::cancelled);
+
+            if (ret < 0)
+                co_return make_unexpected(make_error(-ret));
+
+            cb->fd = ret;
+            co_return {};
+        }
+
+        auto async_iocb_close(iocb_handle &cb, std::stop_token &token) noexcept
+            -> task<expected<int, std::error_code>> final
+        {
+            SK_CHECK(cb->fd > 0, "async_iocb_close: iocb not open");
+
+            io_uring_sqe sqe{};
+            io_uring_prep_close(&sqe, cb->fd);
+            auto ret = co_await async_sqe_submit(this, cb, &sqe, token);
+
+            if (ret == -ECANCELED)
+                co_return make_unexpected(sk::error::cancelled);
+
+            if (ret < 0)
+                co_return make_unexpected(make_error(-ret));
+
+            co_return {};
+        }
+
+        auto async_iocb_read(iocb_handle &cb,
+                             std::stop_token &token,
+                             void *buf,
+                             std::size_t n) noexcept
+            -> task<expected<ssize_t, std::error_code>> final
+        {
+            SK_CHECK(cb->fd > 0, "async_iocb_read: iocb not open");
+
+            io_uring_sqe sqe{};
+            io_uring_prep_read(&sqe, cb->fd, buf, n, -1);
+            auto ret = co_await async_sqe_submit(this, cb, &sqe, token);
+
+            if (ret == -ECANCELED)
+                co_return make_unexpected(sk::error::cancelled);
+
+            if (ret < 0)
+                co_return make_unexpected(make_error(-ret));
+
+            co_return ret;
+        }
+
+        auto async_iocb_pread(iocb_handle &cb,
+                              std::stop_token &token,
+                              void *buf,
+                              std::size_t n,
+                              off_t offs) noexcept
+            -> task<expected<ssize_t, std::error_code>> final
+        {
+            SK_CHECK(cb->fd > 0, "async_iocb_pread: iocb not open");
+
+            io_uring_sqe sqe{};
+            io_uring_prep_read(&sqe, cb->fd, buf, n, offs);
+            auto ret = co_await async_sqe_submit(this, cb, &sqe, token);
+
+            if (ret == -ECANCELED)
+                co_return make_unexpected(sk::error::cancelled);
+
+            if (ret < 0)
+                co_return make_unexpected(make_error(-ret));
+
+            co_return ret;
+        }
+
+        auto async_iocb_write(iocb_handle &cb,
+                              std::stop_token &token,
+                              const void *buf,
+                              std::size_t n) noexcept
+            -> task<expected<ssize_t, std::error_code>> final
+        {
+            SK_CHECK(cb->fd > 0, "async_iocb_write: iocb not open");
+
+            io_uring_sqe sqe{};
+            io_uring_prep_write(&sqe, cb->fd, buf, n, -1);
+            auto ret = co_await async_sqe_submit(this, cb, &sqe, token);
+
+            if (ret == -ECANCELED)
+                co_return make_unexpected(sk::error::cancelled);
+
+            if (ret < 0)
+                co_return make_unexpected(make_error(-ret));
+
+            co_return ret;
+        }
+
+        auto async_iocb_pwrite(iocb_handle &cb,
+                               std::stop_token &token,
+                               const void *buf,
+                               std::size_t n,
+                               off_t offs) noexcept
+            -> task<expected<ssize_t, std::error_code>> final
+        {
+            SK_CHECK(cb->fd > 0, "async_iocb_pwrite: iocb not open");
+
+            io_uring_sqe sqe{};
+            io_uring_prep_write(&sqe, cb->fd, buf, n, offs);
+            auto ret = co_await async_sqe_submit(this, cb, &sqe, token);
+
+            if (ret == -ECANCELED)
+                co_return make_unexpected(sk::error::cancelled);
+
+            if (ret < 0)
+                co_return make_unexpected(make_error(-ret));
+
+            co_return ret;
+        }
+
+        auto async_iocb_recv(iocb_handle &cb,
+                             std::stop_token &token,
+                             void *buf,
+                             std::size_t n,
+                             int flags) noexcept
+            -> task<expected<ssize_t, std::error_code>> final
+        {
+            SK_CHECK(cb->fd > 0, "async_iocb_recv: iocb not open");
+
+            io_uring_sqe sqe{};
+            io_uring_prep_recv(&sqe, cb->fd, buf, n, flags);
+            auto ret = co_await async_sqe_submit(this, cb, &sqe, token);
+
+            if (ret == -ECANCELED)
+                co_return make_unexpected(sk::error::cancelled);
+
+            if (ret < 0)
+                co_return make_unexpected(make_error(-ret));
+
+            co_return ret;
+        }
+
+        auto async_iocb_send(iocb_handle &cb,
+                             std::stop_token &token,
+                             const void *buf,
+                             std::size_t n,
+                             int flags) noexcept
+            -> task<expected<ssize_t, std::error_code>> final
+        {
+            SK_CHECK(cb->fd > 0, "async_iocb_send: iocb not open");
+
+            io_uring_sqe sqe{};
+            io_uring_prep_send(&sqe, cb->fd, buf, n, flags);
+            auto ret = co_await async_sqe_submit(this, cb, &sqe, token);
+
+            if (ret == -ECANCELED)
+                co_return make_unexpected(sk::error::cancelled);
+
+            if (ret < 0)
+                co_return make_unexpected(make_error(-ret));
+
+            co_return ret;
+        }
+
+        auto async_iocb_connect(iocb_handle &cb,
+                                std::stop_token &token,
+                                const sockaddr *addr,
+                                socklen_t addrlen) noexcept
+            -> task<expected<void, std::error_code>> final
+        {
+            SK_CHECK(cb->fd > 0, "async_iocb_connect: iocb not open");
+
+            io_uring_sqe sqe{};
+            io_uring_prep_connect(&sqe, cb->fd, addr, addrlen);
+            auto ret = co_await async_sqe_submit(this, cb, &sqe, token);
+
+            if (ret == -ECANCELED)
+                co_return make_unexpected(sk::error::cancelled);
+
+            if (ret < 0)
+                co_return make_unexpected(make_error(-ret));
+
+            co_return {};
+        }
+
+        auto async_iocb_accept(iocb_handle &cb,
+                               std::stop_token &token,
+                               sockaddr *addr,
+                               socklen_t *addrlen) noexcept
+            -> task<expected<int, std::error_code>> final
+        {
+            SK_CHECK(cb->fd > 0, "async_iocb_accept: iocb not open");
+
+            io_uring_sqe sqe{};
+            io_uring_prep_accept(&sqe, cb->fd, addr, addrlen, 0);
+            auto ret = co_await async_sqe_submit(this, cb, &sqe, token);
+
+            if (ret == -ECANCELED)
+                co_return make_unexpected(sk::error::cancelled);
+
+            if (ret < 0)
+                co_return make_unexpected(make_error(-ret));
+
+            co_return ret;
+        }
+
+    private:
+        explicit io_uring_reactor() noexcept = default;
+
+        std::mutex _sq_mutex;
+
+        std::thread io_uring_thread;
+        void io_uring_thread_fn() noexcept
+        {
+            io_uring_cqe *cqe{};
+
+            SK_TRACE("io_uring_reactor[{}]: dispatch thread starting",
+                     static_cast<void *>(this));
+
+            for (;;) {
+                int did_requests = 0;
+
+                // Process any pending CQEs.
+
+                SK_TRACE("io_uring_reactor[{}]: wait for cqe",
+                         static_cast<void *>(this));
+                auto r = io_uring_wait_cqe(&ring, &cqe);
+                SK_CHECK(r == 0, "io_uring_wait_cqe failed");
+                std::ignore = r;
+
+                do {
+                    SK_TRACE("io_uring_reactor[{}]: got a cqe",
+                             static_cast<void *>(this));
+
+                    // user_data == 1 means a shutdown request.
+                    if (cqe->user_data == 1) {
+                        SK_TRACE(
+                            "io_uring_reactor[{}]: shutdown request, return",
+                            static_cast<void *>(this));
+                        return;
+                    }
+
+                    // null data is used by certain operations like i/o
+                    // cancellation where we don't care about the result.
+                    if (cqe->user_data == 0) {
+                        SK_TRACE("io_uring_reactor[{}]: null data, skip",
+                                 static_cast<void *>(this));
+                    } else {
+                        auto *io =
+                            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+                            reinterpret_cast<iocb::io *>(cqe->user_data);
+
+                        SK_TRACE("io_uring_reactor[{}]: io<{}>, wait for lock",
+                                 static_cast<void *>(this),
+                                 static_cast<void *>(io));
+                        std::lock_guard h_lock(io->mutex);
+                        io->ret = cqe->res;
+                        io->flags = cqe->flags;
+                        SK_TRACE(
+                            "io_uring_reactor[{}]: io<{}>, ret={}, flags={}, "
+                            "resume "
+                            "coro at {}",
+                            static_cast<void *>(this),
+                            static_cast<void *>(io),
+                            io->ret,
+                            io->flags,
+                            static_cast<void *>(io->coro_handle.address()));
+
+                        io->xer->post(
+                            [&handle = io->coro_handle] { handle.resume(); });
+                    }
+
+                    io_uring_cqe_seen(&ring, cqe);
+                    ++did_requests;
+
+                    SK_TRACE("io_uring_reactor[{}]: peek next cqe",
+                             static_cast<void *>(this));
+                } while (io_uring_peek_cqe(&ring, &cqe) == 0);
+
+                {
+                    SK_TRACE("io_uring_reactor[{}]: taking _sq_mutex",
+                             static_cast<void *>(this));
+
+                    // Queue any pending SQEs.
+                    std::lock_guard sq_lock(_sq_mutex);
+
+                    SK_TRACE("io_uring_reactor[{}]: got mutex, will submit "
+                             "pending {}",
+                             static_cast<void *>(this),
+                             _pending.size());
+
+                    while (!_pending.empty()) {
+                        if (_try_put_sq(_pending.front()))
+                            _pending.pop_front();
+                        else
+                            break;
+                    }
+
+                    io_uring_submit(&ring);
+                }
+
+                SK_TRACE("io_uring_reactor[{}]: finish loop",
+                         static_cast<void *>(this));
+            }
+        }
+
+        io_uring ring{};
+
+        // must be called with _sq_mutex held
+        [[nodiscard]] auto _try_put_sq(io_uring_sqe *newsqe) noexcept -> bool
+        {
+            auto *sqe = io_uring_get_sqe(&ring);
+            if (sqe == nullptr)
+                return false;
+
+            std::memcpy(sqe, newsqe, sizeof(*sqe));
+            return true;
+        }
+
+        // This is the queue size we request, it may be smaller in practice.
+        static constexpr unsigned _max_queue_size = 512;
+        std::deque<io_uring_sqe *> _pending;
+    };
+
+#endif // SK_CIO_HAVE_IO_URING
+
     struct linux_reactor final {
         linux_reactor() noexcept;
         linux_reactor(linux_reactor &&) noexcept = delete;
@@ -68,10 +857,6 @@ namespace sk::posix::detail {
         linux_reactor(linux_reactor const &) = delete;
         auto operator=(linux_reactor const &) -> linux_reactor & = delete;
 
-        // Associate a new fd with our epoll.
-        [[nodiscard]] auto associate_fd(int fd) noexcept -> expected<void, std::error_code>;
-        auto deassociate_fd(int fd) noexcept -> void;
-
         // Start this reactor.
         [[nodiscard]] auto start() noexcept -> expected<void, std::error_code>;
 
@@ -80,41 +865,13 @@ namespace sk::posix::detail {
 
         auto get_system_executor() noexcept -> mt_executor *;
 
-        //NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers)
-        auto async_fd_open(char const *path, int flags, int mode = 0777) noexcept
-            -> task<expected<int, std::error_code>>;
-
-        auto async_fd_close(int fd) noexcept -> task<expected<int, std::error_code>>;
-
-        auto async_fd_recv(int fd, void *buf, std::size_t n, int flags) noexcept
-            -> task<expected<ssize_t, std::error_code>>;
-
-        auto async_fd_read(int fd, void *buf, std::size_t n) noexcept
-            -> task<expected<ssize_t, std::error_code>>;
-
-        auto async_fd_pread(int fd, void *buf, std::size_t n, off_t offs) noexcept
-            -> task<expected<ssize_t, std::error_code>>;
-
-        auto async_fd_send(int fd, void const *buf, std::size_t n, int flags) noexcept
-            -> task<expected<ssize_t, std::error_code>>;
-
-        auto async_fd_write(int fd, void const *buf, std::size_t n) noexcept
-            -> task<expected<ssize_t, std::error_code>>;
-
-        auto async_fd_pwrite(int fd, void const *buf, std::size_t n, off_t offs) noexcept
-            -> task<expected<ssize_t, std::error_code>>;
-
-        auto async_fd_connect(int fd, sockaddr const *addr, socklen_t addrlen) noexcept
-            -> task<expected<void, std::error_code>>;
-
-        auto async_fd_accept(int fd, sockaddr *addr, socklen_t *addrlen) noexcept
-            -> task<expected<int, std::error_code>>;
+        auto get_iocb_interface() -> linux_iocb_interface *
+        {
+            return interface.get();
+        }
 
     private:
-        std::unique_ptr<epoll_reactor> _epoll;
-#ifdef SK_CIO_HAVE_IO_URING
-        std::unique_ptr<io_uring_reactor> _uring;
-#endif
+        std::unique_ptr<linux_iocb_interface> interface;
     };
 
     inline linux_reactor::linux_reactor() noexcept = default;
@@ -125,163 +882,209 @@ namespace sk::posix::detail {
         return &xer;
     }
 
-    inline auto linux_reactor::associate_fd(int fd) noexcept -> expected<void, std::error_code>
+    inline auto linux_reactor::start() noexcept
+        -> expected<void, std::error_code>
     {
-        return _epoll->associate_fd(fd);
-    }
-
-    inline auto linux_reactor::deassociate_fd(int fd) noexcept -> void
-    {
-        _epoll->deassociate_fd(fd);
-    }
-
-    inline auto linux_reactor::start() noexcept -> expected<void, std::error_code>
-    {
-        _epoll = std::make_unique<epoll_reactor>();
-
-#ifdef SK_CIO_HAVE_IO_URING
-        // An error returned means something went wrong trying to create the
-        // uring reactor, e.g. out of memory.  A successful return of nullptr
-        // means uring isn't supported on this system.
-        auto ur = io_uring_reactor::make();
-        if (!ur)
-            return make_unexpected(ur.error());
-
-        if (*ur != nullptr)
-            _uring = std::move(*ur);
-#endif
+        if (auto r = io_uring_reactor::make(); r)
+            interface = std::move(*r);
+        else
+            return make_unexpected(r.error());
 
         get_system_executor()->start_threads();
-
-        auto ret = _epoll->start();
-        if (!ret)
-            return make_unexpected(ret.error());
-
-#ifdef SK_CIO_HAVE_IO_URING
-        if (_uring) {
-            ret = _uring->start();
-            if (!ret)
-                return make_unexpected(ret.error());
-        }
-#endif
+        if (auto sr = interface->start(); !sr)
+            return make_unexpected(sr.error());
 
         return {};
     }
 
     inline auto linux_reactor::stop() noexcept -> void
     {
-        _epoll->stop();
-#ifdef SK_CIO_HAVE_IO_URING
-        if (_uring)
-            _uring->stop();
-#endif
+        if (interface)
+            interface->stop();
     }
 
-    /*
-     * File I/O functions.
-     */
+} // namespace sk::posix::detail
 
-    inline auto
-    linux_reactor::async_fd_open(const char *path, int flags, int mode) noexcept
+namespace sk::iocore {
+
+    using native_handle_type = int;
+
+    using io_reactor = sk::posix::detail::linux_reactor;
+    using sk::posix::detail::iocb;
+    using sk::posix::detail::iocb_handle;
+
+    inline auto get_global_reactor() noexcept -> io_reactor &
+    {
+        static io_reactor global_reactor;
+        return global_reactor;
+    }
+
+    inline auto create_iocb(int fd) -> expected<iocb_handle, std::error_code>
+    {
+        auto *cb = new (std::nothrow) iocb(fd);
+
+        if (cb == nullptr)
+            return make_unexpected(
+                std::make_error_code(std::errc::not_enough_memory));
+
+        return iocb_handle(cb);
+    }
+
+    [[nodiscard]] inline auto async_iocb_open(std::stop_token &token,
+                                              const char *path,
+                                              int flags,
+                                              int mode) noexcept
+        -> task<expected<iocb_handle, std::error_code>>
+    {
+        SK_TRACE("async_iocb_open: enter, path={}", path);
+
+        auto *cb = new (std::nothrow) iocb;
+
+        if (cb == nullptr)
+            co_return make_unexpected(
+                std::make_error_code(std::errc::not_enough_memory));
+
+        auto ioh = iocb_handle(cb);
+
+        auto ret =
+            co_await get_global_reactor().get_iocb_interface()->async_iocb_open(
+                ioh, token, path, flags, mode);
+
+        if (!ret)
+            co_return make_unexpected(ret.error());
+
+        co_return ioh;
+    }
+
+    [[nodiscard]] inline auto async_iocb_close(iocb_handle &cb,
+                                               std::stop_token &token) noexcept
         -> task<expected<int, std::error_code>>
     {
-#ifdef SK_CIO_HAVE_IO_URING
-        if (_uring)
-            return _uring->async_fd_open(path, flags, mode);
-#endif
-        return _epoll->async_fd_open(path, flags, mode);
+        SK_CHECK(cb, "async_iocb_close: null iocb");
+        SK_TRACE("async_iocb_close[{}]: enter", static_cast<void *>(cb.get()));
+
+        co_return co_await get_global_reactor()
+            .get_iocb_interface()
+            ->async_iocb_close(cb, token);
     }
 
-    inline auto linux_reactor::async_fd_close(int fd) noexcept
-        -> task<expected<int, std::error_code>>
-    {
-#ifdef SK_CIO_HAVE_IO_URING
-        if (_uring)
-            return _uring->async_fd_close(fd);
-#endif
-        return _epoll->async_fd_close(fd);
-    }
-
-    inline auto linux_reactor::async_fd_read(int fd, void *buf, std::size_t n) noexcept
+    [[nodiscard]] inline auto async_iocb_read(iocb_handle &cb,
+                                              std::stop_token &token,
+                                              void *buf,
+                                              std::size_t n) noexcept
         -> task<expected<ssize_t, std::error_code>>
     {
-#ifdef SK_CIO_HAVE_IO_URING
-        if (_uring)
-            return _uring->async_fd_read(fd, buf, n);
-#endif
-        return _epoll->async_fd_read(fd, buf, n);
+        SK_CHECK(cb, "async_iocb_read: null iocb");
+        SK_TRACE("async_iocb_read[{}]: enter", static_cast<void *>(cb.get()));
+
+        co_return co_await get_global_reactor()
+            .get_iocb_interface()
+            ->async_iocb_read(cb, token, buf, n);
     }
 
-    inline auto
-    linux_reactor::async_fd_pread(int fd, void *buf, std::size_t n, off_t offs) noexcept
-        -> task<expected<ssize_t, std::error_code>>
-    {
-#ifdef SK_CIO_HAVE_IO_URING
-        if (_uring)
-            return _uring->async_fd_pread(fd, buf, n, offs);
-#endif
-        return _epoll->async_fd_pread(fd, buf, n, offs);
-    }
-
-    inline auto
-    linux_reactor::async_fd_write(int fd, const void *buf, std::size_t n) noexcept
-        -> task<expected<ssize_t, std::error_code>>
-    {
-#ifdef SK_CIO_HAVE_IO_URING
-        if (_uring)
-            return _uring->async_fd_write(fd, buf, n);
-#endif
-        return _epoll->async_fd_write(fd, buf, n);
-    }
-
-    inline auto linux_reactor::async_fd_pwrite(int fd,
-                                               const void *buf,
+    [[nodiscard]] inline auto async_iocb_pread(iocb_handle &cb,
+                                               std::stop_token &token,
+                                               void *buf,
                                                std::size_t n,
                                                off_t offs) noexcept
         -> task<expected<ssize_t, std::error_code>>
     {
-#ifdef SK_CIO_HAVE_IO_URING
-        if (_uring)
-            return _uring->async_fd_pwrite(fd, buf, n, offs);
-#endif
-        return _epoll->async_fd_pwrite(fd, buf, n, offs);
+        SK_CHECK(cb, "async_iocb_pread: null iocb");
+        SK_TRACE("async_iocb_pread[{}]: enter", static_cast<void *>(cb.get()));
+
+        co_return co_await get_global_reactor()
+            .get_iocb_interface()
+            ->async_iocb_pread(cb, token, buf, n, offs);
     }
 
-    /*
-     * Socket I/O functions.  Go directly to epoll and do not pass io_uring.
-     */
-
-    inline auto
-    linux_reactor::async_fd_recv(int fd, void *buf, std::size_t n, int flags) noexcept
+    [[nodiscard]] inline auto async_iocb_write(iocb_handle &cb,
+                                               std::stop_token &token,
+                                               const void *buf,
+                                               std::size_t n) noexcept
         -> task<expected<ssize_t, std::error_code>>
     {
-        return _epoll->async_fd_recv(fd, buf, n, flags);
+        SK_CHECK(cb, "async_iocb_write: null iocb");
+        SK_TRACE("async_iocb_write[{}]: enter", static_cast<void *>(cb.get()));
+
+        co_return co_await get_global_reactor()
+            .get_iocb_interface()
+            ->async_iocb_write(cb, token, buf, n);
     }
 
-    inline auto linux_reactor::async_fd_send(int fd,
-                                             const void *buf,
-                                             std::size_t n,
-                                             int flags) noexcept
+    [[nodiscard]] inline auto async_iocb_pwrite(iocb_handle &cb,
+                                                std::stop_token &token,
+                                                const void *buf,
+                                                std::size_t n,
+                                                off_t offs) noexcept
         -> task<expected<ssize_t, std::error_code>>
     {
-        return _epoll->async_fd_send(fd, buf, n, flags);
+        SK_CHECK(cb, "async_iocb_pwrite: null iocb");
+        SK_TRACE("async_iocb_pwrite[{}]: enter", static_cast<void *>(cb.get()));
+
+        co_return co_await get_global_reactor()
+            .get_iocb_interface()
+            ->async_iocb_pwrite(cb, token, buf, n, offs);
     }
 
-    inline auto linux_reactor::async_fd_connect(int fd,
-                                                const sockaddr *addr,
-                                                socklen_t addrlen) noexcept
+    [[nodiscard]] inline auto async_iocb_recv(iocb_handle &cb,
+                                              std::stop_token &token,
+                                              void *buf,
+                                              std::size_t n,
+                                              int flags) noexcept
+        -> task<expected<ssize_t, std::error_code>>
+    {
+        SK_CHECK(cb, "async_iocb_recv: null iocb");
+        SK_TRACE("async_iocb_recv[{}]: enter", static_cast<void *>(cb.get()));
+
+        co_return co_await get_global_reactor()
+            .get_iocb_interface()
+            ->async_iocb_recv(cb, token, buf, n, flags);
+    }
+
+    [[nodiscard]] inline auto async_iocb_send(iocb_handle &cb,
+                                              std::stop_token &token,
+                                              const void *buf,
+                                              std::size_t n,
+                                              int flags) noexcept
+        -> task<expected<ssize_t, std::error_code>>
+    {
+        SK_CHECK(cb, "async_iocb_send: null iocb");
+        SK_TRACE("async_iocb_send[{}]: enter", static_cast<void *>(cb.get()));
+
+        co_return co_await get_global_reactor()
+            .get_iocb_interface()
+            ->async_iocb_send(cb, token, buf, n, flags);
+    }
+
+    [[nodiscard]] inline auto async_iocb_connect(iocb_handle &cb,
+                                                 std::stop_token &token,
+                                                 const sockaddr *addr,
+                                                 socklen_t addrlen) noexcept
         -> task<expected<void, std::error_code>>
     {
-        return _epoll->async_fd_connect(fd, addr, addrlen);
+        SK_CHECK(cb, "async_iocb_connect: null iocb");
+        SK_TRACE("async_iocb_connect[{}]: enter",
+                 static_cast<void *>(cb.get()));
+
+        co_return co_await get_global_reactor()
+            .get_iocb_interface()
+            ->async_iocb_connect(cb, token, addr, addrlen);
     }
 
-    inline auto
-    linux_reactor::async_fd_accept(int fd, sockaddr *addr, socklen_t *addrlen) noexcept
+    [[nodiscard]] inline auto async_iocb_accept(iocb_handle &cb,
+                                                std::stop_token &token,
+                                                sockaddr *addr,
+                                                socklen_t *addrlen) noexcept
         -> task<expected<int, std::error_code>>
     {
-        return _epoll->async_fd_accept(fd, addr, addrlen);
+        SK_CHECK(cb, "async_iocb_accept: null iocb");
+        SK_TRACE("async_iocb_accept[{}]: enter", static_cast<void *>(cb.get()));
+
+        co_return co_await get_global_reactor()
+            .get_iocb_interface()
+            ->async_iocb_accept(cb, token, addr, addrlen);
     }
 
-} // namespace sk::posix::detail
+} // namespace sk::iocore
 
 #endif // SK_POSIX_DETAIL_LINUX_REACTOR_HXX_INCLUDED

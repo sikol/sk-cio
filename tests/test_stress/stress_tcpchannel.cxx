@@ -142,10 +142,10 @@ auto tcp_handle_client(net::tcpchannel client) -> task<void>
     co_await client.async_close();
 }
 
-auto tcp_server_task(net::tcpserverchannel &chnl) -> task<void>
+auto tcp_server_task(net::tcpserverchannel &chnl, std::stop_token token) -> task<void>
 {
     for (;;) {
-        auto client = co_await chnl.async_accept();
+        auto client = co_await chnl.async_accept(token);
         if (!client) {
             fmt::print(
                 stderr, "async_accept(): {}\n", client.error().message());
@@ -163,6 +163,8 @@ auto run_tcp_stress_task(std::promise<int> &promise) -> task<void> {
 
 TEST_CASE("tcpchannel stress test")
 {
+    std::stop_source source;
+
     // Create the server channel.
     auto ep = net::make_tcp_endpoint(tcp_listen_address, tcp_listen_port);
     if (!ep) {
@@ -180,7 +182,7 @@ TEST_CASE("tcpchannel stress test")
 
     auto reactor = weak_reactor_handle::get();
     auto *xer = reactor->get_system_executor();
-    wait(co_detach(tcp_server_task(*server), xer));
+    wait(co_detach(tcp_server_task(*server, source.get_token()), xer));
 
     std::vector<std::promise<int>> promises(nthreads);
 
@@ -196,5 +198,6 @@ TEST_CASE("tcpchannel stress test")
     }
 
     REQUIRE(errors == 0);
+    source.request_stop();
     wait(server->async_close());
 }
