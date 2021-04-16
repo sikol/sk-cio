@@ -120,7 +120,15 @@ namespace sk::posix::detail {
 
     // This is the generic interface supported by both epoll and uring.
     class linux_iocb_interface {
+    protected:
+        linux_iocb_interface() = default;
+
     public:
+        linux_iocb_interface(linux_iocb_interface const &) = delete;
+        linux_iocb_interface(linux_iocb_interface &&) = delete;
+        auto operator=(linux_iocb_interface const &) -> linux_iocb_interface & = delete;
+        auto operator=(linux_iocb_interface &&) -> linux_iocb_interface & = delete;
+
         virtual ~linux_iocb_interface() = default;
 
         [[nodiscard]] virtual auto start() noexcept
@@ -731,8 +739,8 @@ namespace sk::posix::detail {
         explicit io_uring_reactor() noexcept = default;
 
         std::mutex _sq_mutex;
-
         std::thread io_uring_thread;
+
         void io_uring_thread_fn() noexcept
         {
             io_uring_cqe *cqe{};
